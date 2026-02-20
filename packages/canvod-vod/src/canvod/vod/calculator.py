@@ -199,7 +199,8 @@ class TauOmegaZerothOrder(VODCalculator):
 
         delta_snr = self.get_delta_snr()
 
-        if delta_snr.isnull().all():
+        # Scalar reductions: .load() materialises a single value from dask
+        if delta_snr.isnull().all().load().item():
             log.error(
                 "vod_calculation_failed",
                 reason="all_delta_snr_nan",
@@ -210,8 +211,8 @@ class TauOmegaZerothOrder(VODCalculator):
 
         canopy_transmissivity = self.decibel2linear(delta_snr)
 
-        if (canopy_transmissivity <= 0).any():
-            n_invalid = (canopy_transmissivity <= 0).sum().item()
+        if (canopy_transmissivity <= 0).any().load().item():
+            n_invalid = int((canopy_transmissivity <= 0).sum().load().item())
             total = canopy_transmissivity.size
             print(
                 f"Warning: {n_invalid}/{total} transmissivity values <= 0 "
@@ -237,7 +238,7 @@ class TauOmegaZerothOrder(VODCalculator):
         )
 
         duration = time.time() - start_time
-        n_valid = (~vod.isnull()).sum().item()
+        n_valid = int((~vod.isnull()).sum().load().item())
 
         log.info(
             "vod_calculation_complete",

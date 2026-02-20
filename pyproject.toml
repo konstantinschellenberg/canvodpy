@@ -71,6 +71,9 @@ unfixable = []
 "__init__.py" = ["E402", "F401"]
 "**/{tests}/*" = ["E402", "ANN201", "D", "INP001", "S101", "PLR2004"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["canvod"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

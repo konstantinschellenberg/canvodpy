@@ -58,6 +58,7 @@ class FtpDownloader(FileDownloader):
     """
 
     NASA_FTP = "ftp://gdc.cddis.eosdis.nasa.gov"
+    ESA_FTP = "ftp://gssc.esa.int"
 
     def __init__(
         self,
@@ -67,8 +68,9 @@ class FtpDownloader(FileDownloader):
         """Initialize downloader with optional alternate servers."""
         if alt_servers is None:
             if user_email is not None:
-                self.alt_servers = [self.NASA_FTP]
-                print("ℹ NASA CDDIS fallback enabled")
+                # Primary is NASA (set by caller); fallback to ESA
+                self.alt_servers = [self.ESA_FTP]
+                print("ℹ ESA fallback enabled (primary: NASA CDDIS)")
             else:
                 self.alt_servers = []
                 print("ℹ Using ESA FTP exclusively")
