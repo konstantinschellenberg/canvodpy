@@ -223,8 +223,8 @@ if __name__ == "__main__":
     # diagnose_processing_new_api()
 
     # Start from a specific date
-    diagnose_processing_new_api(start_from="2025225",
-                                end_at="2025225")  # July 1, 2024
+    diagnose_processing_new_api(start_from="2025224",
+                                end_at="2025224")  # July 1, 2024
 
     # Process a specific range
     # diagnose_processing_new_api(start_from="2025278", end_at="2025280")
