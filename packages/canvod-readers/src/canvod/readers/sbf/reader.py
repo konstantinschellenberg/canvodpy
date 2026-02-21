@@ -18,11 +18,31 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pint
 import structlog
+import xarray as xr
 from pydantic import BaseModel, ConfigDict, field_validator
 
+from canvod.readers.base import GNSSDataReader
 from canvod.readers.gnss_specs.constants import UREG
+from canvod.readers.gnss_specs.constellations import (
+    BEIDOU,
+    GALILEO,
+    GLONASS,
+    GPS,
+    IRNSS,
+    QZSS,
+    SBAS,
+)
+from canvod.readers.gnss_specs.metadata import (
+    CN0_METADATA,
+    COORDS_METADATA,
+    DTYPES,
+    OBSERVABLES_METADATA,
+    get_global_attrs,
+)
+from canvod.readers.gnss_specs.utils import get_version_from_pyproject
 from canvod.readers.sbf._registry import FDMA_SIGNAL_NUMS, SIGNAL_TABLE, decode_svid
 from canvod.readers.sbf._scaling import (
     cn0_dbhz,
@@ -99,11 +119,168 @@ def _decode_bytes(raw: bytes) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Bandwidth / frequency helpers for to_ds() and to_metadata_ds()
+# ---------------------------------------------------------------------------
+
+_CONSTELLATION_MAP: dict[str, Any] = {
+    "G": GPS,
+    "R": GLONASS,
+    "E": GALILEO,
+    "C": BEIDOU,
+    "J": QZSS,
+    "I": IRNSS,
+    "S": SBAS,
+}
+
+
+def _get_bandwidth_mhz(system: str, band: str) -> float:
+    """Return signal bandwidth in MHz, or NaN if unknown.
+
+    Parameters
+    ----------
+    system : str
+        RINEX single-letter system code.
+    band : str
+        Band label (e.g. "L1", "G1", "E5a").
+
+    Returns
+    -------
+    float
+        Bandwidth in MHz, or NaN if the band is not found.
+    """
+    if system == "R" and band in ("G1", "G2"):
+        # FDMA G1/G2: use aggregated bandwidth table (ClassVar on GLONASS)
+        bw = GLONASS.AGGR_G1_G2_BAND_PROPERTIES[band]["bandwidth"]
+        return float(bw.to(UREG.MHz).magnitude)
+    const = _CONSTELLATION_MAP.get(system)
+    if const is None:
+        return float("nan")
+    try:
+        bw = const.BAND_PROPERTIES[band]["bandwidth"]
+        return float(bw.to(UREG.MHz).magnitude)
+    except (KeyError, AttributeError):
+        return float("nan")
+
+
+# ---------------------------------------------------------------------------
+# Theta / phi provenance attributes for to_metadata_ds()
+# ---------------------------------------------------------------------------
+
+_THETA_ATTRS: dict[str, str | float] = {
+    "long_name": "Polar angle (zenith angle)",
+    "standard_name": "polar_angle",
+    "units": "degrees",
+    "description": "Angle from zenith (90 deg - elevation). SCS convention.",
+    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "comment": (
+        "Derived from the receiver's internal navigation solution, NOT from "
+        "independently-computed satellite ephemerides. Values match the "
+        "receiver's tracking geometry and may differ from ephemeris-derived angles."
+    ),
+    "_FillValue": -9999.0,
+}
+_PHI_ATTRS: dict[str, str | float] = {
+    "long_name": "Azimuthal angle from North",
+    "standard_name": "azimuth",
+    "units": "degrees",
+    "description": "Clockwise azimuth from North. SCS convention.",
+    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "comment": (
+        "Derived from the receiver's internal navigation solution, NOT from "
+        "independently-computed satellite ephemerides. Values match the "
+        "receiver's tracking geometry and may differ from ephemeris-derived angles."
+    ),
+    "_FillValue": -9999.0,
+}
+
+
+def _build_obs_map(meas_epoch_data: dict[str, Any]) -> dict[tuple[int, int], int]:
+    """Build ``(rx_channel, sig_num) → svid`` mapping from a MeasEpoch dict.
+
+    Parameters
+    ----------
+    meas_epoch_data : dict
+        Raw MeasEpoch block dict from ``sbf_parser``.
+
+    Returns
+    -------
+    dict
+        Mapping ``(rx_channel, signal_num) → svid`` for all Type1 and
+        Type2 sub-blocks in the epoch.
+    """
+    obs_map: dict[tuple[int, int], int] = {}
+    for t1 in meas_epoch_data.get("Type_1", []):
+        svid = int(t1["SVID"])
+        type_byte = int(t1["Type"])
+        obs_info = int(t1["ObsInfo"])
+        sig_num = decode_signal_num(type_byte, obs_info)
+        rx_ch = int(t1["RxChannel"])
+        obs_map[(rx_ch, sig_num)] = svid
+        for t2 in t1.get("Type_2", []):
+            type_byte2 = int(t2["Type"])
+            obs_info2 = int(t2["ObsInfo"])
+            sig_num2 = decode_signal_num(type_byte2, obs_info2)
+            rx_ch2 = int(t2.get("RxChannel", 0))
+            obs_map[(rx_ch2, sig_num2)] = svid
+    return obs_map
+
+
+def _sid_props_from_obs(
+    svid: int,
+    sig_num: int,
+    freq_nr_cache: dict[int, int],
+) -> dict[str, Any] | None:
+    """Compute sid string and properties for one (svid, signal_num) pair.
+
+    Returns None if the signal is not in SIGNAL_TABLE.
+    """
+    sig_def = SIGNAL_TABLE.get(sig_num)
+    if sig_def is None:
+        return None
+    system, prn = decode_svid(svid)
+    sv = f"{system}{prn:02d}"
+    sid = f"{sv}|{sig_def.band}|{sig_def.code}"
+
+    band = sig_def.band
+    if sig_num in FDMA_SIGNAL_NUMS:
+        freq_nr = freq_nr_cache.get(svid)
+        if freq_nr is not None:
+            freq_qty = glonass_freq_hz(sig_num, freq_nr)
+            freq_center_mhz = float(freq_qty.to(UREG.MHz).magnitude)
+        else:
+            freq_qty = GLONASS.AGGR_G1_G2_BAND_PROPERTIES[band]["freq"]
+            freq_center_mhz = float(freq_qty.to(UREG.MHz).magnitude)
+    elif sig_def.freq is not None:
+        freq_center_mhz = float(sig_def.freq.to(UREG.MHz).magnitude)
+    else:
+        freq_center_mhz = float("nan")
+
+    bw_mhz = _get_bandwidth_mhz(system, band)
+    if np.isnan(freq_center_mhz) or np.isnan(bw_mhz):
+        freq_min_mhz = float("nan")
+        freq_max_mhz = float("nan")
+    else:
+        freq_min_mhz = freq_center_mhz - bw_mhz / 2.0
+        freq_max_mhz = freq_center_mhz + bw_mhz / 2.0
+
+    return {
+        "sid": sid,
+        "sv": sv,
+        "system": system,
+        "band": band,
+        "code": sig_def.code,
+        "freq_center": freq_center_mhz,
+        "freq_min": freq_min_mhz,
+        "freq_max": freq_max_mhz,
+    }
+
+
+# ---------------------------------------------------------------------------
 # SbfReader
 # ---------------------------------------------------------------------------
 
 
-class SbfReader(BaseModel):
+class SbfReader(GNSSDataReader, BaseModel):
     """Read and decode a Septentrio Binary Format (SBF) observation file.
 
     Parameters
@@ -160,6 +337,36 @@ class SbfReader(BaseModel):
             raise FileNotFoundError(f"SBF file not found: {v}")
         return v
 
+    # ------------------------------------------------------------------
+    # Pre-scan caches
+    # ------------------------------------------------------------------
+
+    @cached_property
+    def _freq_nr_cache(self) -> dict[int, int]:
+        """Pre-scan ALL ChannelStatus blocks to build a complete SVID → FreqNr map.
+
+        Scanning the entire file once means early GLONASS epochs also have
+        accurate FDMA frequency assignments in :meth:`iter_epochs`.
+
+        Returns
+        -------
+        dict of {int: int}
+            Mapping from Septentrio SVID to GLONASS frequency slot number.
+        """
+        parser = sbf_parser.SbfParser()
+        cache: dict[int, int] = {}
+        for name, data in parser.read(str(self.fpath)):
+            if name == "ChannelStatus":
+                for sat in data.get("ChannelSatInfo", []):
+                    svid = int(sat["SVID"])
+                    if svid != 0:
+                        cache[svid] = int(sat["FreqNr"])
+        return cache
+
+    # ------------------------------------------------------------------
+    # GNSSDataReader abstract property implementations
+    # ------------------------------------------------------------------
+
     @cached_property
     def file_hash(self) -> str:
         """SHA-256 hex digest of the file (first 16 characters).
@@ -171,6 +378,103 @@ class SbfReader(BaseModel):
         """
         h = hashlib.sha256(self.fpath.read_bytes())
         return h.hexdigest()[:16]
+
+    @cached_property
+    def start_time(self) -> datetime:
+        """Return the timestamp of the first decoded epoch.
+
+        Returns
+        -------
+        datetime
+            Timezone-aware UTC datetime of the first observation epoch.
+
+        Raises
+        ------
+        LookupError
+            If the file contains no decodable epochs.
+        """
+        for epoch in self.iter_epochs():
+            return epoch.timestamp
+        raise LookupError(f"No epochs in {self.fpath}")
+
+    @cached_property
+    def end_time(self) -> datetime:
+        """Return the timestamp of the last decoded epoch.
+
+        Returns
+        -------
+        datetime
+            Timezone-aware UTC datetime of the last observation epoch.
+
+        Raises
+        ------
+        LookupError
+            If the file contains no decodable epochs.
+        """
+        last: datetime | None = None
+        for epoch in self.iter_epochs():
+            last = epoch.timestamp
+        if last is None:
+            raise LookupError(f"No epochs in {self.fpath}")
+        return last
+
+    @cached_property
+    def systems(self) -> list[str]:
+        """Return sorted list of GNSS system codes present in the file.
+
+        Returns
+        -------
+        list of str
+            Sorted list of RINEX system letters (e.g. ``["E", "G", "R"]``).
+        """
+        return sorted({
+            obs.system
+            for ep in self.iter_epochs()
+            for obs in ep.observations
+        })
+
+    @cached_property
+    def num_satellites(self) -> int:
+        """Return the number of unique satellites observed in the file.
+
+        Returns
+        -------
+        int
+            Count of unique ``system + PRN`` pairs across all epochs.
+        """
+        return len({
+            f"{obs.system}{obs.prn:02d}"
+            for ep in self.iter_epochs()
+            for obs in ep.observations
+        })
+
+    # ------------------------------------------------------------------
+    # Epoch count (existing cached property — kept for backward compat)
+    # ------------------------------------------------------------------
+
+    @cached_property
+    def num_epochs(self) -> int:
+        """Count the number of MeasEpoch blocks in the file.
+
+        Returns
+        -------
+        int
+            Total MeasEpoch block count (one per observation epoch).
+
+        Notes
+        -----
+        Scans the entire file once; result is cached.
+        """
+        parser = sbf_parser.SbfParser()
+        count = sum(
+            1 for name, _ in parser.read(str(self.fpath)) if name == "MeasEpoch"
+        )
+        log.debug("sbf_epoch_count", fpath=str(self.fpath), num_epochs=count)
+        return count
+
+    # ------------------------------------------------------------------
+    # Header
+    # ------------------------------------------------------------------
 
     @cached_property
     def header(self) -> SbfHeader:
@@ -210,25 +514,9 @@ class SbfReader(BaseModel):
                 )
         raise LookupError(f"No ReceiverSetup block found in {self.fpath}")
 
-    @cached_property
-    def num_epochs(self) -> int:
-        """Count the number of MeasEpoch blocks in the file.
-
-        Returns
-        -------
-        int
-            Total MeasEpoch block count (one per observation epoch).
-
-        Notes
-        -----
-        Scans the entire file once; result is cached.
-        """
-        parser = sbf_parser.SbfParser()
-        count = sum(
-            1 for name, _ in parser.read(str(self.fpath)) if name == "MeasEpoch"
-        )
-        log.debug("sbf_epoch_count", fpath=str(self.fpath), num_epochs=count)
-        return count
+    # ------------------------------------------------------------------
+    # Epoch iterator
+    # ------------------------------------------------------------------
 
     def iter_epochs(self) -> Iterator[SbfEpoch]:
         """Iterate over decoded MeasEpoch blocks.
@@ -244,15 +532,14 @@ class SbfReader(BaseModel):
         Notes
         -----
         - The file is scanned from start to finish on each call.
-        - A ``FreqNr`` cache (SVID → FreqNr) is built from ChannelStatus
-          blocks encountered *before* each MeasEpoch.  Epochs that precede
-          the first ChannelStatus will have ``phase_cycles=None`` for all
-          GLONASS FDMA signals.
+        - The :attr:`_freq_nr_cache` is pre-populated from ALL ChannelStatus
+          blocks before the first call, so all GLONASS FDMA epochs have
+          accurate carrier frequencies.
         - ``delta_ls`` (leap seconds) is taken from the most recent
           ReceiverTime block; defaults to 18 if none has been seen yet.
         """
         parser = sbf_parser.SbfParser()
-        freq_nr_cache: dict[int, int] = {}  # SVID → FreqNr
+        freq_nr_cache: dict[int, int] = self._freq_nr_cache.copy()
         delta_ls: int = _DEFAULT_DELTA_LS
 
         for name, data in parser.read(str(self.fpath)):
@@ -270,6 +557,439 @@ class SbfReader(BaseModel):
                     epoch = self._decode_epoch(data, freq_nr_cache, delta_ls)
                     if epoch is not None:
                         yield epoch
+
+    # ------------------------------------------------------------------
+    # Dataset construction — observations
+    # ------------------------------------------------------------------
+
+    def to_ds(
+        self,
+        keep_rnx_data_vars: list[str] | None = None,
+        pad_global_sid: bool = True,
+        strip_fillval: bool = True,
+        **kwargs: object,
+    ) -> xr.Dataset:
+        """Convert SBF observations to an ``(epoch, sid)`` xarray Dataset.
+
+        Produces the same structure as :class:`~canvod.readers.rinex.v3_04.Rnxv3Obs`
+        and passes :class:`~canvod.readers.base.DatasetStructureValidator`.
+
+        Parameters
+        ----------
+        keep_rnx_data_vars : list of str, optional
+            Data variables to retain.  If ``None``, all six variables are
+            kept: ``SNR``, ``Pseudorange``, ``Phase``, ``Doppler``,
+            ``LLI``, ``SSI``.
+        pad_global_sid : bool, default True
+            If ``True``, pads the dataset to the global SID space via
+            :func:`canvod.auxiliary.preprocessing.pad_to_global_sid`.
+        strip_fillval : bool, default True
+            If ``True``, removes fill values via
+            :func:`canvod.auxiliary.preprocessing.strip_fillvalue`.
+        **kwargs
+            Ignored (for ABC compatibility).
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with dimensions ``(epoch, sid)`` that passes
+            :class:`~canvod.readers.base.DatasetStructureValidator`.
+        """
+        freq_nr_cache = self._freq_nr_cache.copy()
+
+        # --- Pass 1: collect all (epoch, sid) pairs and signal properties ---
+        sid_props: dict[str, dict[str, Any]] = {}
+        timestamps: list[np.datetime64] = []
+
+        for epoch in self.iter_epochs():
+            ts_np = np.datetime64(epoch.timestamp.replace(tzinfo=None), "ns")
+            timestamps.append(ts_np)
+
+            for obs in epoch.observations:
+                props = _sid_props_from_obs(obs.svid, obs.signal_num, freq_nr_cache)
+                if props is None:
+                    continue
+                sid = props["sid"]
+                if sid not in sid_props:
+                    sid_props[sid] = props
+
+        sorted_sids = sorted(sid_props)
+        sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
+        n_epochs = len(timestamps)
+        n_sids = len(sorted_sids)
+
+        # Allocate arrays (LLI is dropped — SBF has no loss-of-lock indicator)
+        snr_arr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["SNR"])
+        pr_arr  = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Pseudorange"])
+        ph_arr  = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Phase"])
+        dop_arr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Doppler"])
+        ssi_arr = np.full((n_epochs, n_sids), -1,     dtype=DTYPES["SSI"])
+
+        # --- Pass 2: fill arrays ---
+        for t_idx, epoch in enumerate(self.iter_epochs()):
+            for obs in epoch.observations:
+                sig_def = SIGNAL_TABLE.get(obs.signal_num)
+                if sig_def is None:
+                    continue
+                sv = f"{obs.system}{obs.prn:02d}"
+                sid = f"{sv}|{sig_def.band}|{sig_def.code}"
+                s_idx = sid_to_idx.get(sid)
+                if s_idx is None:
+                    continue
+
+                if obs.cn0 is not None:
+                    snr_arr[t_idx, s_idx] = float(obs.cn0.to(UREG.dBHz).magnitude)
+                if obs.pseudorange is not None:
+                    pr_arr[t_idx, s_idx] = float(
+                        obs.pseudorange.to(UREG.meter).magnitude
+                    )
+                if obs.phase_cycles is not None:
+                    ph_arr[t_idx, s_idx] = obs.phase_cycles
+                if obs.doppler is not None:
+                    dop_arr[t_idx, s_idx] = float(obs.doppler.to(UREG.Hz).magnitude)
+
+        # Build coordinate arrays
+        freq_center = np.asarray(
+            [sid_props[s]["freq_center"] for s in sorted_sids], dtype=DTYPES["freq_center"]
+        )
+        freq_min = np.asarray(
+            [sid_props[s]["freq_min"] for s in sorted_sids], dtype=DTYPES["freq_min"]
+        )
+        freq_max = np.asarray(
+            [sid_props[s]["freq_max"] for s in sorted_sids], dtype=DTYPES["freq_max"]
+        )
+
+        coords: dict[str, Any] = {
+            "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
+            "sid": xr.DataArray(sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]),
+            "sv":     ("sid", [sid_props[s]["sv"]     for s in sorted_sids], COORDS_METADATA["sv"]),
+            "system": ("sid", [sid_props[s]["system"] for s in sorted_sids], COORDS_METADATA["system"]),
+            "band":   ("sid", [sid_props[s]["band"]   for s in sorted_sids], COORDS_METADATA["band"]),
+            "code":   ("sid", [sid_props[s]["code"]   for s in sorted_sids], COORDS_METADATA["code"]),
+            "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
+            "freq_min":    ("sid", freq_min,    COORDS_METADATA["freq_min"]),
+            "freq_max":    ("sid", freq_max,    COORDS_METADATA["freq_max"]),
+        }
+
+        attrs = get_global_attrs()
+        attrs["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs["Software"] = f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
+
+        ds = xr.Dataset(
+            data_vars={
+                "SNR":         (["epoch", "sid"], snr_arr, CN0_METADATA),
+                "Pseudorange": (["epoch", "sid"], pr_arr,  OBSERVABLES_METADATA["Pseudorange"]),
+                "Phase":       (["epoch", "sid"], ph_arr,  OBSERVABLES_METADATA["Phase"]),
+                "Doppler":     (["epoch", "sid"], dop_arr, OBSERVABLES_METADATA["Doppler"]),
+                "SSI":         (["epoch", "sid"], ssi_arr, OBSERVABLES_METADATA["SSI"]),
+            },
+            coords=coords,
+            attrs=attrs,
+        )
+
+        # Post-process
+        if keep_rnx_data_vars is not None:
+            for var in list(ds.data_vars):
+                if var not in keep_rnx_data_vars:
+                    ds = ds.drop_vars([var])
+
+        if pad_global_sid:
+            from canvod.auxiliary.preprocessing import pad_to_global_sid
+            ds = pad_to_global_sid(ds)
+
+        if strip_fillval:
+            from canvod.auxiliary.preprocessing import strip_fillvalue
+            ds = strip_fillvalue(ds)
+
+        ds.attrs["File Hash"] = self.file_hash
+        self.validate_output(ds, required_vars=keep_rnx_data_vars)
+        return ds
+
+    # ------------------------------------------------------------------
+    # Dataset construction — metadata
+    # ------------------------------------------------------------------
+
+    def to_metadata_ds(self, pad_global_sid: bool = True) -> xr.Dataset:
+        """Decode SBF metadata blocks to an ``(epoch, sid)`` xarray Dataset.
+
+        Decodes PVTGeodetic, DOP, ReceiverStatus, SatVisibility, and
+        MeasExtra blocks in a single file scan.
+
+        Parameters
+        ----------
+        pad_global_sid : bool, default True
+            If ``True``, pads to the global SID space via
+            :func:`canvod.auxiliary.preprocessing.pad_to_global_sid`.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with dimensions ``(epoch, sid)``.  Epoch-level scalars
+            (PDOP, NrSV, …) are 1-D ``(epoch,)`` coordinates.  Satellite
+            geometry (theta, phi) and signal quality (MPCorrection, …) are
+            ``(epoch, sid)`` data variables.
+        """
+        parser = sbf_parser.SbfParser()
+        freq_nr_cache = self._freq_nr_cache.copy()
+
+        pending: dict[str, Any] = {
+            "pvt": None, "dop": None, "status": None,
+            "satvis": [], "extra": [],
+        }
+
+        # Each record: (ts, pvt, dop, status, satvis, extra, obs_map)
+        records: list[tuple[Any, ...]] = []
+
+        # sid discovery — same logic as to_ds() pass 1
+        sid_props: dict[str, dict[str, Any]] = {}
+
+        delta_ls: int = _DEFAULT_DELTA_LS
+
+        for name, data in parser.read(str(self.fpath)):
+            match name:
+                case "ReceiverTime":
+                    delta_ls = int(data["DeltaLS"])
+
+                case "ChannelStatus":
+                    for sat in data.get("ChannelSatInfo", []):
+                        svid_cs = int(sat["SVID"])
+                        if svid_cs != 0:
+                            freq_nr_cache[svid_cs] = int(sat["FreqNr"])
+
+                case "PVTGeodetic":
+                    pending["pvt"] = data
+
+                case "DOP":
+                    pending["dop"] = data
+
+                case "ReceiverStatus":
+                    pending["status"] = data
+
+                case "SatVisibility":
+                    pending["satvis"] = list(data.get("SatInfo", []))
+
+                case "MeasExtra":
+                    pending["extra"] = list(data.get("MeasExtraChannel", []))
+
+                case "MeasEpoch":
+                    tow_ms = int(data["TOW"])
+                    wn = int(data["WNc"])
+                    ts = _tow_wn_to_utc(tow_ms, wn, delta_ls)
+                    obs_map = _build_obs_map(data)
+
+                    # Discover sids from Type1 and Type2 sub-blocks
+                    for t1 in data.get("Type_1", []):
+                        svid1 = int(t1["SVID"])
+                        props1 = _sid_props_from_obs(
+                            svid1,
+                            decode_signal_num(int(t1["Type"]), int(t1["ObsInfo"])),
+                            freq_nr_cache,
+                        )
+                        if props1 is not None and props1["sid"] not in sid_props:
+                            sid_props[props1["sid"]] = props1
+
+                        for t2 in t1.get("Type_2", []):
+                            props2 = _sid_props_from_obs(
+                                svid1,
+                                decode_signal_num(int(t2["Type"]), int(t2["ObsInfo"])),
+                                freq_nr_cache,
+                            )
+                            if props2 is not None and props2["sid"] not in sid_props:
+                                sid_props[props2["sid"]] = props2
+
+                    records.append((
+                        ts,
+                        pending["pvt"],
+                        pending["dop"],
+                        pending["status"],
+                        list(pending["satvis"]),
+                        list(pending["extra"]),
+                        obs_map,
+                    ))
+                    pending = {
+                        "pvt": None, "dop": None, "status": None,
+                        "satvis": [], "extra": [],
+                    }
+
+        # Build index structures
+        sorted_sids = sorted(sid_props)
+        sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
+        n_epochs = len(records)
+        n_sids = len(sorted_sids)
+
+        # sv → list of sid indices (for SatVisibility broadcasting)
+        sids_for_sv: dict[str, list[int]] = {}
+        for sid in sorted_sids:
+            sv = sid_props[sid]["sv"]
+            sids_for_sv.setdefault(sv, []).append(sid_to_idx[sid])
+
+        # (epoch, sid) data variable arrays
+        theta_arr    = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        phi_arr      = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        rise_set_arr = np.full((n_epochs, n_sids), -1,    dtype=np.int8)
+        mp_corr_arr  = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        code_var_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        carr_var_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+
+        # (epoch,) scalar coordinate arrays
+        pdop_arr      = np.full(n_epochs, np.nan, dtype=np.float32)
+        hdop_arr      = np.full(n_epochs, np.nan, dtype=np.float32)
+        vdop_arr      = np.full(n_epochs, np.nan, dtype=np.float32)
+        n_sv_arr      = np.full(n_epochs, -1,     dtype=np.int16)
+        h_acc_arr     = np.full(n_epochs, np.nan, dtype=np.float32)
+        v_acc_arr     = np.full(n_epochs, np.nan, dtype=np.float32)
+        pvt_mode_arr  = np.full(n_epochs, -1,     dtype=np.int8)
+        mean_corr_arr = np.full(n_epochs, np.nan, dtype=np.float32)
+        cpu_load_arr  = np.full(n_epochs, -1,     dtype=np.int8)
+        temp_arr      = np.full(n_epochs, np.nan, dtype=np.float32)
+        rx_error_arr  = np.full(n_epochs, 0,      dtype=np.int32)
+
+        timestamps: list[np.datetime64] = []
+
+        # Fill arrays from records
+        for t_idx, (ts, pvt, dop, status, satvis, extra, obs_map) in enumerate(records):
+            timestamps.append(np.datetime64(ts.replace(tzinfo=None), "ns"))
+
+            # DOP block → pdop, hdop, vdop
+            if dop is not None:
+                try:
+                    pdop_arr[t_idx] = float(dop["PDOP"]) * 0.01
+                    hdop_arr[t_idx] = float(dop["HDOP"]) * 0.01
+                    vdop_arr[t_idx] = float(dop["VDOP"]) * 0.01
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            # PVTGeodetic → n_sv, accuracy, mode, correction age
+            if pvt is not None:
+                try:
+                    n_sv_arr[t_idx]      = int(pvt.get("NrSV", pvt.get("NrSVAnt", -1)))
+                    h_acc_arr[t_idx]     = float(pvt["HAccuracy"]) * 0.001
+                    v_acc_arr[t_idx]     = float(pvt["VAccuracy"]) * 0.001
+                    pvt_mode_arr[t_idx]  = int(pvt["Mode"])
+                    mean_corr_arr[t_idx] = float(pvt["MeanCorrAge"]) * 0.01
+                    # Also pick up DOP from PVTGeodetic if DOP block absent
+                    if np.isnan(pdop_arr[t_idx]):
+                        pdop_arr[t_idx] = float(pvt["PDOP"]) * 0.01
+                        hdop_arr[t_idx] = float(pvt["HDOP"]) * 0.01
+                        vdop_arr[t_idx] = float(pvt["VDOP"]) * 0.01
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            # ReceiverStatus → cpu_load, temperature, rx_error
+            if status is not None:
+                try:
+                    cpu_load_arr[t_idx] = int(status["CPULoad"])
+                    temp_arr[t_idx]     = float(status["Temperature"]) * 0.1
+                    rx_error_arr[t_idx] = int(status["RxError"])
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            # SatVisibility → broadcast theta/phi to all sids for that sv
+            for sat_info in satvis:
+                try:
+                    svid_raw   = int(sat_info["SVID"])
+                    sys_code, prn = decode_svid(svid_raw)
+                    sv         = f"{sys_code}{prn:02d}"
+                    theta_deg  = 90.0 - int(sat_info["Elevation"]) * 0.01
+                    phi_deg    = int(sat_info["Azimuth"]) * 0.01
+                    rs         = int(sat_info["RiseSet"])
+                    for s_idx in sids_for_sv.get(sv, []):
+                        theta_arr[t_idx, s_idx]    = theta_deg
+                        phi_arr[t_idx, s_idx]      = phi_deg
+                        rise_set_arr[t_idx, s_idx] = rs
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            # MeasExtra → per-(epoch, sid) signal quality
+            for ch in extra:
+                try:
+                    type_byte = int(ch["Type"])
+                    info_byte = int(ch.get("ObsInfo", ch.get("Info", 0)))
+                    sig_num   = decode_signal_num(type_byte, info_byte)
+                    rx_ch     = int(ch["RxChannel"])
+                    svid      = obs_map.get((rx_ch, sig_num))
+                    if svid is None:
+                        continue
+                    sig_def = SIGNAL_TABLE.get(sig_num)
+                    if sig_def is None:
+                        continue
+                    sys_code2, prn2 = decode_svid(svid)
+                    sv2  = f"{sys_code2}{prn2:02d}"
+                    sid  = f"{sv2}|{sig_def.band}|{sig_def.code}"
+                    s_idx = sid_to_idx.get(sid)
+                    if s_idx is None:
+                        continue
+                    mp_raw = int(
+                        ch.get("MPCorrection ", ch.get("MPCorrection", 0))
+                    )
+                    mp_corr_arr[t_idx, s_idx]  = mp_raw * 0.001
+                    raw_cv = ch.get("CodeVar")
+                    raw_rv = ch.get("CarrierVar")
+                    if raw_cv is not None:
+                        code_var_arr[t_idx, s_idx] = float(raw_cv)
+                    if raw_rv is not None:
+                        carr_var_arr[t_idx, s_idx] = float(raw_rv)
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+        # Build Dataset
+        freq_center = np.asarray(
+            [sid_props[s]["freq_center"] for s in sorted_sids], dtype=np.float32
+        )
+        freq_min = np.asarray(
+            [sid_props[s]["freq_min"] for s in sorted_sids], dtype=np.float32
+        )
+        freq_max = np.asarray(
+            [sid_props[s]["freq_max"] for s in sorted_sids], dtype=np.float32
+        )
+
+        coords: dict[str, Any] = {
+            "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
+            "sid":   xr.DataArray(sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]),
+            "sv":     ("sid", [sid_props[s]["sv"]     for s in sorted_sids], COORDS_METADATA["sv"]),
+            "system": ("sid", [sid_props[s]["system"] for s in sorted_sids], COORDS_METADATA["system"]),
+            "band":   ("sid", [sid_props[s]["band"]   for s in sorted_sids], COORDS_METADATA["band"]),
+            "code":   ("sid", [sid_props[s]["code"]   for s in sorted_sids], COORDS_METADATA["code"]),
+            "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
+            "freq_min":    ("sid", freq_min,    COORDS_METADATA["freq_min"]),
+            "freq_max":    ("sid", freq_max,    COORDS_METADATA["freq_max"]),
+            # Epoch-level scalars (1-D over epoch)
+            "pdop":            ("epoch", pdop_arr),
+            "hdop":            ("epoch", hdop_arr),
+            "vdop":            ("epoch", vdop_arr),
+            "n_sv":            ("epoch", n_sv_arr),
+            "h_accuracy_m":    ("epoch", h_acc_arr),
+            "v_accuracy_m":    ("epoch", v_acc_arr),
+            "pvt_mode":        ("epoch", pvt_mode_arr),
+            "mean_corr_age_s": ("epoch", mean_corr_arr),
+            "cpu_load":        ("epoch", cpu_load_arr),
+            "temperature_c":   ("epoch", temp_arr),
+            "rx_error":        ("epoch", rx_error_arr),
+        }
+
+        attrs = get_global_attrs()
+        attrs["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs["Software"] = f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
+        attrs["File Hash"] = self.file_hash
+
+        ds = xr.Dataset(
+            data_vars={
+                "theta":           (["epoch", "sid"], theta_arr,    _THETA_ATTRS),
+                "phi":             (["epoch", "sid"], phi_arr,      _PHI_ATTRS),
+                "rise_set":        (["epoch", "sid"], rise_set_arr),
+                "mp_correction_m": (["epoch", "sid"], mp_corr_arr),
+                "code_var":        (["epoch", "sid"], code_var_arr),
+                "carrier_var":     (["epoch", "sid"], carr_var_arr),
+            },
+            coords=coords,
+            attrs=attrs,
+        )
+
+        if pad_global_sid:
+            from canvod.auxiliary.preprocessing import pad_to_global_sid
+            ds = pad_to_global_sid(ds)
+
+        return ds
 
     # ------------------------------------------------------------------
     # Private decoding helpers

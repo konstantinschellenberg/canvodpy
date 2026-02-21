@@ -147,17 +147,19 @@ class DatasetStructureValidator(BaseModel):
         ------
         ValueError
             If required attributes (Created, Software, Institution,
-            RINEX File Hash) are missing.
+            File Hash) are missing.
 
         """
-        required_attrs = {
-            "Created",
-            "Software",
-            "Institution",
-            "RINEX File Hash",  # Required for MyIcechunkStore deduplication
-        }
+        attrs_keys = set(self.dataset.attrs.keys())
 
-        missing_attrs = required_attrs - set(self.dataset.attrs.keys())
+        # Accept canonical "File Hash" or legacy "RINEX File Hash"
+        hash_keys = {"File Hash", "RINEX File Hash"}
+        if not hash_keys.intersection(attrs_keys):
+            msg = "Missing required attribute: 'File Hash' (or legacy 'RINEX File Hash')"
+            raise ValueError(msg)
+
+        required_attrs = {"Created", "Software", "Institution"}
+        missing_attrs = required_attrs - attrs_keys
         if missing_attrs:
             msg = f"Missing required attributes: {missing_attrs}"
             raise ValueError(msg)
