@@ -166,31 +166,293 @@ def _get_bandwidth_mhz(system: str, band: str) -> float:
 # Theta / phi provenance attributes for to_metadata_ds()
 # ---------------------------------------------------------------------------
 
-_THETA_ATTRS: dict[str, str | float] = {
-    "long_name": "Polar angle (zenith angle)",
-    "standard_name": "polar_angle",
+_THETA_ATTRS: dict[str, str] = {
+    "long_name": "Satellite zenith angle",
+    "standard_name": "sensor_zenith_angle",
     "units": "degrees",
-    "description": "Angle from zenith (90 deg - elevation). SCS convention.",
     "source": "SBF SatVisibility block — reported by receiver firmware",
     "comment": (
+        "Zenith angle (polar angle from vertical): theta = 90 - elevation. "
+        "0 deg = satellite directly overhead; 90 deg = satellite at horizon. "
+        "Computed from the raw SBF Elevation field (scaled by 0.01 deg). "
         "Derived from the receiver's internal navigation solution, NOT from "
-        "independently-computed satellite ephemerides. Values match the "
-        "receiver's tracking geometry and may differ from ephemeris-derived angles."
+        "independently-computed satellite ephemerides."
     ),
-    "_FillValue": -9999.0,
+    # Missing observations encoded as NaN (IEEE float32 missing-value convention).
+    # No _FillValue attr: xarray/Zarr use NaN natively for float32.
 }
-_PHI_ATTRS: dict[str, str | float] = {
-    "long_name": "Azimuthal angle from North",
-    "standard_name": "azimuth",
+_PHI_ATTRS: dict[str, str] = {
+    "long_name": "Satellite azimuth (geographic convention)",
+    "standard_name": "sensor_azimuth_angle",
     "units": "degrees",
-    "description": "Clockwise azimuth from North. SCS convention.",
     "source": "SBF SatVisibility block — reported by receiver firmware",
     "comment": (
+        "Geographic (compass) azimuth: 0° = North, 90° = East, 180° = South, "
+        "270° = West (clockwise from North). This is the raw SBF Azimuth field "
+        "scaled to degrees (* 0.01), with no additional transformation applied. "
+        "NOTE: this is NOT the mathematical spherical-coordinate azimuthal angle phi, "
+        "which is measured counterclockwise from East. "
+        "To convert: phi_spherical = 90 deg - phi_stored (mod 360 deg). "
         "Derived from the receiver's internal navigation solution, NOT from "
-        "independently-computed satellite ephemerides. Values match the "
-        "receiver's tracking geometry and may differ from ephemeris-derived angles."
+        "independently-computed satellite ephemerides."
     ),
-    "_FillValue": -9999.0,
+    # Missing observations encoded as NaN (IEEE float32 missing-value convention).
+    # No _FillValue attr: xarray/Zarr use NaN natively for float32.
+}
+
+# ---------------------------------------------------------------------------
+# Metadata dataset variable / coordinate attributes
+# (CF-convention style: long_name, units, source, comment, references)
+# ---------------------------------------------------------------------------
+
+_RISE_SET_ATTRS: dict[str, object] = {
+    "long_name": "Satellite rise/set indicator",
+    "flag_values": [0, 1],
+    "flag_meanings": "setting rising",
+    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "comment": (
+        "Rise/set indicator from the SBF SatVisibility block: "
+        "0 = satellite is setting (elevation decreasing), "
+        "1 = satellite is rising (elevation increasing), "
+        "255 (raw) indicates unknown elevation rate. "
+        "Fill value -1 (int8) used for missing observations."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "SatVisibility block, SatInfo sub-block, field RiseSet."
+    ),
+}
+
+_MP_CORRECTION_ATTRS: dict[str, object] = {
+    "long_name": "Pseudorange multipath correction",
+    "units": "m",
+    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "comment": (
+        "Multipath mitigation correction applied to the pseudorange by the receiver. "
+        "Add this value to the pseudorange to recover the raw pseudorange as it would "
+        "be without multipath mitigation. Resolution: 0.001 m (1 mm)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block, MeasExtraChannelSub sub-block, field MPCorrection."
+    ),
+}
+
+_CODE_VAR_ATTRS: dict[str, object] = {
+    "long_name": "Code tracking noise variance",
+    "units": "cm^2",
+    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "comment": (
+        "Estimated code tracking noise variance stored as the raw integer from the "
+        "SBF field (1 count = 0.0001 m² = 1 cm²). "
+        "Values saturate at 65534 cm² (≥6.55 m²); raw DoNotUse value 65535 → NaN."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block, MeasExtraChannelSub sub-block, field CodeVar."
+    ),
+}
+
+_CARRIER_VAR_ATTRS: dict[str, object] = {
+    "long_name": "Carrier phase tracking noise variance",
+    "units": "mcycles^2",
+    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "comment": (
+        "Estimated carrier phase tracking noise variance in squared millicycles "
+        "(1 count = 1 mcycle²). Values saturate at 65534 mcycles²; "
+        "raw DoNotUse value 65535 → NaN. "
+        "Multiply by the MeasExtra DopplerVarFactor to obtain the Doppler "
+        "measurement variance."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block, MeasExtraChannelSub sub-block, field CarrierVar."
+    ),
+}
+
+_PDOP_ATTRS: dict[str, object] = {
+    "long_name": "Position Dilution of Precision",
+    "units": "1",
+    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "comment": (
+        "PDOP = √(Qxx + Qyy + Qzz), where Q is the position covariance matrix "
+        "in a local Cartesian frame. Smaller values indicate better satellite geometry. "
+        "NaN indicates not available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "DOP block, field PDOP."
+    ),
+}
+
+_HDOP_ATTRS: dict[str, object] = {
+    "long_name": "Horizontal Dilution of Precision",
+    "units": "1",
+    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "comment": (
+        "HDOP = √(Qλλ + Qϕϕ), where Qλλ and Qϕϕ are the longitude and latitude "
+        "components of the position covariance matrix. NaN indicates not available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "DOP block, field HDOP."
+    ),
+}
+
+_VDOP_ATTRS: dict[str, object] = {
+    "long_name": "Vertical Dilution of Precision",
+    "units": "1",
+    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "comment": (
+        "VDOP = √(Qhh), where Qhh is the height component of the position "
+        "covariance matrix. NaN indicates not available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "DOP block, field VDOP."
+    ),
+}
+
+_N_SV_ATTRS: dict[str, object] = {
+    "long_name": "Number of satellites used in PVT computation",
+    "units": "1",
+    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "comment": (
+        "Total number of satellites used in the Position-Velocity-Time (PVT) "
+        "computation. Fill value -1 (int16) indicates not available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "PVTGeodetic block, field NrSV."
+    ),
+}
+
+_H_ACCURACY_ATTRS: dict[str, object] = {
+    "long_name": "Horizontal position accuracy (2DRMS, 95%)",
+    "units": "m",
+    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "comment": (
+        "Twice the root-mean-square of the horizontal distance error (2DRMS). "
+        "The horizontal distance between the true and computed positions is expected "
+        "to be below this value with ≥95% probability. "
+        "NaN indicates not available (raw DoNotUse value 65535)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "PVTGeodetic block, field HAccuracy."
+    ),
+}
+
+_V_ACCURACY_ATTRS: dict[str, object] = {
+    "long_name": "Vertical position accuracy (2-sigma, 95%)",
+    "units": "m",
+    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "comment": (
+        "Two-sigma vertical accuracy. "
+        "The vertical distance between the true and computed positions is expected "
+        "to be below this value with ≥95% probability. "
+        "NaN indicates not available (raw DoNotUse value 65535)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "PVTGeodetic block, field VAccuracy."
+    ),
+}
+
+_PVT_MODE_ATTRS: dict[str, object] = {
+    "long_name": "PVT solution mode",
+    "units": "1",
+    "flag_values": [0, 1, 2, 3, 4, 5, 6, 10],
+    "flag_meanings": (
+        "no_pvt stand_alone differential fixed_location "
+        "rtk_fixed_ambiguities rtk_float_ambiguities sbas_aided ppp"
+    ),
+    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "comment": (
+        "Bits 0-3 of the Mode byte from PVTGeodetic. "
+        "0 = No PVT; 1 = Stand-Alone; 2 = Differential (DGNSS); "
+        "3 = Fixed location; 4 = RTK fixed ambiguities; "
+        "5 = RTK float ambiguities; 6 = SBAS-aided; 10 = PPP. "
+        "Fill value -1 (int8) indicates not available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "PVTGeodetic block, field Mode."
+    ),
+}
+
+_MEAN_CORR_AGE_ATTRS: dict[str, object] = {
+    "long_name": "Mean age of differential corrections",
+    "units": "s",
+    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "comment": (
+        "Mean age of the differential corrections used in a DGNSS or RTK solution. "
+        "Only meaningful when PVT mode is Differential (2), RTK fixed (4), or "
+        "RTK float (5). NaN indicates not available (raw DoNotUse value 65535)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "PVTGeodetic block, field MeanCorrAge."
+    ),
+}
+
+_CPU_LOAD_ATTRS: dict[str, object] = {
+    "long_name": "Receiver CPU load",
+    "units": "percent",
+    "valid_min": 0,
+    "valid_max": 100,
+    "source": "SBF ReceiverStatus block — reported by receiver firmware",
+    "comment": (
+        "Percentage load on the receiver's main processor (0-100%). "
+        "Sustained values above 80% risk data loss in the receiver. "
+        "Fill value -1 (int8) indicates not available (raw DoNotUse value 255)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "ReceiverStatus block, field CPULoad."
+    ),
+}
+
+_TEMPERATURE_ATTRS: dict[str, object] = {
+    "long_name": "Receiver internal temperature",
+    "units": "degC",
+    "source": "SBF ReceiverStatus block — reported by receiver firmware",
+    "comment": (
+        "Internal temperature of the receiver. "
+        "The raw SBF field (u1) has 1 °C resolution and an offset of 100 "
+        "(true_temp_C = raw_field - 100). "
+        "Stored value = sbf_parser Temperature * 0.1; "
+        "see SBF reference for precise transformation applied by the parser."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "ReceiverStatus block, field Temperature."
+    ),
+}
+
+_RX_ERROR_ATTRS: dict[str, object] = {
+    "long_name": "Receiver error status bit field",
+    "units": "1",
+    # CF bitmask convention: test each flag with (value & mask) != 0
+    # Bit positions: 3=8, 4=16, 5=32, 6=64, 9=512, 10=1024, 11=2048
+    "flag_masks": [8, 16, 32, 64, 512, 1024, 2048],
+    "flag_meanings": (
+        "software watchdog antenna congestion "
+        "cpuoverload invalidconfig outofgeofence"
+    ),
+    "source": "SBF ReceiverStatus block — reported by receiver firmware",
+    "comment": (
+        "Bit field indicating whether the receiver previously detected an error. "
+        "Non-zero value means at least one error has been detected. "
+        "Multiple flags may be set simultaneously; test each with "
+        "(rx_error & flag_mask) != 0. "
+        "E.g. value 8 = bit 3 = software error; "
+        "value 48 = bits 4+5 = watchdog + antenna."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "ReceiverStatus block, field RxError."
+    ),
 }
 
 
@@ -309,7 +571,7 @@ class SbfReader(GNSSDataReader, BaseModel):
       :attr:`num_epochs` for a pre-computed count (scans once on first access).
     """
 
-    model_config = ConfigDict(frozen=False, arbitrary_types_allowed=True)
+    model_config = ConfigDict(frozen=False, arbitrary_types_allowed=True, extra="ignore")
 
     fpath: Path
 
@@ -577,9 +839,9 @@ class SbfReader(GNSSDataReader, BaseModel):
         Parameters
         ----------
         keep_rnx_data_vars : list of str, optional
-            Data variables to retain.  If ``None``, all six variables are
-            kept: ``SNR``, ``Pseudorange``, ``Phase``, ``Doppler``,
-            ``LLI``, ``SSI``.
+            Data variables to retain.  If ``None``, all five variables are
+            kept: ``SNR``, ``Pseudorange``, ``Phase``, ``Doppler``, ``SSI``.
+            Note: ``LLI`` is not produced — SBF has no loss-of-lock indicator.
         pad_global_sid : bool, default True
             If ``True``, pads the dataset to the global SID space via
             :func:`canvod.auxiliary.preprocessing.pad_to_global_sid`.
@@ -595,15 +857,28 @@ class SbfReader(GNSSDataReader, BaseModel):
             Dataset with dimensions ``(epoch, sid)`` that passes
             :class:`~canvod.readers.base.DatasetStructureValidator`.
         """
+        import math
+
         freq_nr_cache = self._freq_nr_cache.copy()
 
-        # --- Pass 1: collect all (epoch, sid) pairs and signal properties ---
+        # --- Single pass: collect timestamps, SID properties, and per-epoch obs ---
+        # Stores per-epoch obs as dicts (SID → value) so we only scan the file once.
+        # Array construction happens afterwards in fast in-memory loops.
         sid_props: dict[str, dict[str, Any]] = {}
         timestamps: list[np.datetime64] = []
+        # Per-epoch accumulator: list of (snr_dict, pr_dict, ph_dict, dop_dict)
+        epoch_rows: list[tuple[
+            dict[str, float], dict[str, float], dict[str, float], dict[str, float]
+        ]] = []
 
         for epoch in self.iter_epochs():
             ts_np = np.datetime64(epoch.timestamp.replace(tzinfo=None), "ns")
             timestamps.append(ts_np)
+
+            e_snr: dict[str, float] = {}
+            e_pr:  dict[str, float] = {}
+            e_ph:  dict[str, float] = {}
+            e_dop: dict[str, float] = {}
 
             for obs in epoch.observations:
                 props = _sid_props_from_obs(obs.svid, obs.signal_num, freq_nr_cache)
@@ -612,6 +887,16 @@ class SbfReader(GNSSDataReader, BaseModel):
                 sid = props["sid"]
                 if sid not in sid_props:
                     sid_props[sid] = props
+                if obs.cn0 is not None:
+                    e_snr[sid] = float(obs.cn0.to(UREG.dBHz).magnitude)
+                if obs.pseudorange is not None:
+                    e_pr[sid] = float(obs.pseudorange.to(UREG.meter).magnitude)
+                if obs.phase_cycles is not None:
+                    e_ph[sid] = obs.phase_cycles
+                if obs.doppler is not None:
+                    e_dop[sid] = float(obs.doppler.to(UREG.Hz).magnitude)
+
+            epoch_rows.append((e_snr, e_pr, e_ph, e_dop))
 
         sorted_sids = sorted(sid_props)
         sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
@@ -625,28 +910,15 @@ class SbfReader(GNSSDataReader, BaseModel):
         dop_arr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Doppler"])
         ssi_arr = np.full((n_epochs, n_sids), -1,     dtype=DTYPES["SSI"])
 
-        # --- Pass 2: fill arrays ---
-        for t_idx, epoch in enumerate(self.iter_epochs()):
-            for obs in epoch.observations:
-                sig_def = SIGNAL_TABLE.get(obs.signal_num)
-                if sig_def is None:
-                    continue
-                sv = f"{obs.system}{obs.prn:02d}"
-                sid = f"{sv}|{sig_def.band}|{sig_def.code}"
-                s_idx = sid_to_idx.get(sid)
-                if s_idx is None:
-                    continue
-
-                if obs.cn0 is not None:
-                    snr_arr[t_idx, s_idx] = float(obs.cn0.to(UREG.dBHz).magnitude)
-                if obs.pseudorange is not None:
-                    pr_arr[t_idx, s_idx] = float(
-                        obs.pseudorange.to(UREG.meter).magnitude
-                    )
-                if obs.phase_cycles is not None:
-                    ph_arr[t_idx, s_idx] = obs.phase_cycles
-                if obs.doppler is not None:
-                    dop_arr[t_idx, s_idx] = float(obs.doppler.to(UREG.Hz).magnitude)
+        for t_idx, (e_snr, e_pr, e_ph, e_dop) in enumerate(epoch_rows):
+            for sid, val in e_snr.items():
+                snr_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_pr.items():
+                pr_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_ph.items():
+                ph_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_dop.items():
+                dop_arr[t_idx, sid_to_idx[sid]] = val
 
         # Build coordinate arrays
         freq_center = np.asarray(
@@ -675,6 +947,21 @@ class SbfReader(GNSSDataReader, BaseModel):
         attrs["Created"] = datetime.now(timezone.utc).isoformat()
         attrs["Software"] = f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
 
+        # Add ECEF position from ReceiverSetup header for pipeline compatibility.
+        # ECEFPosition.from_ds_metadata() reads "APPROX POSITION X/Y/Z".
+        try:
+            import pymap3d as pm
+            hdr = self.header
+            lat_deg = math.degrees(hdr.latitude_rad)
+            lon_deg = math.degrees(hdr.longitude_rad)
+            h_m = float(hdr.height_m.to(UREG.meter).magnitude)
+            x, y, z = pm.geodetic2ecef(lat_deg, lon_deg, h_m)
+            attrs["APPROX POSITION X"] = float(x)
+            attrs["APPROX POSITION Y"] = float(y)
+            attrs["APPROX POSITION Z"] = float(z)
+        except (LookupError, AttributeError):
+            pass  # SBF file without a ReceiverSetup block
+
         ds = xr.Dataset(
             data_vars={
                 "SNR":         (["epoch", "sid"], snr_arr, CN0_METADATA),
@@ -695,7 +982,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
-            ds = pad_to_global_sid(ds)
+            ds = pad_to_global_sid(ds, keep_sids=kwargs.get("keep_sids"))
 
         if strip_fillval:
             from canvod.auxiliary.preprocessing import strip_fillvalue
@@ -709,7 +996,7 @@ class SbfReader(GNSSDataReader, BaseModel):
     # Dataset construction — metadata
     # ------------------------------------------------------------------
 
-    def to_metadata_ds(self, pad_global_sid: bool = True) -> xr.Dataset:
+    def to_metadata_ds(self, pad_global_sid: bool = True, **kwargs: object) -> xr.Dataset:
         """Decode SBF metadata blocks to an ``(epoch, sid)`` xarray Dataset.
 
         Decodes PVTGeodetic, DOP, ReceiverStatus, SatVisibility, and
@@ -954,17 +1241,17 @@ class SbfReader(GNSSDataReader, BaseModel):
             "freq_min":    ("sid", freq_min,    COORDS_METADATA["freq_min"]),
             "freq_max":    ("sid", freq_max,    COORDS_METADATA["freq_max"]),
             # Epoch-level scalars (1-D over epoch)
-            "pdop":            ("epoch", pdop_arr),
-            "hdop":            ("epoch", hdop_arr),
-            "vdop":            ("epoch", vdop_arr),
-            "n_sv":            ("epoch", n_sv_arr),
-            "h_accuracy_m":    ("epoch", h_acc_arr),
-            "v_accuracy_m":    ("epoch", v_acc_arr),
-            "pvt_mode":        ("epoch", pvt_mode_arr),
-            "mean_corr_age_s": ("epoch", mean_corr_arr),
-            "cpu_load":        ("epoch", cpu_load_arr),
-            "temperature_c":   ("epoch", temp_arr),
-            "rx_error":        ("epoch", rx_error_arr),
+            "pdop":            ("epoch", pdop_arr,      _PDOP_ATTRS),
+            "hdop":            ("epoch", hdop_arr,      _HDOP_ATTRS),
+            "vdop":            ("epoch", vdop_arr,      _VDOP_ATTRS),
+            "n_sv":            ("epoch", n_sv_arr,      _N_SV_ATTRS),
+            "h_accuracy_m":    ("epoch", h_acc_arr,     _H_ACCURACY_ATTRS),
+            "v_accuracy_m":    ("epoch", v_acc_arr,     _V_ACCURACY_ATTRS),
+            "pvt_mode":        ("epoch", pvt_mode_arr,  _PVT_MODE_ATTRS),
+            "mean_corr_age_s": ("epoch", mean_corr_arr, _MEAN_CORR_AGE_ATTRS),
+            "cpu_load":        ("epoch", cpu_load_arr,  _CPU_LOAD_ATTRS),
+            "temperature_c":   ("epoch", temp_arr,      _TEMPERATURE_ATTRS),
+            "rx_error":        ("epoch", rx_error_arr,  _RX_ERROR_ATTRS),
         }
 
         attrs = get_global_attrs()
@@ -976,10 +1263,10 @@ class SbfReader(GNSSDataReader, BaseModel):
             data_vars={
                 "theta":           (["epoch", "sid"], theta_arr,    _THETA_ATTRS),
                 "phi":             (["epoch", "sid"], phi_arr,      _PHI_ATTRS),
-                "rise_set":        (["epoch", "sid"], rise_set_arr),
-                "mp_correction_m": (["epoch", "sid"], mp_corr_arr),
-                "code_var":        (["epoch", "sid"], code_var_arr),
-                "carrier_var":     (["epoch", "sid"], carr_var_arr),
+                "rise_set":        (["epoch", "sid"], rise_set_arr, _RISE_SET_ATTRS),
+                "mp_correction_m": (["epoch", "sid"], mp_corr_arr,  _MP_CORRECTION_ATTRS),
+                "code_var":        (["epoch", "sid"], code_var_arr, _CODE_VAR_ATTRS),
+                "carrier_var":     (["epoch", "sid"], carr_var_arr, _CARRIER_VAR_ATTRS),
             },
             coords=coords,
             attrs=attrs,
@@ -987,9 +1274,411 @@ class SbfReader(GNSSDataReader, BaseModel):
 
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
-            ds = pad_to_global_sid(ds)
+            ds = pad_to_global_sid(ds, keep_sids=kwargs.get("keep_sids"))
 
         return ds
+
+    # ------------------------------------------------------------------
+    # Combined single-pass: observations + auxiliary metadata
+    # ------------------------------------------------------------------
+
+    def to_ds_and_auxiliary(
+        self,
+        keep_rnx_data_vars: list[str] | None = None,
+        pad_global_sid: bool = True,
+        strip_fillval: bool = True,
+        **kwargs: object,
+    ) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
+        """Single file scan producing both the obs dataset and the SBF metadata dataset.
+
+        Performs ONE ``parser.read()`` pass, collecting MeasEpoch observations
+        and PVTGeodetic/DOP/SatVisibility/MeasExtra metadata blocks simultaneously.
+        ``to_ds()`` and ``to_metadata_ds()`` remain unchanged for standalone use.
+
+        Parameters
+        ----------
+        keep_rnx_data_vars : list of str, optional
+            Data variables to retain in the obs dataset.
+        pad_global_sid : bool, default True
+            Pad obs dataset to the global SID space.
+        strip_fillval : bool, default True
+            Strip fill values from the obs dataset.
+        **kwargs
+            Forwarded to ``pad_to_global_sid`` (e.g. ``keep_sids``).
+
+        Returns
+        -------
+        tuple[xr.Dataset, dict[str, xr.Dataset]]
+            ``(obs_ds, {"sbf_obs": meta_ds})``.
+        """
+        import math
+
+        parser = sbf_parser.SbfParser()
+        freq_nr_cache = self._freq_nr_cache.copy()
+        delta_ls: int = _DEFAULT_DELTA_LS
+
+        # Separate sid discovery for obs (matches to_ds) and metadata (matches to_metadata_ds)
+        sid_props_obs:  dict[str, dict[str, Any]] = {}
+        sid_props_meta: dict[str, dict[str, Any]] = {}
+
+        # Obs-side accumulators (same as to_ds)
+        timestamps_obs: list[np.datetime64] = []
+        epoch_rows: list[tuple[
+            dict[str, float], dict[str, float], dict[str, float], dict[str, float]
+        ]] = []
+
+        # Metadata-side accumulators (same as to_metadata_ds)
+        pending: dict[str, Any] = {
+            "pvt": None, "dop": None, "status": None, "satvis": [], "extra": [],
+        }
+        records: list[tuple[Any, ...]] = []
+
+        for name, data in parser.read(str(self.fpath)):
+            match name:
+                case "ReceiverTime":
+                    delta_ls = int(data["DeltaLS"])
+
+                case "ChannelStatus":
+                    for sat in data.get("ChannelSatInfo", []):
+                        svid = int(sat["SVID"])
+                        if svid != 0:
+                            freq_nr_cache[svid] = int(sat["FreqNr"])
+
+                case "PVTGeodetic":
+                    pending["pvt"] = data
+
+                case "DOP":
+                    pending["dop"] = data
+
+                case "ReceiverStatus":
+                    pending["status"] = data
+
+                case "SatVisibility":
+                    pending["satvis"] = list(data.get("SatInfo", []))
+
+                case "MeasExtra":
+                    pending["extra"] = list(data.get("MeasExtraChannel", []))
+
+                case "MeasEpoch":
+                    # --- Obs side ---
+                    epoch = self._decode_epoch(data, freq_nr_cache, delta_ls)
+                    if epoch is not None:
+                        ts_np = np.datetime64(epoch.timestamp.replace(tzinfo=None), "ns")
+                        timestamps_obs.append(ts_np)
+                        e_snr: dict[str, float] = {}
+                        e_pr:  dict[str, float] = {}
+                        e_ph:  dict[str, float] = {}
+                        e_dop: dict[str, float] = {}
+                        for obs in epoch.observations:
+                            props = _sid_props_from_obs(obs.svid, obs.signal_num, freq_nr_cache)
+                            if props is None:
+                                continue
+                            sid = props["sid"]
+                            if sid not in sid_props_obs:
+                                sid_props_obs[sid] = props
+                            if obs.cn0 is not None:
+                                e_snr[sid] = float(obs.cn0.to(UREG.dBHz).magnitude)
+                            if obs.pseudorange is not None:
+                                e_pr[sid] = float(obs.pseudorange.to(UREG.meter).magnitude)
+                            if obs.phase_cycles is not None:
+                                e_ph[sid] = obs.phase_cycles
+                            if obs.doppler is not None:
+                                e_dop[sid] = float(obs.doppler.to(UREG.Hz).magnitude)
+                        epoch_rows.append((e_snr, e_pr, e_ph, e_dop))
+
+                    # --- Metadata side (always, even if epoch decoded as None) ---
+                    tow_ms = int(data["TOW"])
+                    wn = int(data["WNc"])
+                    ts_meta = _tow_wn_to_utc(tow_ms, wn, delta_ls)
+                    obs_map = _build_obs_map(data)
+
+                    # Discover sids from Type1/Type2 sub-blocks (same as to_metadata_ds)
+                    for t1 in data.get("Type_1", []):
+                        svid1 = int(t1["SVID"])
+                        props1 = _sid_props_from_obs(
+                            svid1,
+                            decode_signal_num(int(t1["Type"]), int(t1["ObsInfo"])),
+                            freq_nr_cache,
+                        )
+                        if props1 is not None and props1["sid"] not in sid_props_meta:
+                            sid_props_meta[props1["sid"]] = props1
+                        for t2 in t1.get("Type_2", []):
+                            props2 = _sid_props_from_obs(
+                                svid1,
+                                decode_signal_num(int(t2["Type"]), int(t2["ObsInfo"])),
+                                freq_nr_cache,
+                            )
+                            if props2 is not None and props2["sid"] not in sid_props_meta:
+                                sid_props_meta[props2["sid"]] = props2
+
+                    records.append((
+                        ts_meta,
+                        pending["pvt"],
+                        pending["dop"],
+                        pending["status"],
+                        list(pending["satvis"]),
+                        list(pending["extra"]),
+                        obs_map,
+                    ))
+                    pending = {
+                        "pvt": None, "dop": None, "status": None,
+                        "satvis": [], "extra": [],
+                    }
+
+        # ----------------------------------------------------------------
+        # Build obs dataset (verbatim from to_ds())
+        # ----------------------------------------------------------------
+        sorted_sids = sorted(sid_props_obs)
+        sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
+        n_epochs = len(timestamps_obs)
+        n_sids = len(sorted_sids)
+
+        snr_arr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["SNR"])
+        pr_arr  = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Pseudorange"])
+        ph_arr  = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Phase"])
+        dop_arr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Doppler"])
+        ssi_arr = np.full((n_epochs, n_sids), -1,     dtype=DTYPES["SSI"])
+
+        for t_idx, (e_snr, e_pr, e_ph, e_dop) in enumerate(epoch_rows):
+            for sid, val in e_snr.items():
+                snr_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_pr.items():
+                pr_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_ph.items():
+                ph_arr[t_idx, sid_to_idx[sid]] = val
+            for sid, val in e_dop.items():
+                dop_arr[t_idx, sid_to_idx[sid]] = val
+
+        freq_center = np.asarray(
+            [sid_props_obs[s]["freq_center"] for s in sorted_sids], dtype=DTYPES["freq_center"]
+        )
+        freq_min = np.asarray(
+            [sid_props_obs[s]["freq_min"] for s in sorted_sids], dtype=DTYPES["freq_min"]
+        )
+        freq_max = np.asarray(
+            [sid_props_obs[s]["freq_max"] for s in sorted_sids], dtype=DTYPES["freq_max"]
+        )
+
+        coords_obs: dict[str, Any] = {
+            "epoch": ("epoch", timestamps_obs, COORDS_METADATA["epoch"]),
+            "sid": xr.DataArray(sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]),
+            "sv":     ("sid", [sid_props_obs[s]["sv"]     for s in sorted_sids], COORDS_METADATA["sv"]),
+            "system": ("sid", [sid_props_obs[s]["system"] for s in sorted_sids], COORDS_METADATA["system"]),
+            "band":   ("sid", [sid_props_obs[s]["band"]   for s in sorted_sids], COORDS_METADATA["band"]),
+            "code":   ("sid", [sid_props_obs[s]["code"]   for s in sorted_sids], COORDS_METADATA["code"]),
+            "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
+            "freq_min":    ("sid", freq_min,    COORDS_METADATA["freq_min"]),
+            "freq_max":    ("sid", freq_max,    COORDS_METADATA["freq_max"]),
+        }
+
+        attrs = get_global_attrs()
+        attrs["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs["Software"] = f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
+
+        try:
+            import pymap3d as pm
+            hdr = self.header
+            lat_deg = math.degrees(hdr.latitude_rad)
+            lon_deg = math.degrees(hdr.longitude_rad)
+            h_m = float(hdr.height_m.to(UREG.meter).magnitude)
+            x, y, z = pm.geodetic2ecef(lat_deg, lon_deg, h_m)
+            attrs["APPROX POSITION X"] = float(x)
+            attrs["APPROX POSITION Y"] = float(y)
+            attrs["APPROX POSITION Z"] = float(z)
+        except (LookupError, AttributeError):
+            pass
+
+        obs_ds = xr.Dataset(
+            data_vars={
+                "SNR":         (["epoch", "sid"], snr_arr, CN0_METADATA),
+                "Pseudorange": (["epoch", "sid"], pr_arr,  OBSERVABLES_METADATA["Pseudorange"]),
+                "Phase":       (["epoch", "sid"], ph_arr,  OBSERVABLES_METADATA["Phase"]),
+                "Doppler":     (["epoch", "sid"], dop_arr, OBSERVABLES_METADATA["Doppler"]),
+                "SSI":         (["epoch", "sid"], ssi_arr, OBSERVABLES_METADATA["SSI"]),
+            },
+            coords=coords_obs,
+            attrs=attrs,
+        )
+
+        if keep_rnx_data_vars is not None:
+            for var in list(obs_ds.data_vars):
+                if var not in keep_rnx_data_vars:
+                    obs_ds = obs_ds.drop_vars([var])
+
+        if pad_global_sid:
+            from canvod.auxiliary.preprocessing import pad_to_global_sid
+            obs_ds = pad_to_global_sid(obs_ds, keep_sids=kwargs.get("keep_sids"))
+
+        if strip_fillval:
+            from canvod.auxiliary.preprocessing import strip_fillvalue
+            obs_ds = strip_fillvalue(obs_ds)
+
+        obs_ds.attrs["File Hash"] = self.file_hash
+        self.validate_output(obs_ds, required_vars=keep_rnx_data_vars)
+
+        # ----------------------------------------------------------------
+        # Build metadata dataset (verbatim from to_metadata_ds())
+        # ----------------------------------------------------------------
+        sorted_sids_meta = sorted(sid_props_meta)
+        sid_to_idx_meta = {sid: i for i, sid in enumerate(sorted_sids_meta)}
+        n_epochs_meta = len(records)
+        n_sids_meta = len(sorted_sids_meta)
+
+        sids_for_sv: dict[str, list[int]] = {}
+        for sid in sorted_sids_meta:
+            sv = sid_props_meta[sid]["sv"]
+            sids_for_sv.setdefault(sv, []).append(sid_to_idx_meta[sid])
+
+        theta_arr    = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        phi_arr      = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        rise_set_arr = np.full((n_epochs_meta, n_sids_meta), -1,    dtype=np.int8)
+        mp_corr_arr  = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        code_var_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        carr_var_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+
+        pdop_arr      = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        hdop_arr      = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        vdop_arr      = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        n_sv_arr      = np.full(n_epochs_meta, -1,     dtype=np.int16)
+        h_acc_arr     = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        v_acc_arr     = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        pvt_mode_arr  = np.full(n_epochs_meta, -1,     dtype=np.int8)
+        mean_corr_arr = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        cpu_load_arr  = np.full(n_epochs_meta, -1,     dtype=np.int8)
+        temp_arr      = np.full(n_epochs_meta, np.nan, dtype=np.float32)
+        rx_error_arr  = np.full(n_epochs_meta, 0,      dtype=np.int32)
+
+        timestamps_meta: list[np.datetime64] = []
+
+        for t_idx, (ts, pvt, dop, status, satvis, extra, obs_map) in enumerate(records):
+            timestamps_meta.append(np.datetime64(ts.replace(tzinfo=None), "ns"))
+
+            if dop is not None:
+                try:
+                    pdop_arr[t_idx] = float(dop["PDOP"]) * 0.01
+                    hdop_arr[t_idx] = float(dop["HDOP"]) * 0.01
+                    vdop_arr[t_idx] = float(dop["VDOP"]) * 0.01
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            if pvt is not None:
+                try:
+                    n_sv_arr[t_idx]      = int(pvt.get("NrSV", pvt.get("NrSVAnt", -1)))
+                    h_acc_arr[t_idx]     = float(pvt["HAccuracy"]) * 0.001
+                    v_acc_arr[t_idx]     = float(pvt["VAccuracy"]) * 0.001
+                    pvt_mode_arr[t_idx]  = int(pvt["Mode"])
+                    mean_corr_arr[t_idx] = float(pvt["MeanCorrAge"]) * 0.01
+                    if np.isnan(pdop_arr[t_idx]):
+                        pdop_arr[t_idx] = float(pvt["PDOP"]) * 0.01
+                        hdop_arr[t_idx] = float(pvt["HDOP"]) * 0.01
+                        vdop_arr[t_idx] = float(pvt["VDOP"]) * 0.01
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            if status is not None:
+                try:
+                    cpu_load_arr[t_idx] = int(status["CPULoad"])
+                    temp_arr[t_idx]     = float(status["Temperature"]) * 0.1
+                    rx_error_arr[t_idx] = int(status["RxError"])
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            for sat_info in satvis:
+                try:
+                    svid_raw = int(sat_info["SVID"])
+                    sys_code, prn = decode_svid(svid_raw)
+                    sv = f"{sys_code}{prn:02d}"
+                    theta_deg = 90.0 - int(sat_info["Elevation"]) * 0.01
+                    phi_deg   = int(sat_info["Azimuth"]) * 0.01
+                    rs        = int(sat_info["RiseSet"])
+                    for s_idx in sids_for_sv.get(sv, []):
+                        theta_arr[t_idx, s_idx]    = theta_deg
+                        phi_arr[t_idx, s_idx]      = phi_deg
+                        rise_set_arr[t_idx, s_idx] = rs
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+            for ch in extra:
+                try:
+                    type_byte = int(ch["Type"])
+                    info_byte = int(ch.get("ObsInfo", ch.get("Info", 0)))
+                    sig_num   = decode_signal_num(type_byte, info_byte)
+                    rx_ch     = int(ch["RxChannel"])
+                    svid      = obs_map.get((rx_ch, sig_num))
+                    if svid is None:
+                        continue
+                    sig_def = SIGNAL_TABLE.get(sig_num)
+                    if sig_def is None:
+                        continue
+                    sys_code2, prn2 = decode_svid(svid)
+                    sv2  = f"{sys_code2}{prn2:02d}"
+                    sid  = f"{sv2}|{sig_def.band}|{sig_def.code}"
+                    s_idx = sid_to_idx_meta.get(sid)
+                    if s_idx is None:
+                        continue
+                    mp_raw = int(ch.get("MPCorrection ", ch.get("MPCorrection", 0)))
+                    mp_corr_arr[t_idx, s_idx] = mp_raw * 0.001
+                    raw_cv = ch.get("CodeVar")
+                    raw_rv = ch.get("CarrierVar")
+                    if raw_cv is not None:
+                        code_var_arr[t_idx, s_idx] = float(raw_cv)
+                    if raw_rv is not None:
+                        carr_var_arr[t_idx, s_idx] = float(raw_rv)
+                except (KeyError, TypeError, ValueError):
+                    pass
+
+        freq_center_meta = np.asarray(
+            [sid_props_meta[s]["freq_center"] for s in sorted_sids_meta], dtype=np.float32
+        )
+        freq_min_meta = np.asarray(
+            [sid_props_meta[s]["freq_min"] for s in sorted_sids_meta], dtype=np.float32
+        )
+        freq_max_meta = np.asarray(
+            [sid_props_meta[s]["freq_max"] for s in sorted_sids_meta], dtype=np.float32
+        )
+
+        coords_meta: dict[str, Any] = {
+            "epoch": ("epoch", timestamps_meta, COORDS_METADATA["epoch"]),
+            "sid":   xr.DataArray(sorted_sids_meta, dims=["sid"], attrs=COORDS_METADATA["sid"]),
+            "sv":     ("sid", [sid_props_meta[s]["sv"]     for s in sorted_sids_meta], COORDS_METADATA["sv"]),
+            "system": ("sid", [sid_props_meta[s]["system"] for s in sorted_sids_meta], COORDS_METADATA["system"]),
+            "band":   ("sid", [sid_props_meta[s]["band"]   for s in sorted_sids_meta], COORDS_METADATA["band"]),
+            "code":   ("sid", [sid_props_meta[s]["code"]   for s in sorted_sids_meta], COORDS_METADATA["code"]),
+            "freq_center": ("sid", freq_center_meta, COORDS_METADATA["freq_center"]),
+            "freq_min":    ("sid", freq_min_meta,    COORDS_METADATA["freq_min"]),
+            "freq_max":    ("sid", freq_max_meta,    COORDS_METADATA["freq_max"]),
+            "pdop":            ("epoch", pdop_arr,      _PDOP_ATTRS),
+            "hdop":            ("epoch", hdop_arr,      _HDOP_ATTRS),
+            "vdop":            ("epoch", vdop_arr,      _VDOP_ATTRS),
+            "n_sv":            ("epoch", n_sv_arr,      _N_SV_ATTRS),
+            "h_accuracy_m":    ("epoch", h_acc_arr,     _H_ACCURACY_ATTRS),
+            "v_accuracy_m":    ("epoch", v_acc_arr,     _V_ACCURACY_ATTRS),
+            "pvt_mode":        ("epoch", pvt_mode_arr,  _PVT_MODE_ATTRS),
+            "mean_corr_age_s": ("epoch", mean_corr_arr, _MEAN_CORR_AGE_ATTRS),
+            "cpu_load":        ("epoch", cpu_load_arr,  _CPU_LOAD_ATTRS),
+            "temperature_c":   ("epoch", temp_arr,      _TEMPERATURE_ATTRS),
+            "rx_error":        ("epoch", rx_error_arr,  _RX_ERROR_ATTRS),
+        }
+
+        attrs_meta = get_global_attrs()
+        attrs_meta["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs_meta["Software"] = f"{attrs_meta['Software']}, Version: {get_version_from_pyproject()}"
+        attrs_meta["File Hash"] = self.file_hash
+
+        meta_ds = xr.Dataset(
+            data_vars={
+                "theta":           (["epoch", "sid"], theta_arr,    _THETA_ATTRS),
+                "phi":             (["epoch", "sid"], phi_arr,      _PHI_ATTRS),
+                "rise_set":        (["epoch", "sid"], rise_set_arr, _RISE_SET_ATTRS),
+                "mp_correction_m": (["epoch", "sid"], mp_corr_arr,  _MP_CORRECTION_ATTRS),
+                "code_var":        (["epoch", "sid"], code_var_arr, _CODE_VAR_ATTRS),
+                "carrier_var":     (["epoch", "sid"], carr_var_arr, _CARRIER_VAR_ATTRS),
+            },
+            coords=coords_meta,
+            attrs=attrs_meta,
+        )
+
+        return obs_ds, {"sbf_obs": meta_ds}
 
     # ------------------------------------------------------------------
     # Private decoding helpers

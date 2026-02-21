@@ -26,11 +26,13 @@ UREG: pint.UnitRegistry = pint.get_application_registry()
 if "dBHz" not in UREG:
     UREG.define("dBHz = 10 * log10(hertz)")
 
-# Glob patterns for discovering RINEX observation files on disk
+# Glob patterns for discovering GNSS observation files on disk
+# Used by PairDataDirMatcher to detect which date directories contain data.
 RINEX_OBS_GLOB_PATTERNS: tuple[str, ...] = (
     "*.[0-9][0-9]o",  # RINEX v2/v3 short-name: .24o, .25o, etc.
-    "*.O",  # Uppercase generic RINEX obs suffix
-    "*.rnx",  # RINEX v3 long-name format
+    "*.O",            # Uppercase generic RINEX obs suffix
+    "*.rnx",          # RINEX v3 long-name format
+    "*.[0-9][0-9]_",  # Septentrio SBF binary: .25_, .24_, etc.
 )
 
 # Regex pattern for validating a single RINEX observation file suffix

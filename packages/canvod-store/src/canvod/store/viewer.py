@@ -366,18 +366,43 @@ class IcechunkStoreViewer:
         </style>
         """
 
+    def _get_display_type(self, branch: str = "main") -> str:
+        """Compute a human-readable store type label.
+
+        Returns "VOD" for vod stores, "SBF" when any receiver group has
+        ``metadata/sbf_obs`` written, and "RINEX v3.04" otherwise.
+        """
+        store_type = self.store.store_type
+        if store_type == "vod_store":
+            return "VOD"
+        if store_type == "rinex_store":
+            try:
+                import zarr
+
+                with self.store.readonly_session(branch) as session:
+                    root = zarr.open(session.store, mode="r")
+                    for group_key in root.group_keys():
+                        if f"{group_key}/metadata/sbf_obs" in root:
+                            return "SBF"
+            except Exception:
+                pass
+            return "RINEX v3.04"
+        return store_type
+
     def _get_store_summary(self) -> dict[str, Any]:
         """Generate summary statistics for the store."""
         try:
             branches = self.store.get_branch_names()
             group_dict = self.store.get_group_names()
             total_groups = sum(len(groups) for groups in group_dict.values())
+            first_branch = branches[0] if branches else "main"
 
             return {
                 "branches": len(branches),
                 "groups": total_groups,
                 "path": str(self.store.store_path),
                 "store_type": self.store.store_type,
+                "display_type": self._get_display_type(first_branch),
             }
         except Exception as e:
             return {"error": str(e)}
@@ -684,7 +709,21 @@ class IcechunkStoreViewer:
             </div>
             """)
 
-        # 2. Load and display metadata table
+        # 2. SBF metadata dataset (if present)
+        try:
+            sbf_meta = self.store.read_metadata_dataset(
+                group_name, "sbf_obs", branch=branch, chunks={}
+            )
+            content_parts.append(f"""
+            <div class="content-section">
+                <div class="content-section-title">📡 SBF Metadata</div>
+                {sbf_meta._repr_html_()}
+            </div>
+            """)
+        except Exception:
+            pass  # No SBF metadata for this group
+
+        # 3. Load and display metadata table
         try:
             with self.store.readonly_session(branch) as session:
                 metadata_df = self.store.load_metadata(session.store, group_name)
@@ -816,10 +855,11 @@ class IcechunkStoreViewer:
             branch_label = "branch" if summary["branches"] == 1 else "branches"
             receiver_label = "receiver" if summary["groups"] == 1 else "receivers"
 
+            display_type = summary.get("display_type", summary["store_type"])
             header = f"""
             <div class="icechunk-header">
                 <div class="icechunk-title">
-                    {escape(summary["store_type"])} MyIcechunkStore: {escape(site_name)}
+                    {escape(display_type)} MyIcechunkStore: {escape(site_name)}
                 </div>
                 <div class="icechunk-path">{escape(summary["path"])}</div>
                 <div class="icechunk-stats">
@@ -830,7 +870,7 @@ class IcechunkStoreViewer:
                         📡 {summary["groups"]} {receiver_label}
                     </span>
                     <span class="stat-badge">
-                        💾 {summary["store_type"]}
+                        💾 {escape(display_type)}
                     </span>
                 </div>
             </div>
@@ -865,7 +905,7 @@ class IcechunkStoreViewer:
                         {summary["groups"]} {receiver_label}
                     </div>
                     <div class="summary-item">
-                        {summary["store_type"]} storage
+                        {escape(display_type)} storage
                     </div>
                 </div>
             </div>

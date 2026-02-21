@@ -283,6 +283,25 @@ class GNSSDataReader(ABC):
 
         """
 
+    def to_ds_and_auxiliary(
+        self,
+        keep_rnx_data_vars: list[str] | None = None,
+        **kwargs: object,
+    ) -> "tuple[xr.Dataset, dict[str, xr.Dataset]]":
+        """Produce the obs dataset and any auxiliary datasets in a single call.
+
+        Default: calls ``to_ds(**kwargs)`` and returns an empty auxiliary dict.
+        Readers that produce metadata (e.g. SBF) override this to collect both
+        in a single file scan.
+
+        Returns
+        -------
+        tuple[xr.Dataset, dict[str, xr.Dataset]]
+            ``(obs_ds, {"name": aux_ds, ...})``.  Auxiliary dict is empty for
+            readers with no extra data (RINEX v2/v3).
+        """
+        return self.to_ds(keep_rnx_data_vars=keep_rnx_data_vars, **kwargs), {}
+
     def validate_output(
         self, dataset: xr.Dataset, required_vars: list[str] | None = None
     ) -> None:

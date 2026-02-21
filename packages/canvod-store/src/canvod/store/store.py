@@ -953,6 +953,163 @@ class MyIcechunkStore:
 
         return info
 
+    # ── Generic metadata datasets ─────────────────────────────────────────────
+
+    def metadata_dataset_exists(
+        self, group_name: str, name: str, branch: str = "main"
+    ) -> bool:
+        """Return True if a metadata dataset *name* exists for *group_name*."""
+        path = f"{group_name}/metadata/{name}"
+        try:
+            with self.readonly_session(branch) as session:
+                zarr.open_group(session.store, mode="r", path=path)
+                return True
+        except Exception:
+            return False
+
+    def write_metadata_dataset(
+        self,
+        meta_ds: xr.Dataset,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> str:
+        """Write a pre-concatenated metadata dataset to *{group_name}/metadata/{name}*.
+
+        Always writes with ``mode="w"`` (full overwrite for the day).
+
+        Parameters
+        ----------
+        meta_ds : xr.Dataset
+            Pre-concatenated ``(epoch, sid)`` metadata dataset.
+        group_name : str
+            Target group (receiver name).
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch to write to.
+
+        Returns
+        -------
+        str
+            Icechunk snapshot ID.
+        """
+        version = get_version_from_pyproject()
+        path = f"{group_name}/metadata/{name}"
+        ds = self._normalize_encodings(meta_ds)
+        ds = self._cleanse_dataset_attrs(ds)
+        with self.writable_session(branch) as session:
+            to_icechunk(ds, session, group=path, mode="w")
+            return session.commit(
+                f"[v{version}] metadata/{name} for {group_name}"
+            )
+
+    def read_metadata_dataset(
+        self,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+        chunks: dict | None = None,
+    ) -> xr.Dataset:
+        """Read a metadata dataset *name* for *group_name*.
+
+        Parameters
+        ----------
+        group_name : str
+            Group (receiver) name.
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch.
+        chunks : dict | None, optional
+            Dask chunk specification.  Defaults to
+            ``{"epoch": 34560, "sid": -1}``.
+
+        Returns
+        -------
+        xr.Dataset
+            Lazy ``(epoch, sid)`` metadata dataset.
+        """
+        path = f"{group_name}/metadata/{name}"
+        with self.readonly_session(branch) as session:
+            return xr.open_zarr(
+                session.store,
+                group=path,
+                chunks=chunks or self.chunk_strategy or {"epoch": 34560, "sid": -1},
+                consolidated=False,
+            )
+
+    def get_metadata_dataset_info(
+        self,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> dict[str, Any]:
+        """Get info about metadata dataset *name* for *group_name*.
+
+        Parameters
+        ----------
+        group_name : str
+            Group (receiver) name.
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch.
+
+        Returns
+        -------
+        dict[str, Any]
+            Info dict with the same structure as ``get_group_info()``.
+
+        Raises
+        ------
+        ValueError
+            If the metadata dataset does not exist.
+        """
+        if not self.metadata_dataset_exists(group_name, name, branch):
+            raise ValueError(f"No metadata dataset '{name}' for group '{group_name}'")
+        ds = self.read_metadata_dataset(group_name, name, branch, chunks={})
+        info: dict[str, Any] = {
+            "group_name":  group_name,
+            "store_path":  f"{group_name}/metadata/{name}",
+            "store_type":  f"metadata/{name}",
+            "dimensions":  dict(ds.sizes),
+            "variables":   list(ds.data_vars.keys()),
+            "coordinates": list(ds.coords.keys()),
+            "attributes":  dict(ds.attrs),
+        }
+        if "epoch" in ds.sizes:
+            info["temporal_info"] = {
+                "start":      str(ds.epoch.min().values),
+                "end":        str(ds.epoch.max().values),
+                "count":      ds.sizes["epoch"],
+                "resolution": str(ds.epoch.diff("epoch").median().values),
+            }
+        return info
+
+    # Convenience aliases (SBF)
+    def sbf_metadata_exists(self, group_name: str, branch: str = "main") -> bool:
+        """Return True if an SBF metadata dataset exists for *group_name*."""
+        return self.metadata_dataset_exists(group_name, "sbf_obs", branch)
+
+    def write_sbf_metadata(
+        self, meta_ds: xr.Dataset, group_name: str, branch: str = "main"
+    ) -> str:
+        """Write SBF metadata dataset (alias for ``write_metadata_dataset(..., "sbf_obs")``)."""
+        return self.write_metadata_dataset(meta_ds, group_name, "sbf_obs", branch)
+
+    def read_sbf_metadata(
+        self, group_name: str, branch: str = "main", chunks: dict | None = None
+    ) -> xr.Dataset:
+        """Read SBF metadata dataset (alias for ``read_metadata_dataset(..., "sbf_obs")``)."""
+        return self.read_metadata_dataset(group_name, "sbf_obs", branch, chunks)
+
+    def get_sbf_metadata_info(
+        self, group_name: str, branch: str = "main"
+    ) -> dict[str, Any]:
+        """Get SBF metadata info (alias for ``get_metadata_dataset_info(..., "sbf_obs")``)."""
+        return self.get_metadata_dataset_info(group_name, "sbf_obs", branch)
+
     def rel_path_for_commit(self, file_path: Path) -> str:
         """
         Generate relative path for commit messages.
@@ -1022,9 +1179,9 @@ class MyIcechunkStore:
 
         dataset = self._normalize_encodings(dataset)
 
-        rinex_hash = dataset.attrs.get("RINEX File Hash")
+        rinex_hash = dataset.attrs.get("File Hash") or dataset.attrs.get("RINEX File Hash")
         if rinex_hash is None:
-            raise ValueError("Dataset missing 'RINEX File Hash' attribute")
+            raise ValueError("Dataset missing 'File Hash' attribute (or legacy 'RINEX File Hash')")
         start = dataset.epoch.min().values
         end = dataset.epoch.max().values
 
@@ -1623,9 +1780,11 @@ class MyIcechunkStore:
         str
             Representation string.
         """
+        _DISPLAY = {"rinex_store": "GNSS Store", "vod_store": "VOD Store"}
+        display = _DISPLAY.get(self.store_type, self.store_type)
         return (
             "MyIcechunkStore("
-            f"store_path={self.store_path}, store_type={self.store_type})"
+            f"store_path={self.store_path}, store_type={display})"
         )
 
     def __str__(self) -> str:

@@ -245,6 +245,13 @@ def _register_builtin_components() -> None:
         log.debug("canvod-readers not available, skipping reader registration")
 
     try:
+        from canvod.readers.sbf import SbfReader
+
+        ReaderFactory.register("sbf", SbfReader)
+    except ImportError:
+        log.debug("SbfReader not available, skipping sbf reader registration")
+
+    try:
         from canvod.grids import EqualAreaBuilder
 
         GridFactory.register("equal_area", EqualAreaBuilder)

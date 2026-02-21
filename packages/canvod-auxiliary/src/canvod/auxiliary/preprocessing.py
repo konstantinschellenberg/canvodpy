@@ -10,6 +10,7 @@ Matches gnssvodpy.icechunk_manager.preprocessing.IcechunkPreprocessor exactly.
 from typing import Any
 
 import numpy as np
+import structlog
 import xarray as xr
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
@@ -21,6 +22,39 @@ from canvod.readers.gnss_specs.constellations import (
     SBAS,
 )
 from canvod.readers.gnss_specs.signals import SignalIDMapper
+
+log = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Per-process SID issue accumulators
+# ---------------------------------------------------------------------------
+# Each worker subprocess accumulates SID issues during pad_to_global_sid()
+# calls. The main process retrieves them via flush_sid_accumulators() at the
+# end of each file's processing, then aggregates across all files.
+_accumulated_not_in_global_space: set[str] = set()
+_accumulated_dropped_by_filter: set[str] = set()
+
+
+def flush_sid_accumulators() -> dict[str, list[str]]:
+    """Return accumulated SID issues and clear the module-level accumulators.
+
+    Called once per RINEX file at the end of ``preprocess_with_hermite_aux``.
+    The returned dict is aggregated by the main process across all files for
+    a receiver and logged once per receiver run.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Keys: ``"not_in_global_space"``, ``"dropped_by_filter"``.
+    """
+    global _accumulated_not_in_global_space, _accumulated_dropped_by_filter
+    result: dict[str, list[str]] = {
+        "not_in_global_space": sorted(_accumulated_not_in_global_space),
+        "dropped_by_filter": sorted(_accumulated_dropped_by_filter),
+    }
+    _accumulated_not_in_global_space = set()
+    _accumulated_dropped_by_filter = set()
+    return result
 
 
 def create_sv_to_sid_mapping(
@@ -179,10 +213,29 @@ def pad_to_global_sid(
         for code in systems[sys_letter].BAND_CODES.get(band, ["X"])
     ]
     sids = sorted(sids)
+    global_sid_set = set(sids)
+
+    # Accumulate SIDs that fall outside the constellation model's universe.
+    # These are logged once per receiver run by the pipeline (not per file).
+    if "sid" in ds.coords:
+        ds_sids = set(ds.sid.values)
+        unknown_sids = ds_sids - global_sid_set
+        if unknown_sids:
+            _accumulated_not_in_global_space.update(unknown_sids)
 
     # Filter to keep_sids if provided
     if keep_sids is not None and len(keep_sids) > 0:
-        sids = sorted(set(sids).intersection(set(keep_sids)))
+        keep_set = set(keep_sids)
+        sids_before = set(sids)
+        sids = sorted(sids_before.intersection(keep_set))
+
+        # Accumulate observed SIDs dropped by keep_sids filter.
+        # Logged once per receiver run by the pipeline (not per file).
+        if "sid" in ds.coords:
+            ds_sids = set(ds.sid.values)
+            dropped_by_filter = (ds_sids & sids_before) - keep_set
+            if dropped_by_filter:
+                _accumulated_dropped_by_filter.update(dropped_by_filter)
 
     return ds.reindex({"sid": sids}, fill_value=np.nan)
 

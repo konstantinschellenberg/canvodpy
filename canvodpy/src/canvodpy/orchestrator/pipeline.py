@@ -35,10 +35,12 @@ class PipelineOrchestrator:
         site: GnssResearchSite,
         n_max_workers: int = 12,
         dry_run: bool = False,
+        reader_name: str = "rinex3",
     ) -> None:
         self.site = site
         self.n_max_workers = n_max_workers
         self.dry_run = dry_run
+        self.reader_name = reader_name
         self._logger = get_logger(__name__).bind(site=site.site_name)
 
         self.pair_matcher = PairDataDirMatcher(
@@ -257,6 +259,7 @@ class PipelineOrchestrator:
                     matched_data_dirs=matched_dirs,
                     site=self.site,
                     n_max_workers=self.n_max_workers,
+                    reader_name=self.reader_name,
                 )
             except RuntimeError as e:
                 if "Failed to download" in str(e):
@@ -377,6 +380,7 @@ class SingleReceiverProcessor:
             matched_data_dirs=matched_dirs,
             site=self.site,
             n_max_workers=self.n_max_workers,
+            reader_name=self.reader_name,
         )
 
         # Process with actual receiver name (NOT type)

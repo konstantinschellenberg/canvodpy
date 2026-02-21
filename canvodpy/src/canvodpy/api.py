@@ -118,6 +118,7 @@ class Site:
         aux_agency: str = "COD",
         n_workers: int = 12,
         dry_run: bool = False,
+        reader: str = "rinex3",
     ) -> Pipeline:
         """Create a processing pipeline for this site.
 
@@ -131,6 +132,8 @@ class Site:
             Number of parallel workers
         dry_run : bool, default False
             If True, simulate processing without execution
+        reader : str, default "rinex3"
+            Reader to use: ``"rinex3"`` or ``"sbf"``
 
         Returns
         -------
@@ -143,6 +146,9 @@ class Site:
         >>> pipeline = site.pipeline(aux_agency="ESA", n_workers=8)
         >>> data = pipeline.process_date("2025001")
 
+        >>> # SBF binary files
+        >>> pipeline = site.pipeline(reader="sbf")
+
         """
         return Pipeline(
             site=self,
@@ -150,6 +156,7 @@ class Site:
             aux_agency=aux_agency,
             n_workers=n_workers,
             dry_run=dry_run,
+            reader=reader,
         )
 
     def __repr__(self) -> str:
@@ -205,6 +212,7 @@ class Pipeline:
         aux_agency: str = "COD",
         n_workers: int = 12,
         dry_run: bool = False,
+        reader: str = "rinex3",
     ) -> None:
         # Handle both Site object and string
         if isinstance(site, str):
@@ -236,6 +244,7 @@ class Pipeline:
             site=site._site,
             n_max_workers=n_workers,
             dry_run=dry_run,
+            reader_name=reader,
         )
 
         self.log.info(

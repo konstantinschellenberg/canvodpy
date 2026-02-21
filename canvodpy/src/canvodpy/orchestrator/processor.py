@@ -14,22 +14,22 @@ import polars as pl
 import pydantic_core
 import xarray as xr
 import zarr
-from canvod.auxiliary.pipeline import AuxDataPipeline
-from canvod.auxiliary.position import (
-    ECEFPosition,
-    add_spherical_coords_to_dataset,
-    compute_spherical_coordinates,
-)
-from canvod.readers import DataDirMatcher, MatchedDirs, Rnxv3Obs
-from canvod.store import GnssResearchSite
-from canvod.utils.config import load_config
-from canvod.utils.tools import get_version_from_pyproject
 from icechunk.session import ForkSession
 from icechunk.xarray import to_icechunk
 from natsort import natsorted
 from pydantic import ValidationError
 from tqdm import tqdm
 
+from canvod.auxiliary.pipeline import AuxDataPipeline
+from canvod.auxiliary.position import (
+    ECEFPosition,
+    add_spherical_coords_to_dataset,
+    compute_spherical_coordinates,
+)
+from canvod.readers import DataDirMatcher, MatchedDirs
+from canvod.store import GnssResearchSite
+from canvod.utils.config import load_config
+from canvod.utils.tools import get_version_from_pyproject
 from canvodpy.logging import get_logger
 from canvodpy.orchestrator.interpolator import (
     ClockConfig,
@@ -51,7 +51,9 @@ def preprocess_with_hermite_aux(
     receiver_position: ECEFPosition,
     receiver_type: str,
     keep_sids: list[str] | None = None,
-) -> tuple[Path, xr.Dataset]:
+    reader_name: str = "rinex3",
+    use_sbf_geometry: bool = False,
+) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
     """Read RINEX and compute coordinates using Hermite-interpolated aux data from Zarr.
 
     This function runs in separate processes, so it must be at module level.
@@ -71,11 +73,16 @@ def preprocess_with_hermite_aux(
         Receiver type
     keep_sids : list[str] | None, default None
         List of specific SIDs to keep. If None, keeps all possible SIDs.
+    use_sbf_geometry : bool, default False
+        If True and reader_name is "sbf", skip external orbit/clock downloads
+        and transfer theta/phi directly from SBF SatVisibility blocks.
 
     Returns
     -------
-    tuple[Path, xr.Dataset]
-        File path and augmented dataset with phi, theta, r
+    tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]
+        File path, augmented dataset with phi/theta/r, auxiliary datasets dict,
+        and SID issue dict with keys ``not_in_global_space``, ``dropped_by_filter``,
+        ``dropped_no_ephemeris``.
 
     """
     _ = receiver_type
@@ -104,15 +111,28 @@ def preprocess_with_hermite_aux(
                 aux_zarr_path=str(aux_zarr_path.name) if aux_zarr_path else None,
             )
 
-            # 1. Read RINEX file
-            log.debug("reading_rinex_file", file=str(rnx_file.name))
-            rnx = Rnxv3Obs(fpath=rnx_file, include_auxiliary=False)
-            ds = rnx.to_ds(
+            # 1. Read GNSS file (reader selected via factory)
+            log.debug("reading_gnss_file", file=str(rnx_file.name), reader=reader_name)
+            from canvodpy.factories import ReaderFactory
+            rnx = ReaderFactory.create(reader_name, fpath=rnx_file, include_auxiliary=False)
+            ds, aux_datasets = rnx.to_ds_and_auxiliary(
                 keep_rnx_data_vars=keep_vars,
                 write_global_attrs=True,
                 keep_sids=keep_sids,
             )
-            ds.attrs["RINEX File Hash"] = rnx.file_hash
+            ds.attrs["File Hash"] = rnx.file_hash
+
+            # SBF-geometry fast path: use receiver-reported theta/phi, skip ephemeris
+            if reader_name == "sbf" and use_sbf_geometry:
+                meta_ds = aux_datasets.get("sbf_obs")
+                if meta_ds is not None and "theta" in meta_ds and "phi" in meta_ds:
+                    ds = ds.assign_coords(
+                        theta=meta_ds["theta"], phi=meta_ds["phi"]
+                    )
+                from canvod.auxiliary.preprocessing import flush_sid_accumulators
+                sid_issues = flush_sid_accumulators()
+                sid_issues["dropped_no_ephemeris"] = []
+                return rnx_file, ds, aux_datasets, sid_issues
             log.debug(
                 "rinex_loaded",
                 dims=dict(ds.sizes),
@@ -196,8 +216,19 @@ def preprocess_with_hermite_aux(
                 common_sids=len(common_sids),
                 rinex_only=len(rinex_only),
                 aux_only=len(aux_only),
-                common_sid_examples=common_sids[:5] if len(common_sids) > 0 else [],
             )
+            if rinex_only:
+                log.warning(
+                    "sids_dropped_no_ephemeris",
+                    file=str(rnx_file.name),
+                    count=len(rinex_only),
+                    sids=sorted(rinex_only),
+                    hint=(
+                        "These SIDs were observed in the file but have no matching "
+                        "entry in the ephemeris/clock aux data and will be absent "
+                        "from the stored dataset."
+                    ),
+                )
 
             # 5. Compute spherical coordinates (φ, θ, r) from ephemerides
             log.debug("computing_spherical_coordinates")
@@ -228,7 +259,10 @@ def preprocess_with_hermite_aux(
             )
             raise
 
-    return rnx_file, ds_augmented
+    from canvod.auxiliary.preprocessing import flush_sid_accumulators
+    sid_issues = flush_sid_accumulators()
+    sid_issues["dropped_no_ephemeris"] = sorted(rinex_only)
+    return rnx_file, ds_augmented, aux_datasets, sid_issues
 
 
 def _compute_spherical_coords_fast(
@@ -337,16 +371,18 @@ def worker_task(
     fork: ForkSession,
     is_first: bool,
     keep_sids: list[str] | None = None,
+    reader_name: str = "rinex3",
 ) -> tuple[Path, ForkSession]:
     """Build an augmented dataset and write it to the given fork."""
     # 1) build augmented dataset
-    fname, ds_augmented = preprocess_with_hermite_aux(
+    fname, ds_augmented, _aux, _sids = preprocess_with_hermite_aux(
         rinex_file,
         keep_vars,
         aux_zarr_path,
         receiver_position,
         receiver_type,
         keep_sids,
+        reader_name,
     )
 
     # 2) write to this fork (initial or append)
@@ -376,15 +412,17 @@ def worker_task_append_only(
     receiver_name: str,
     fork: ForkSession,
     keep_sids: list[str] | None = None,
+    reader_name: str = "rinex3",
 ) -> tuple[Path, ForkSession]:
     """Worker that only appends (group already exists)."""
-    fname, ds_augmented = preprocess_with_hermite_aux(
+    fname, ds_augmented, _aux, _sids = preprocess_with_hermite_aux(
         rinex_file,
         keep_vars,
         aux_zarr_path,
         receiver_position,
         receiver_type,
         keep_sids,
+        reader_name,
     )
 
     ds_clean = _sanitize_ds_for_write(ds_augmented)
@@ -407,15 +445,17 @@ def worker_task_with_region_auto(
     receiver_name: str,
     fork: ForkSession,
     keep_sids: list[str] | None = None,
+    reader_name: str = "rinex3",
 ) -> ForkSession:
     """Worker uses region='auto' to write to correct position."""
-    _fname, ds = preprocess_with_hermite_aux(
+    _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
         rinex_file,
         keep_vars,
         aux_zarr_path,
         receiver_position,
         receiver_type,
         keep_sids,
+        reader_name,
     )
 
     ds_clean = _sanitize_ds_for_write(ds)
@@ -465,11 +505,15 @@ class RinexDataProcessor:
         site: GnssResearchSite,
         aux_file_path: Path | None = None,
         n_max_workers: int = 12,
+        reader_name: str = "rinex3",
+        use_sbf_geometry: bool = False,
     ) -> None:
         self.matched_data_dirs = matched_data_dirs
         self.site = site
         self.aux_file_path = aux_file_path
         self.n_max_workers = min(n_max_workers, os.cpu_count() or 12)
+        self._reader_name = reader_name
+        self.use_sbf_geometry = use_sbf_geometry
         self._logger = get_logger(__name__).bind(
             site=site.site_name,
             workers=self.n_max_workers,
@@ -554,6 +598,11 @@ class RinexDataProcessor:
         )
         return pipeline
 
+    def _make_reader(self, fpath: Path):
+        """Instantiate the configured GNSS reader for *fpath*."""
+        from canvodpy.factories import ReaderFactory
+        return ReaderFactory.create(self._reader_name, fpath=fpath, include_auxiliary=False)
+
     def _preprocess_aux_data_with_hermite(
         self,
         rinex_files: list[Path],
@@ -573,7 +622,7 @@ class RinexDataProcessor:
             "sampling_detection_started",
             sample_file=rinex_files[0].name,
         )
-        first_rnx = Rnxv3Obs(fpath=rinex_files[0], include_auxiliary=False)
+        first_rnx = self._make_reader(rinex_files[0])
         first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
 
         # 2. Detect sampling interval
@@ -701,7 +750,7 @@ class RinexDataProcessor:
             self._logger.warning("Directory does not exist: %s", rinex_dir)
             return []
 
-        patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX"]
+        patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
         rinex_files = []
 
         for pattern in patterns:
@@ -781,7 +830,7 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
-    ) -> list[tuple[Path, xr.Dataset]]:
+    ) -> tuple[list[tuple[Path, xr.Dataset]], dict[Path, dict[str, xr.Dataset]]]:
         """Parallel process RINEX files using ProcessPoolExecutor.
 
         Uses TRUE parallelism (no GIL) with separate processes.
@@ -802,8 +851,9 @@ class RinexDataProcessor:
 
         Returns
         -------
-        List[tuple[Path, xr.Dataset]]
-            List of (filename, augmented_dataset) tuples, sorted chronologically
+        tuple[list[tuple[Path, xr.Dataset]], dict[Path, dict[str, xr.Dataset]], dict[str, list[str]]]
+            Sorted (filename, augmented_dataset) list, per-file auxiliary datasets,
+            and aggregated SID issue dict (unique sets across all files).
 
         """
         start_time = time.time()
@@ -822,7 +872,14 @@ class RinexDataProcessor:
             files_per_worker=round(len(rinex_files) / self.n_max_workers, 1),
         )
 
-        results = []
+        results: list[tuple[Path, xr.Dataset]] = []
+        aux_datasets_by_file: dict[Path, dict[str, xr.Dataset]] = {}
+        # Aggregate SID issues across all files (unique sets per category)
+        sid_issues_agg: dict[str, set[str]] = {
+            "not_in_global_space": set(),
+            "dropped_by_filter": set(),
+            "dropped_no_ephemeris": set(),
+        }
         task_submission_start = time.time()
 
         with ProcessPoolExecutor(max_workers=self.n_max_workers) as executor:
@@ -836,6 +893,8 @@ class RinexDataProcessor:
                     receiver_position,
                     receiver_type,
                     self.keep_sids,
+                    self._reader_name,
+                    self.use_sbf_geometry,
                 ): rinex_file
                 for rinex_file in rinex_files
             }
@@ -858,8 +917,11 @@ class RinexDataProcessor:
                 unit="file",
             ):
                 try:
-                    fname, ds_augmented = fut.result()
+                    fname, ds_augmented, aux, sids = fut.result()
                     results.append((fname, ds_augmented))
+                    aux_datasets_by_file[fname] = aux
+                    for key, vals in sids.items():
+                        sid_issues_agg.setdefault(key, set()).update(vals)
                     completed_count += 1
 
                     if completed_count % 10 == 0:  # Log every 10 files
@@ -899,7 +961,8 @@ class RinexDataProcessor:
             if duration > 0
             else 0,
         )
-        return results
+        sid_issues_final = {k: sorted(v) for k, v in sid_issues_agg.items()}
+        return results, aux_datasets_by_file, sid_issues_final
 
     def _append_to_icechunk_slow(
         self,
@@ -988,7 +1051,7 @@ class RinexDataProcessor:
                 )
 
                 # Get file metadata
-                rinex_hash = ds.attrs.get("RINEX File Hash")
+                rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
                 if not rinex_hash:
                     log.warning(
                         "file_missing_hash",
@@ -1215,7 +1278,7 @@ class RinexDataProcessor:
         t1 = time.time()
 
         file_hash_map = {
-            fname: ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -1365,13 +1428,23 @@ class RinexDataProcessor:
 
                 log.info("Committing: %s", summary)
                 t7 = time.time()
-                snapshot_id = session.commit(commit_msg)
-                t8 = time.time()
-                log.info(
-                    "Commit complete in %.2fs (snapshot: %s...)",
-                    t8 - t7,
-                    snapshot_id[:8],
-                )
+                try:
+                    snapshot_id = session.commit(commit_msg)
+                    t8 = time.time()
+                    log.info(
+                        "Commit complete in %.2fs (snapshot: %s...)",
+                        t8 - t7,
+                        snapshot_id[:8],
+                    )
+                except Exception as e:
+                    t8 = time.time()
+                    if "no changes" in str(e).lower():
+                        log.info(
+                            "no_changes_to_commit (all files already ingested): %.2fs",
+                            t8 - t7,
+                        )
+                    else:
+                        raise
 
                 # STEP 5: Write metadata (separate transactions after data commit)
                 log.info(
@@ -1427,6 +1500,8 @@ class RinexDataProcessor:
         augmented_datasets: list[tuple[Path, xr.Dataset]],
         receiver_name: str,
         rinex_files: list[Path],
+        aux_datasets: dict[Path, dict[str, xr.Dataset]] | None = None,
+        sid_issues: dict[str, list[str]] | None = None,
     ) -> None:
         """Batch append with single commit.
 
@@ -1435,6 +1510,7 @@ class RinexDataProcessor:
         2. Uses only to_icechunk() within the session (no nested sessions)
         3. Makes ONE commit for all data
         4. Writes metadata separately after commit succeeds
+        5. Writes any auxiliary datasets (e.g. SBF metadata) after commit
         """
         _ = rinex_files
         log = self._logger
@@ -1460,7 +1536,7 @@ class RinexDataProcessor:
         )
 
         file_hash_map = {
-            fname: ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -1619,18 +1695,77 @@ class RinexDataProcessor:
 
             log.info("Committing: %s", summary)
             t7 = time.time()
-            snapshot_id = session.commit(commit_msg)
-            t8 = time.time()
-            log.info(
-                "Commit complete in %.2fs (snapshot: %s...)",
-                t8 - t7,
-                snapshot_id[:8],
-            )
+            try:
+                snapshot_id = session.commit(commit_msg)
+                t8 = time.time()
+                log.info(
+                    "Commit complete in %.2fs (snapshot: %s...)",
+                    t8 - t7,
+                    snapshot_id[:8],
+                )
+            except Exception as e:
+                t8 = time.time()
+                if "no changes" in str(e).lower():
+                    log.info(
+                        "no_changes_to_commit (all files already ingested): %.2fs",
+                        t8 - t7,
+                    )
+                else:
+                    raise
 
             expired = self.site.rinex_store.expire_old_snapshots(days=7)
 
             if expired:
                 print(f"Expired {len(expired)} snapshots for cleanup.")
+
+            # ── Auxiliary datasets (generic — e.g. SBF metadata) ──────────────
+            if aux_datasets:
+                from canvod.auxiliary.preprocessing import (
+                    normalize_sid_dtype,
+                    pad_to_global_sid,
+                )
+
+                by_name: dict[str, list[xr.Dataset]] = {}
+                for _, aux_dict in aux_datasets.items():
+                    for name, ds in aux_dict.items():
+                        by_name.setdefault(name, []).append(ds)
+
+                for name, datasets in by_name.items():
+                    t_aux = time.time()
+                    combined = xr.concat(
+                        datasets,
+                        dim="epoch",
+                        join="outer",       # preserve current outer-join behaviour
+                        coords="different", # preserve current coords behaviour
+                    ).sortby("epoch")
+                    # xr.concat with join="outer" can produce fixed-length unicode
+                    # dtype for the sid coordinate; normalize to object before writing
+                    combined = normalize_sid_dtype(combined)
+                    combined = pad_to_global_sid(combined, keep_sids=self.keep_sids)
+                    snapshot_aux = self.site.rinex_store.write_metadata_dataset(
+                        combined, receiver_name, name
+                    )
+                    log.info(
+                        "aux_dataset_written",
+                        receiver=receiver_name,
+                        name=name,
+                        epochs=len(combined.epoch),
+                        sids=len(combined.sid),
+                        duration_seconds=round(time.time() - t_aux, 2),
+                        snapshot=snapshot_aux[:8] if snapshot_aux else "none",
+                    )
+
+            # ── SID issues summary (once per receiver run) ────────────────────
+            if sid_issues:
+                for category, sids in sid_issues.items():
+                    if sids:
+                        self._logger.info(
+                            "sid_issues_summary",
+                            receiver=receiver_name,
+                            category=category,
+                            count=len(sids),
+                            sids=sids,
+                        )
 
             # Timing summary
             t_end = time.time()
@@ -1697,7 +1832,7 @@ class RinexDataProcessor:
         log.info("Batch checking %s files...", len(augmented_datasets))
         t1 = time.time()
         file_hash_map = {
-            fname: ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
         }
         valid_hashes = [h for h in file_hash_map.values() if h]
         existing_hashes = self.site.rinex_store.batch_check_existing(
@@ -1802,12 +1937,19 @@ class RinexDataProcessor:
             )
             log.info("Committing data: %s", summary)
             t7 = time.time()
-            snapshot_id = session.commit(commit_msg)
+            try:
+                snapshot_id = session.commit(commit_msg)
+            except Exception as e:
+                if "no changes" in str(e).lower():
+                    log.info("no_changes_to_commit (all files already ingested)")
+                    snapshot_id = None
+                else:
+                    raise
             t8 = time.time()
             log.info(
                 "Commit complete in %.2fs (snapshot: %s...)",
                 t8 - t7,
-                snapshot_id[:8],
+                snapshot_id[:8] if snapshot_id else "no-op",
             )
 
             # STEP 5: Metadata in a separate commit
@@ -1958,7 +2100,7 @@ class RinexDataProcessor:
         # ====================================================================
         # STEP 2: Compute receiver position ONCE (same for all receivers)
         # ====================================================================
-        first_rnx = Rnxv3Obs(fpath=canopy_files[0], include_auxiliary=False)
+        first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
         receiver_position = ECEFPosition.from_ds_metadata(first_ds)
         self._logger.info(
@@ -1997,7 +2139,7 @@ class RinexDataProcessor:
             )
 
             # 3c. Parallel process with ProcessPoolExecutor
-            augmented_datasets = self._parallel_process_with_processpool(
+            augmented_datasets, aux_datasets, sid_issues = self._parallel_process_with_processpool(
                 rinex_files=rinex_files,
                 keep_vars=keep_vars,
                 aux_zarr_path=aux_zarr_path,
@@ -2010,6 +2152,8 @@ class RinexDataProcessor:
                 augmented_datasets=augmented_datasets,
                 receiver_name=receiver_name,
                 rinex_files=rinex_files,
+                aux_datasets=aux_datasets,
+                sid_issues=sid_issues,
             )
 
             # 3e. Yield final daily dataset
@@ -2158,7 +2302,7 @@ class RinexDataProcessor:
             first_rnx = None
             for _f, ff in enumerate(position_files):
                 try:
-                    first_rnx = Rnxv3Obs(fpath=ff, include_auxiliary=False)
+                    first_rnx = self._make_reader(ff)
                     break
                 except ValidationError as e:
                     self._logger.warning(
@@ -2199,6 +2343,9 @@ class RinexDataProcessor:
                 str(position_data_dir) if position_data_dir else "own files",
             )
 
+            aux_datasets: dict | None = None
+            sid_issues: dict | None = None
+
             if data_dir not in _rinex_cache:
                 # First time seeing this data_dir — full parallel processing
                 self._logger.info(
@@ -2207,7 +2354,7 @@ class RinexDataProcessor:
                     files=len(rinex_files),
                 )
 
-                augmented_datasets = self._parallel_process_with_processpool(
+                augmented_datasets, aux_datasets, sid_issues = self._parallel_process_with_processpool(
                     rinex_files=rinex_files,
                     keep_vars=keep_vars,
                     aux_zarr_path=aux_zarr_path,
@@ -2215,7 +2362,8 @@ class RinexDataProcessor:
                     receiver_type=receiver_name,
                 )
 
-                # Cache for reuse by other store groups with the same data_dir
+                # Cache obs datasets for reuse by other store groups with the same data_dir
+                # (aux_datasets are written immediately; they don't need to be cached)
                 _rinex_cache[data_dir] = (augmented_datasets, rinex_files)
             else:
                 # Reuse cached RINEX data, only recompute SCS with new position
@@ -2252,6 +2400,8 @@ class RinexDataProcessor:
                 augmented_datasets=augmented_datasets,
                 receiver_name=receiver_name,
                 rinex_files=rinex_files,
+                aux_datasets=aux_datasets,
+                sid_issues=sid_issues,
             )
 
             # Yield final daily dataset
@@ -2517,24 +2667,26 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         # Option A: Process all files first to get full time range
         all_epochs = []
         for rinex_file in rinex_files_sorted:
-            _fname, ds = preprocess_with_hermite_aux(
+            _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
                 rinex_file,
                 keep_vars,
                 aux_zarr_path,
                 receiver_position,
                 receiver_type,
                 self.keep_sids,
+                self._reader_name,
             )
             all_epochs.extend(ds.epoch.values)
 
         # Create empty dataset with full structure
-        _first_fname, first_ds = preprocess_with_hermite_aux(
+        _first_fname, first_ds, _aux, _sids = preprocess_with_hermite_aux(
             rinex_files_sorted[0],
             keep_vars,
             aux_zarr_path,
             receiver_position,
             receiver_type,
             self.keep_sids,
+            self._reader_name,
         )
 
         # Initialize with full epoch dimension
@@ -2562,6 +2714,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                     receiver_name,
                     fork,  # SAME fork to all workers
                     self.keep_sids,  # Pass keep_sids to worker
+                    self._reader_name,
                 )
                 for rinex_file in rinex_files_sorted
             ]
@@ -2595,7 +2748,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
         # 1) Pre-check which hashes already exist
         file_hash_map = {
-            fname: ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
         }
         valid_hashes = [h for h in file_hash_map.values() if h]
         existing_hashes = self.site.rinex_store.batch_check_existing(
@@ -2729,7 +2882,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         t1 = time.time()
 
         file_hash_map = {
-            fname: ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -2876,13 +3029,23 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
             log.info("Committing: %s", summary)
             t7 = time.time()
-            snapshot_id = session.commit(commit_msg)
-            t8 = time.time()
-            log.info(
-                "Commit complete in %.2fs (snapshot: %s...)",
-                t8 - t7,
-                snapshot_id[:8],
-            )
+            try:
+                snapshot_id = session.commit(commit_msg)
+                t8 = time.time()
+                log.info(
+                    "Commit complete in %.2fs (snapshot: %s...)",
+                    t8 - t7,
+                    snapshot_id[:8],
+                )
+            except Exception as e:
+                t8 = time.time()
+                if "no changes" in str(e).lower():
+                    log.info(
+                        "no_changes_to_commit (all files already ingested): %.2fs",
+                        t8 - t7,
+                    )
+                else:
+                    raise
 
             # Timing summary
             t_end = time.time()
@@ -2976,7 +3139,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         # ====================================================================
         # STEP 2: Compute receiver position ONCE (same for all receivers)
         # ====================================================================
-        first_rnx = Rnxv3Obs(fpath=canopy_files[0], include_auxiliary=False)
+        first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
         receiver_position = ECEFPosition.from_ds_metadata(first_ds)
         self._logger.info(

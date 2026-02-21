@@ -226,6 +226,58 @@ def validate(
 
         console.print()
 
+        # Check receiver directories exist and contain data
+        console.print("[bold]Checking receiver directories...[/bold]")
+        dir_errors: list[str] = []
+
+        try:
+            from canvod.readers.gnss_specs.constants import RINEX_OBS_GLOB_PATTERNS
+        except ImportError:
+            RINEX_OBS_GLOB_PATTERNS = ()
+
+        for site_name, site in config.sites.sites.items():
+            base_path = site.get_base_path()
+            for recv_name, recv in site.receivers.items():
+                recv_dir = base_path / recv.directory
+                if not recv_dir.exists():
+                    msg = f"  [red]❌ {site_name}/{recv_name}: {recv_dir} (directory not found)[/red]"
+                    console.print(msg)
+                    dir_errors.append(f"{site_name}/{recv_name}")
+                    continue
+
+                # Check for any GNSS data files anywhere in the tree
+                has_data = False
+                if RINEX_OBS_GLOB_PATTERNS:
+                    has_data = any(
+                        f
+                        for pattern in RINEX_OBS_GLOB_PATTERNS
+                        for f in recv_dir.rglob(pattern)
+                        if f.is_file()
+                    )
+                else:
+                    # Fallback: any file anywhere
+                    has_data = any(True for _ in recv_dir.rglob("*") if _.is_file())
+
+                if has_data:
+                    console.print(f"  [green]✓ {site_name}/{recv_name}: {recv_dir}[/green]")
+                else:
+                    console.print(
+                        f"  [yellow]⚠️  {site_name}/{recv_name}: {recv_dir} "
+                        f"(directory exists but no GNSS data files found)[/yellow]"
+                    )
+
+        if dir_errors:
+            console.print(
+                f"\n[red]❌ {len(dir_errors)} receiver director(y/ies) not found.[/red]"
+            )
+            console.print(
+                "  Check gnss_site_data_root and receiver directory settings in sites.yaml"
+            )
+            console.print()
+            raise typer.Exit(1)
+
+        console.print()
+
     except Exception as e:
         console.print("[red]❌ Validation failed:[/red]\n")
         console.print(str(e))

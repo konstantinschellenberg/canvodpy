@@ -13,8 +13,11 @@ from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 import pandas as pd
 import requests
+import structlog
 from canvod.readers.gnss_specs.constants import FREQ_UNIT, UREG
 from natsort import natsorted
+
+_log = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
     import pint
@@ -241,7 +244,15 @@ class WikipediaCache:
                 conn.commit()
                 conn.close()
 
-                return sorted(set(clean_list))
+                result = sorted(set(clean_list))
+                _log.info(
+                    "wikipedia_sv_fetch_ok",
+                    constellation=constellation,
+                    url=url,
+                    count=len(result),
+                    svs=result,
+                )
+                return result
             except (
                 requests.RequestException,
                 ValueError,
@@ -249,10 +260,28 @@ class WikipediaCache:
                 IndexError,
                 TypeError,
                 pd.errors.ParserError,
-            ):
+            ) as exc:
                 stale = self.get_stale_cache(constellation)
                 if stale:
+                    _log.warning(
+                        "wikipedia_fetch_failed_using_stale_cache",
+                        constellation=constellation,
+                        url=url,
+                        error=str(exc),
+                        stale_count=len(stale),
+                        stale_svs=stale,
+                        hint=(
+                            "Wikipedia could not be reached or parsed. The SV list "
+                            "may be outdated — verify results carefully."
+                        ),
+                    )
                     return stale
+                _log.error(
+                    "wikipedia_fetch_failed_no_cache",
+                    constellation=constellation,
+                    url=url,
+                    error=str(exc),
+                )
                 raise
 
     @staticmethod
@@ -347,8 +376,14 @@ class ConstellationBase(ABC):
         """
         cached = _wikipedia_cache.get_cached_svs(self.constellation)
         if cached:
+            _log.debug(
+                "wikipedia_sv_cache_hit",
+                constellation=self.constellation,
+                count=len(cached),
+                svs=cached,
+            )
             return cached
-        return _wikipedia_cache.fetch_and_cache(
+        result = _wikipedia_cache.fetch_and_cache(
             constellation=self.constellation,
             url=self.url,
             table_index=self.table_index,
@@ -356,6 +391,7 @@ class ConstellationBase(ABC):
             status_filter=self.status_filter,
             re_pattern=self.re_pattern,
         )
+        return result
 
     @property
     def bands_freqs(self) -> dict[str, pint.Quantity]:
