@@ -5,141 +5,169 @@ description: Implementation of Python implicit namespace packages in canVODpy
 
 # Namespace Packages
 
-## Overview
-
-canVODpy uses Python 3.3+ implicit namespace packages to allow seven independent packages to share the `canvod.*` import prefix. This enables a unified API while keeping packages independently installable.
+canVODpy uses Python 3.3+ **implicit namespace packages** to let seven independent packages share the `canvod.*` import prefix — a unified API backed by separately installable wheels.
 
 ```python
-from canvod.readers import Rnxv3Obs        # from canvod-readers package
-from canvod.auxiliary import Sp3File        # from canvod-auxiliary package
-from canvod.grids import EqualAreaBuilder   # from canvod-grids package
+from canvod.readers   import Rnxv3Obs, SbfReader
+from canvod.auxiliary import Sp3File
+from canvod.grids     import EqualAreaBuilder
+from canvod.store     import MyIcechunkStore
 ```
 
-## Mechanism
+---
 
-### Directory Structure
+## How It Works
 
-A namespace package is created by omitting `__init__.py` from the shared parent directory:
+A namespace package is created by **omitting `__init__.py`** from the shared parent directory. Python treats a directory without `__init__.py` as a namespace that multiple packages can contribute to.
 
-```
-canvod-readers/
-  src/
-    canvod/              # Namespace directory -- NO __init__.py
-      readers/           # Package directory
-        __init__.py      # Regular package
-```
+=== "Namespace layout"
 
-When Python encounters a directory without `__init__.py`, it treats it as a namespace package. Multiple installed packages can each contribute a subdirectory under the same namespace without conflict.
+    ```
+    canvod-readers/src/
+      canvod/                  ← namespace directory — NO __init__.py
+        readers/
+          __init__.py          ← regular package starts here
+          base.py
+          sbf/
+            reader.py
 
-### Comparison with Regular Packages
+    canvod-auxiliary/src/
+      canvod/                  ← same namespace, different package
+        auxiliary/
+          __init__.py
+    ```
 
-**Regular package** (only one package can claim the name):
-```
-src/
-  canvod/
-    __init__.py        # Makes this a regular package -- blocks other contributors
-    readers/
-      __init__.py
-```
+=== "Regular package (wrong)"
 
-**Namespace package** (multiple packages share the name):
-```
-src/
-  canvod/              # No __init__.py -- namespace is open for extension
-    readers/
-      __init__.py
-```
+    ```
+    src/
+      canvod/
+        __init__.py      ← Makes canvod a REGULAR package
+        readers/         ← Blocks other packages from contributing
+    ```
+
+    If any installed package adds `canvod/__init__.py`, it claims
+    exclusive ownership of `canvod` — breaking all other sub-packages.
+
+=== "Combined site-packages"
+
+    After `uv sync` installs all packages:
+
+    ```
+    site-packages/
+      canvod/             ← Python merges all contributors here
+        readers/          ← from canvod-readers
+        auxiliary/        ← from canvod-auxiliary
+        grids/            ← from canvod-grids
+        vod/              ← from canvod-vod
+        store/            ← from canvod-store
+        viz/              ← from canvod-viz
+        utils/            ← from canvod-utils
+    ```
+
+---
 
 ## Build Configuration
 
-The `uv_build` backend is configured with a dotted `module-name` to produce correct namespace structure:
+The `uv_build` backend uses a dotted `module-name` to produce the correct wheel structure:
 
 ```toml
 # packages/canvod-readers/pyproject.toml
 [build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
+requires      = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "canvod.readers"  # Dot indicates namespace package
+module-name = "canvod.readers"   # dot → namespace package
 ```
 
-The dot in `"canvod.readers"` instructs uv_build to:
-- Treat `canvod` as a namespace (do not include `__init__.py` for it)
-- Package only the `readers` subdirectory
+The dot in `"canvod.readers"` tells uv_build:
+
+1. Treat `canvod/` as a namespace (do not include `__init__.py` for it).
+2. Package only the `readers/` subdirectory and its contents.
+
+---
 
 ## Wheel Contents
-
-A built wheel contains the namespace structure without a top-level `__init__.py`:
 
 ```
 canvod_readers-0.1.0-py3-none-any.whl
   canvod/
-    readers/
+    readers/                 ← package starts here (has __init__.py)
       __init__.py
       base.py
-      rinex/
-        ...
+      sbf/
+        reader.py
   canvod_readers-0.1.0.dist-info/
     METADATA
     WHEEL
     RECORD
 ```
 
-## Combined Installation
+!!! note
+    The wheel contains `canvod/readers/` but no `canvod/__init__.py`.
+    This is correct — the absence of `__init__.py` is what makes it a namespace.
 
-When multiple packages are installed, Python merges them under one namespace:
-
-```
-site-packages/
-  canvod/
-    readers/      # From canvod-readers
-    auxiliary/    # From canvod-auxiliary
-    grids/        # From canvod-grids
-    vod/          # From canvod-vod
-    store/        # From canvod-store
-    viz/          # From canvod-viz
-```
+---
 
 ## Import Resolution
 
 When Python processes `from canvod.readers import Rnxv3Obs`:
 
-1. It finds `canvod` as a namespace (no `__init__.py`)
-2. It locates `readers` within `canvod` (has `__init__.py` -- regular package)
-3. It imports `Rnxv3Obs` from `canvod/readers/__init__.py`
+1. `canvod` — no `__init__.py` found → **namespace package** (open for extension).
+2. `readers` — has `__init__.py` → **regular package** (standard import).
+3. `Rnxv3Obs` — imported from `canvod/readers/__init__.py`.
+
+---
+
+## Independent Installation
+
+Because each sub-package is self-contained, users install only what they need:
+
+```bash
+pip install canvod-readers            # readers only
+pip install canvod-readers canvod-store   # subset
+pip install canvodpy                  # everything
+```
+
+---
 
 ## Verification
 
 ```python
 import canvod
-print(canvod.__file__)   # AttributeError -- namespace packages have no __file__
+print(canvod.__file__)   # AttributeError — namespace packages have no __file__
 
 from canvod import readers
-print(readers.__file__)  # Prints the file path -- regular package
+print(readers.__file__)  # e.g. …/site-packages/canvod/readers/__init__.py
 ```
+
+---
 
 ## Common Pitfalls
 
-### Adding `__init__.py` to the Namespace Directory
+!!! failure "Adding `__init__.py` to the namespace directory"
+    `src/canvod/__init__.py` converts the namespace into a regular package,
+    preventing all other packages from contributing to `canvod.*`.
 
-Creating `src/canvod/__init__.py` converts the namespace into a regular package, preventing other packages from contributing to it.
+!!! failure "Incorrect `module-name`"
+    ```toml
+    # WRONG — creates a regular top-level package
+    module-name = "canvod_readers"
 
-### Incorrect module-name Configuration
+    # CORRECT — creates a namespace sub-package
+    module-name = "canvod.readers"
+    ```
 
-```toml
-# Incorrect -- creates regular package, not namespace
-module-name = "canvod_readers"
+---
 
-# Correct -- creates namespace package
-module-name = "canvod.readers"
-```
+## Prior Art
 
-## Precedents
+Namespace packages are used by major Python ecosystems:
 
-Namespace packages are used by several major Python projects:
-
-- **Azure SDK**: `azure.storage`, `azure.compute`, `azure.ai`
-- **Google Cloud**: `google.cloud.storage`, `google.cloud.compute`
-- **Zope**: `zope.interface`, `zope.component`
-- **Sphinx extensions**: `sphinxcontrib.*`
+| Project | Namespace |
+|---------|-----------|
+| Azure SDK | `azure.storage`, `azure.compute`, `azure.ai` |
+| Google Cloud | `google.cloud.storage`, `google.cloud.compute` |
+| Zope | `zope.interface`, `zope.component` |
+| Sphinx extensions | `sphinxcontrib.*` |

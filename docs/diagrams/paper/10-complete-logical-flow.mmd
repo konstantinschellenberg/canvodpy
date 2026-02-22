@@ -7,7 +7,8 @@ flowchart TD
 
     subgraph INIT["Initialization"]
         SITE["Site"]
-        RX_ST["RINEX Store"]
+        RX_ST["Obs Store"]
+        META_ST["Metadata Store"]
         VOD_ST["VOD Store"]
     end
 
@@ -17,23 +18,35 @@ flowchart TD
         SCHED["Schedule"]
     end
 
-    subgraph AUX["Auxiliary Pipeline"]
+    subgraph AUX["Auxiliary Pipeline (RINEX only)"]
         DL["Download SP3 + CLK"]
         INTERP["Interpolate"]
         AUX_DS["Auxiliary Dataset"]
     end
 
-    subgraph PAR["Parallel Processing"]
-        READ["Read RINEX"]
-        FILT["Filter Signals"]
+    subgraph PAR_R["Parallel Processing — RINEX"]
+        READ_R["Read RINEX"]
+        FILT_R["Filter Signals"]
         SLICE["Slice Auxiliary"]
         SCS["Spherical Coords"]
     end
 
-    subgraph STORE["Storage"]
+    subgraph PAR_S["Single-Pass Decode — SBF"]
+        READ_S["Read SBF"]
+        OBS_S["Obs Dataset"]
+        GEO_S["Geometry (θ, φ)"]
+        META_S["Quality Metadata"]
+    end
+
+    subgraph STORE_OBS["Obs Storage"]
         HASH["Hash Check"]
         WRITE["Append"]
         COMMIT["Commit"]
+    end
+
+    subgraph STORE_META["Metadata Storage"]
+        WRITE_M["Write metadata/sbf_obs"]
+        COMMIT_M["Commit"]
     end
 
     subgraph GRID["Grid"]
@@ -58,20 +71,26 @@ flowchart TD
     YAML --> VALID --> CONF
     CONF --> SITE
     SITE --> RX_ST
+    SITE --> META_ST
     SITE --> VOD_ST
 
     CONF --> MATCH --> EXPAND --> SCHED
 
     SCHED --> DL --> INTERP --> AUX_DS
-
-    SCHED --> READ --> FILT --> SLICE --> SCS
+    SCHED --> READ_R --> FILT_R --> SLICE --> SCS
     AUX_DS --> SLICE
 
-    SCS --> HASH --> WRITE --> COMMIT
-    COMMIT --> RX_ST
+    SCHED --> READ_S --> OBS_S
+    READ_S --> GEO_S
+    READ_S --> META_S
+
+    SCS --> HASH --> WRITE --> COMMIT --> RX_ST
+    OBS_S --> HASH
+    GEO_S --> HASH
+
+    META_S --> WRITE_M --> COMMIT_M --> META_ST
 
     RX_ST --> BUILD --> KD --> ASSIGN
-
     ASSIGN --> LOAD --> DELTA --> TAU --> DS
 
     DS --> SAVE --> VOD_ST

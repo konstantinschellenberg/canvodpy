@@ -1,4 +1,4 @@
-## Overview: Multi-Package Monorepo Publishing
+# PyPI Publishing Setup
 
 This monorepo publishes **8 separate packages** to PyPI:
 
@@ -18,6 +18,24 @@ This monorepo publishes **8 separate packages** to PyPI:
 ```bash
 pip install canvodpy  # Gets all 8 packages automatically
 ```
+
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-flask: &nbsp; **Phase 1 — TestPyPI** *(Done)*
+
+    ---
+
+    Account created · First manual upload · OIDC trusted publishers configured.
+    Beta/alpha releases publish here automatically.
+
+-   :fontawesome-solid-box-open: &nbsp; **Phase 2 — Real PyPI** *(Active)*
+
+    ---
+
+    Production account · Environment protection · Stable releases only.
+    `pip install canvodpy` serves users from here.
+
+</div>
 
 ---
 
@@ -275,7 +293,9 @@ rm -rf test-env
 
 ### Step 8: Reserve Package Name on PyPI
 
-**CAUTION:** This is permanent! Double-check everything.
+!!! warning "Package names are permanent"
+    Once a package is uploaded to PyPI, the name is reserved forever.
+    You cannot delete it or reuse its version numbers. Double-check everything before uploading.
 
 ```bash
 # Build fresh
@@ -315,6 +335,9 @@ password: your_pypi_password
 3. **Click "Add"**
 
 ### Step 10: Create Production GitHub Environment
+
+!!! tip "Enable 2FA first"
+    PyPI requires 2FA to add trusted publishers. Enable it at [pypi.org/manage/account/](https://pypi.org/manage/account/) before proceeding.
 
 1. **Settings → Environments → New**
 2. **Name:** `release`
@@ -405,96 +428,75 @@ python -c "import canvodpy; print(canvodpy.__version__)"
 
 ---
 
-## Summary: What You Get
+## Summary
 
-### For Beta/Test Releases:
-```bash
-just release 0.2.0-beta.1
-git push --tags
-# → Publishes to TestPyPI
-```
+=== "Beta / test releases"
 
-### For Stable Releases:
-```bash
-just release 0.2.0
-git push --tags
-# → Publishes to real PyPI
-```
+    ```bash
+    just release 0.2.0-beta.1
+    git push --tags
+    # → publishes to TestPyPI automatically
+    ```
 
-### Users Can Install:
-```bash
-pip install canvodpy       # Latest stable
-pip install canvodpy==0.2.0   # Specific version
-```
+=== "Stable releases"
 
----
+    ```bash
+    just release 0.2.0
+    git push --tags
+    # → publishes to real PyPI (after environment approval)
+    ```
 
-## Troubleshooting
+=== "User installation"
 
-### "Publisher not configured"
-
-**Problem:** OIDC upload fails with authentication error
-
-**Check:**
-1. Environment name in workflow matches PyPI config
-2. Workflow name matches exactly
-3. Repository owner/name correct
-4. You've enabled 2FA on PyPI
-
-### "Package already exists"
-
-**Problem:** Can't upload same version twice
-
-**Solution:** Bump version and try again
-```bash
-just bump patch  # 0.1.0 → 0.1.1
-```
-
-### "Build failed"
-
-**Problem:** `uv build` doesn't work
-
-**Check:**
-```bash
-# Test locally first
-uv build
-ls dist/
-# Should see .whl and .tar.gz files
-```
-
-### "Environment approval stuck"
-
-**Problem:** Workflow waiting for approval forever
-
-**Solution:** Check Environment protection rules
-- Maybe you need to approve manually
-- Check who's configured as reviewer
+    ```bash
+    pip install canvodpy          # latest stable
+    pip install canvodpy==0.2.0   # specific version
+    ```
 
 ---
 
 ## Best Practices
 
-1. **Always test on TestPyPI first**
-   - Use `-beta.X` or `-alpha.X` versions
-   - Verify installation works
+!!! tip "Test on TestPyPI first"
+    Use `-beta.X` or `-alpha.X` version suffixes to publish to TestPyPI.
+    Verify `pip install --index-url https://test.pypi.org/simple/ canvodpy` works
+    before creating a stable release.
 
-2. **Use environment protection**
-   - Required reviewers prevent accidents
-   - Wait timer gives you time to think
+!!! warning "Version numbers are permanent"
+    PyPI does not allow deleting packages or reusing version numbers.
+    Bump the version and re-release if you need to fix a bad upload.
 
-3. **Version numbers are permanent**
-   - Can't delete from PyPI
-   - Can't reuse version numbers
-   - Be careful!
+!!! info "Environment protection"
+    The `release` environment has required reviewers and a 5-minute wait timer —
+    this prevents accidental production releases.
 
-4. **Keep pre-releases separate**
-   - TestPyPI: beta/alpha releases
-   - Real PyPI: stable releases only
+---
 
-5. **Monitor your releases**
-   - Check PyPI after each upload
-   - Verify install works
-   - Check download stats
+## Troubleshooting
+
+??? failure "`Publisher not configured` OIDC error"
+    1. Verify environment name in workflow matches PyPI config exactly
+    2. Verify workflow filename matches exactly
+    3. Verify repository owner/name are correct
+    4. Confirm 2FA is enabled on your PyPI account
+
+??? failure "`Package already exists`"
+    Cannot upload the same version twice. Bump and retry:
+    ```bash
+    just bump patch   # 0.1.0 → 0.1.1
+    ```
+
+??? failure "`Build failed`"
+    Test locally first:
+    ```bash
+    uv build
+    ls dist/   # should contain .whl and .tar.gz
+    uvx twine check dist/*
+    ```
+
+??? failure "Environment approval stuck"
+    Check the `release` environment's protection rules at
+    Settings → Environments → release. Approve pending deployments manually.
 
 ---
 
@@ -502,8 +504,5 @@ ls dist/
 
 - [ ] Test with beta release on TestPyPI
 - [ ] First production release v0.1.0
-- [ ] Set up Zenodo for DOI (academic citations)
-- [ ] Configure GitHub Sponsors (optional)
-- [ ] Add download badges to README
+- [ ] Set up Zenodo for DOI ([Zenodo Setup](ZENODO_SETUP.md))
 
-**Questions?** Check `/files/how_it_works.md` for detailed explanations!

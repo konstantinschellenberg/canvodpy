@@ -2,31 +2,36 @@
 
 Inter-package dependency relationships and independence metrics for the canVODpy monorepo.
 
+---
+
 ## Dependency Graph
 
 ```mermaid
-graph TD
-    canvod_readers["canvod-readers<br/>GNSS data format readers"]
-    canvod_aux["canvod-auxiliary<br/>Auxiliary data augmentation"]
-    canvod_vod["canvod-vod<br/>VOD calculation"]
-    canvod_viz["canvod-viz<br/>Visualization utilities"]
-    canvod_utils["canvod-utils<br/>Configuration & utilities"]
-    canvod_grids["canvod-grids<br/>Grid operations"]
-    canvod_store["canvod-store<br/>Storage management"]
+graph LR
+    subgraph FOUNDATION["Foundation Layer (0 deps)"]
+        READERS["canvod-readers"]
+        GRIDS["canvod-grids"]
+        VOD["canvod-vod"]
+        UTILS["canvod-utils"]
+    end
 
-    canvod_aux --> canvod_readers
-    canvod_viz --> canvod_grids
-    canvod_store --> canvod_grids
+    subgraph CONSUMERS["Consumer Layer (1 dep each)"]
+        AUX["canvod-auxiliary"]
+        VIZ["canvod-viz"]
+        STORE["canvod-store"]
+    end
+
+    AUX   --> READERS
+    VIZ   --> GRIDS
+    STORE --> GRIDS
 ```
 
-**Legend:**
-- Green (Stable): No dependencies, used by other packages
-- Pink (Leaf): Has dependencies, not depended upon by others
+---
 
 ## Independence Metrics
 
-| Package | Dependencies | Dependents | Instability | Independence |
-|---------|--------------|------------|-------------|--------------|
+| Package | Ce (deps) | Ca (dependents) | Instability | Independence |
+|---------|:---------:|:---------------:|:-----------:|:------------:|
 | canvod-readers | 0 | 1 | 0.00 | 1.00 |
 | canvod-grids | 0 | 2 | 0.00 | 1.00 |
 | canvod-vod | 0 | 0 | 0.00 | 1.00 |
@@ -35,54 +40,54 @@ graph TD
 | canvod-viz | 1 | 0 | 1.00 | 0.83 |
 | canvod-store | 1 | 0 | 1.00 | 0.83 |
 
-### Metric Definitions
+??? note "Metric definitions"
+    - **Ce (efferent coupling)** — packages this package depends on. Lower = more independent.
+    - **Ca (afferent coupling)** — packages that depend on this one. Higher = more reusable.
+    - **Instability** — `Ce / (Ce + Ca)`. 0.0 = maximally stable (foundation). 1.0 = maximally unstable (leaf).
+    - **Independence** — `1 − (Ce / total_packages)`. 1.0 = no inter-package dependencies.
 
-- **Efferent coupling (Ce)**: Number of packages this package depends on. Lower values indicate greater independence.
-- **Afferent coupling (Ca)**: Number of packages that depend on this package. Higher values indicate greater reusability.
-- **Instability (I)**: `Ce / (Ce + Ca)`. 0.0 = maximally stable (foundation), 1.0 = maximally unstable (leaf).
-- **Independence**: `1 - (Ce / total_packages)`. 1.0 = no inter-package dependencies.
+---
 
 ## Architecture Summary
 
-- No circular dependencies
-- 4 packages with zero inter-package dependencies (57%)
-- 3 total internal dependency edges
-- Maximum dependency depth: 1
+!!! success "Flat dependency graph"
+    - **No circular dependencies**
+    - 4 of 7 packages (57 %) have zero inter-package dependencies
+    - 3 total internal dependency edges
+    - **Maximum depth = 1** — a consumer depends on a foundation; foundations never depend on each other
 
-### Dependency Layers
+This two-layer structure simplifies testing (test Layer 0 packages first, then Layer 1) and ensures that changes to a foundation package do not cascade to sibling packages.
 
-```
-Layer 0 (Foundation, 0 dependencies):
-  canvod-readers, canvod-grids, canvod-vod, canvod-utils
-
-Layer 1 (Consumers, 1 dependency each):
-  canvod-auxiliary (depends on canvod-readers)
-  canvod-viz (depends on canvod-grids)
-  canvod-store (depends on canvod-grids)
-```
-
-The two-layer structure simplifies testing (test Layer 0 first, then Layer 1) and ensures that changes to foundation packages do not cascade between siblings.
+---
 
 ## Extractability
 
 All packages can be extracted to independent repositories with zero or minimal changes:
 
-```
-# Foundation packages: extract directly
-packages/canvod-readers/  -> independent repo
-packages/canvod-grids/    -> independent repo
-packages/canvod-vod/      -> independent repo
-packages/canvod-utils/    -> independent repo
+=== "Foundation packages"
 
-# Consumer packages: extract with one PyPI dependency
-packages/canvod-auxiliary/ -> independent repo (+ canvod-readers)
-packages/canvod-viz/      -> independent repo (+ canvod-grids)
-packages/canvod-store/    -> independent repo (+ canvod-grids)
-```
+    ```bash
+    # Extract directly — no internal dependencies
+    packages/canvod-readers/  → independent repo
+    packages/canvod-grids/    → independent repo
+    packages/canvod-vod/      → independent repo
+    packages/canvod-utils/    → independent repo
+    ```
 
-## Regeneration
+=== "Consumer packages"
+
+    ```bash
+    # Extract + add one PyPI dependency
+    packages/canvod-auxiliary/ → independent repo (+ canvod-readers on PyPI)
+    packages/canvod-viz/       → independent repo (+ canvod-grids on PyPI)
+    packages/canvod-store/     → independent repo (+ canvod-grids on PyPI)
+    ```
+
+---
+
+## Regenerate Reports
 
 ```bash
 just deps-report    # Full metrics report
-just deps-graph     # Mermaid diagram
+just deps-graph     # Mermaid dependency diagram
 ```

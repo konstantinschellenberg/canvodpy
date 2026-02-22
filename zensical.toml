@@ -46,6 +46,7 @@ nav = [
     { "canvod-readers" = [
       { "Overview" = "packages/readers/overview.md" },
       { "RINEX v3.04 Format" = "packages/readers/rinex-format.md" },
+      { "SBF Reader" = "packages/readers/sbf.md" },
       { "Reader Architecture" = "packages/readers/architecture.md" },
       { "Extending Readers" = "packages/readers/extending.md" },
     ]},

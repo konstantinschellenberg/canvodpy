@@ -1,71 +1,124 @@
 # Storage Strategies
 
-## Overview
+The write strategy controls how `MyIcechunkStore` handles the time range already in the store. Choose once per store type — set it in `processing.yaml`.
 
-Three storage strategies control how existing data is handled during writes:
+<div class="grid cards" markdown>
 
-| Strategy | Behavior | Use Case |
-|----------|----------|----------|
-| Skip | No write if data exists for the time range | Initial ingestion, pipeline restarts |
-| Overwrite | Replace existing data for the time range | Reprocessing, algorithm updates |
-| Append | Merge new data with existing | Continuous monitoring, extending time series |
+-   :fontawesome-solid-forward-step: &nbsp; **Skip**
 
-## Skip Strategy
+    ---
 
-```python
-store = MyIcechunkStore(store_path, strategy="skip")
-store.write(dataset)  # No-op if data exists
-```
+    No-op if any data already exists for the incoming time range.
+    Safe for immutable raw observations — never overwrites.
 
-Checks whether data exists for the given time range before writing. Suitable for raw RINEX observations, which do not change after initial ingestion.
+    *Best for: initial ingestion, pipeline restarts*
 
-## Overwrite Strategy
+-   :fontawesome-solid-arrows-rotate: &nbsp; **Overwrite**
 
-```python
-store = MyIcechunkStore(store_path, strategy="overwrite")
-store.write(dataset)  # Replaces existing data
-```
+    ---
 
-Deletes existing data for the time range and writes new data with a new version snapshot. Suitable for processed results that may be recomputed with improved algorithms.
+    Deletes existing data for the time range, then writes fresh.
+    Each run produces a new Icechunk snapshot for audit.
 
-## Append Strategy
+    *Best for: reprocessed results, algorithm updates*
 
-```python
-store = MyIcechunkStore(store_path, strategy="append")
-store.write(dataset)  # Merges with existing
-```
+-   :fontawesome-solid-layer-group: &nbsp; **Append**
 
-Merges new data with existing data, handling overlapping time ranges. Suitable for live monitoring stations.
+    ---
 
-## Configuration
+    Merges new data with existing, extending the time series.
+    Handles overlapping epochs by keeping existing values.
 
-Strategy can be set via constructor, configuration file, or environment variable:
+    *Best for: continuous monitoring, daily live ingestion*
 
-```python
-store = MyIcechunkStore(store_path, strategy="append")
-```
+</div>
 
-```yaml
-# config/processing.yaml
-storage:
-  rinex_store_strategy: skip
-  vod_store_strategy: overwrite
-```
+---
 
-```bash
-export CANVOD_STORE_STRATEGY=append
-```
+## Behaviour Reference
+
+| Strategy | Data exists | Data missing | Version snapshot | Speed |
+|----------|:-----------:|:------------:|:----------------:|:-----:|
+| `skip` | No write | Write | On write | Fast |
+| `overwrite` | Delete + write | Write | Always | Medium |
+| `append` | Merge | Write | Always | Slower |
+
+---
+
+## Usage
+
+=== "Constructor"
+
+    ```python
+    from canvod.store import MyIcechunkStore
+
+    # Raw observations — skip if already ingested
+    rinex_store = MyIcechunkStore(
+        "/data/stores/rosalia/rinex",
+        strategy="skip",
+    )
+
+    # Processed VOD — rewrite on algorithm update
+    vod_store = MyIcechunkStore(
+        "/data/stores/rosalia/vod",
+        strategy="overwrite",
+    )
+
+    # Monitoring — extend daily
+    live_store = MyIcechunkStore(
+        "/data/stores/live/rinex",
+        strategy="append",
+    )
+    ```
+
+=== "processing.yaml"
+
+    ```yaml
+    storage:
+      rinex_store_strategy: skip      # raw observations are immutable
+      vod_store_strategy: overwrite   # recompute as algorithms improve
+    ```
+
+    The `Site` object reads these keys automatically:
+
+    ```python
+    from canvod.site import Site
+    site = Site("Rosalia")           # strategy from config
+    site.rinex_store.strategy        # → "skip"
+    site.vod_store.strategy          # → "overwrite"
+    ```
+
+---
 
 ## Recommended Defaults
 
-- **RINEX data (raw observations)**: `skip` -- raw data is immutable
-- **VOD data (processed results)**: `overwrite` -- recompute as algorithms improve
-- **Continuous monitoring**: `append` -- extend time series daily
+!!! success "Raw RINEX / SBF observations → `skip`"
+    Raw GNSS data never changes after collection.
+    Skip prevents accidental re-ingestion and keeps ingest pipelines
+    idempotent — safe to restart at any point.
 
-## Performance Characteristics
+!!! info "Processed VOD products → `overwrite`"
+    As the tau-omega inversion improves or auxiliary data quality changes,
+    re-running the pipeline should replace old values.
+    Each overwrite creates a new Icechunk snapshot so you can compare
+    before/after.
 
-| Strategy | Write Speed | Storage Efficiency | Data Safety |
-|----------|-----------|-------------------|-------------|
-| Skip | Fast | High | High |
-| Overwrite | Medium | Moderate | Medium |
-| Append | Slow | Lower | Lower |
+!!! warning "Continuous monitoring → `append`"
+    Use `append` only when truly extending a live time series.
+    It is slower and may produce unexpected results if a day is
+    partially processed and re-submitted.
+
+---
+
+## Performance
+
+| Strategy | Typical write throughput | Storage overhead | Re-ingest safety |
+|----------|--------------------------|-----------------|------------------|
+| `skip` | Fastest — hash check only | None | Safe |
+| `overwrite` | Moderate — delete + write | Low (old chunks GC'd) | Safe |
+| `append` | Slowest — read-merge-write | Higher (old + new chunks) | Risky |
+
+!!! tip "Garbage collection"
+    Overwritten chunks remain in the Icechunk object store until you run
+    GC. The old versions are still accessible via snapshot IDs — useful for
+    auditing before cleaning up.

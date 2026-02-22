@@ -5,148 +5,184 @@ description: Tools used in canVODpy development
 
 # Development Tooling
 
-## Overview
+canVODpy uses a modern Python toolchain built almost entirely on the [Astral](https://astral.sh/) ecosystem.
 
-canVODpy uses a modern Python toolchain, primarily from the [Astral](https://astral.sh/) ecosystem. This page documents each tool and its role.
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-box: &nbsp; **uv**
+
+    ---
+
+    Replaces pip, venv, pip-tools, and twine in a single binary.
+    Manages Python versions, virtual environments, dependency resolution,
+    and builds.
+
+    [:octicons-arrow-right-24: astral.sh/uv](https://docs.astral.sh/uv/)
+
+-   :fontawesome-solid-broom: &nbsp; **ruff**
+
+    ---
+
+    Linter + formatter in one tool. Implements 700+ rules from flake8,
+    pylint, black, and isort at 10–100× their speed.
+
+    [:octicons-arrow-right-24: astral.sh/ruff](https://docs.astral.sh/ruff/)
+
+-   :fontawesome-solid-magnifying-glass-chart: &nbsp; **ty**
+
+    ---
+
+    Type checker replacing mypy. Early development (alpha) but already
+    significantly faster for large codebases.
+
+-   :fontawesome-solid-list-check: &nbsp; **just**
+
+    ---
+
+    Task runner with simpler syntax than Make. All common development
+    tasks — test, check, docs, config — are `just <command>` away.
+
+    [:octicons-arrow-right-24: github.com/casey/just](https://github.com/casey/just)
+
+</div>
+
+---
 
 ## Core Tools
 
-### uv -- Package Manager
+=== "uv — Package Manager"
 
-[Documentation](https://docs.astral.sh/uv/)
+    ```bash
+    uv sync                  # Install all dependencies (workspace-aware)
+    uv add numpy             # Add a runtime dependency
+    uv add --dev pytest      # Add a dev dependency
+    uv run pytest            # Run in the managed environment
+    uv build                 # Build a wheel
+    uv publish               # Publish to PyPI
+    ```
 
-uv manages Python versions, virtual environments, dependency resolution, package installation, and builds. It replaces pip, venv, pip-tools, and twine.
+    Configuration in `pyproject.toml`:
 
-```bash
-uv sync                    # Install dependencies
-uv add numpy               # Add a dependency
-uv run pytest              # Run command in the environment
-uv build                   # Build the package
-```
+    ```toml
+    [project]
+    dependencies = ["numpy>=2.0", "xarray>=2024.0"]
 
-Configuration is specified in `pyproject.toml`:
+    [dependency-groups]
+    dev = ["pytest>=8.0", "ruff>=0.14", "ty>=0.0.1"]
+    ```
 
-```toml
-[project]
-dependencies = ["numpy>=1.24", "pandas>=2.0"]
+=== "uv_build — Build Backend"
 
-[dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.14"]
-```
+    Builds wheel and sdist with native namespace package support:
 
-### uv_build -- Build Backend
+    ```toml
+    # packages/canvod-readers/pyproject.toml
+    [build-system]
+    requires      = ["uv_build>=0.9.17,<0.10.0"]
+    build-backend = "uv_build"
 
-[Documentation](https://docs.astral.sh/uv/concepts/build-backend/)
+    [tool.uv.build-backend]
+    module-name = "canvod.readers"   # dot → namespace package
+    ```
 
-uv_build creates wheel and source distributions from Python packages. It provides native support for namespace packages via the dotted `module-name` configuration.
+    !!! note
+        `canvod-utils` uses `hatchling` as its build backend — the only
+        exception in the monorepo.
 
-```toml
-[build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
-build-backend = "uv_build"
+=== "ruff — Linter + Formatter"
 
-[tool.uv.build-backend]
-module-name = "canvod.readers"  # Dot creates namespace package
-```
+    ```bash
+    ruff check .          # Lint
+    ruff check . --fix    # Lint with auto-fix
+    ruff format .         # Format
+    ```
 
-Note: `canvod-utils` uses `hatchling` as its build backend instead.
+    Configuration:
 
-### ruff -- Linter and Formatter
+    ```toml
+    [tool.ruff]
+    line-length = 88
 
-[Documentation](https://docs.astral.sh/ruff/)
+    [tool.ruff.lint]
+    select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "RUF", "PIE", "PT"]
+    ```
 
-ruff provides linting and formatting in a single tool, replacing flake8, pylint, black, and isort. It implements 700+ rules from multiple linting tools.
+=== "ty — Type Checker"
 
-```bash
-ruff check .          # Lint
-ruff check . --fix    # Lint with auto-fix
-ruff format .         # Format
-```
+    ```bash
+    uv run ty check packages/canvod-readers/src/canvod/readers/
+    uv run ty check canvodpy/src/canvodpy/
+    ```
 
-Configuration:
+    Configured per-package in `pyproject.toml`:
 
-```toml
-[tool.ruff]
-line-length = 88
+    ```toml
+    [tool.ty]
+    python = "3.13"
+    ```
 
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "RUF", "PIE", "PT"]
-```
-
-### ty -- Type Checker
-
-ty checks Python type annotations, replacing mypy. It is currently in early development (alpha).
-
-```bash
-ty check .
-```
+---
 
 ## Supporting Tools
 
-### just -- Task Runner
+=== "just — Task Runner"
 
-[Documentation](https://github.com/casey/just)
+    All common tasks are single commands:
 
-just provides a command runner with simpler syntax than Make. It is used for all common development tasks and in CI/CD.
+    ```bash
+    just test             # Run the full test suite
+    just check            # Lint + format + type-check
+    just hooks            # Install pre-commit hooks
+    just docs             # Build and serve documentation locally
+    just config-init      # Initialize YAML config from templates
+    just config-validate  # Validate config files
+    just --list           # Show all available commands
+    ```
 
-```bash
-just test             # Run tests
-just check            # Lint + format + type-check
-just docs             # Build and serve documentation
-just --list           # Show all available commands
-```
+=== "pytest — Testing"
 
-### pytest -- Testing Framework
+    ```bash
+    uv run pytest                        # All tests
+    uv run pytest --cov=canvod           # With coverage
+    uv run pytest -m "not integration"   # Skip integration tests
+    uv run pytest packages/canvod-readers/tests/
+    ```
 
-[Documentation](https://docs.pytest.org/)
+    Integration tests are marked `@pytest.mark.integration` and excluded
+    from the default run.
 
-pytest runs the test suite and generates coverage reports. Tests reside in each package's `tests/` directory.
+=== "pre-commit — Git Hooks"
 
-```bash
-uv run pytest                    # All tests
-uv run pytest --cov=canvod       # With coverage
-```
+    ```bash
+    just hooks    # Install hooks (run once after clone)
+    ```
 
-### pre-commit -- Git Hooks
+    Configured in `.pre-commit-config.yaml`:
 
-[Documentation](https://pre-commit.com/)
+    ```yaml
+    repos:
+      - repo: https://github.com/astral-sh/ruff-pre-commit
+        hooks:
+          - id: ruff-check
+            args: [--fix]
+          - id: ruff-format
+    ```
 
-pre-commit runs ruff and other checks automatically before each commit.
+    Hooks run on every `git commit` — failures block the commit and
+    auto-fix what they can.
 
-```bash
-just hooks            # Install hooks
-```
-
-Configuration in `.pre-commit-config.yaml`:
-
-```yaml
-repos:
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    hooks:
-      - id: ruff-check
-        args: [--fix]
-      - id: ruff-format
-```
-
-### MyST -- Documentation
-
-[Documentation](https://mystmd.org/)
-
-MyST is a Markdown-based documentation system supporting Jupyter notebooks, Mermaid diagrams, and cross-references.
-
-```bash
-uv run myst           # Preview docs locally
-```
+---
 
 ## Tool Comparison
 
-| Task | Traditional | canVODpy |
-|------|-------------|----------|
+| Task | Traditional stack | canVODpy |
+|------|------------------|----------|
 | Package management | pip | uv |
-| Environments | venv | uv (built-in) |
+| Virtual environments | venv / virtualenv | uv (built-in) |
 | Linting | flake8 + pylint | ruff |
 | Formatting | black + isort | ruff |
 | Type checking | mypy | ty |
 | Building | setuptools | uv_build |
-| Task runner | make | just |
-| Documentation | Sphinx | MyST |
+| Publishing | twine | uv |
+| Task runner | make / tox | just |
+| Documentation | Sphinx | Zensical (MkDocs) |

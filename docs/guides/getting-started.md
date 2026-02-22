@@ -2,6 +2,34 @@
 
 This guide walks you through everything you need — from creating a GitHub account to running your first test — so you can start contributing to canVODpy even if you have never used Git, GitHub, or Python tooling before.
 
+<div class="grid cards" markdown>
+
+-   :fontawesome-brands-github: &nbsp; **Steps 1–5** &nbsp; GitHub + Git
+
+    ---
+
+    GitHub account · Homebrew · Git install · SSH keys · Git identity
+
+-   :fontawesome-solid-gear: &nbsp; **Steps 6–9** &nbsp; Tools + Repo
+
+    ---
+
+    Install `uv` + `just` · Fork + clone · Submodules · Dev environment
+
+-   :fontawesome-solid-sliders: &nbsp; **Step 10** &nbsp; Configuration
+
+    ---
+
+    Initialize YAML config files · Set paths and credentials · Validate
+
+-   :fontawesome-solid-circle-check: &nbsp; **Steps 11–13** &nbsp; Verify + Contribute
+
+    ---
+
+    Run tests · Quality checks · Your first pull request
+
+</div>
+
 ---
 
 ## 1. Create a GitHub account
@@ -483,69 +511,71 @@ Push to your team branch or feature branch (see [Working in teams](#10-working-i
 
 ## 14. Common commands cheat sheet
 
-| Command                | What it does                                      |
-| ---------------------- | ------------------------------------------------- |
-| `just test`            | Run all tests                                     |
-| `just check`           | Lint, format, and type-check all code             |
-| `just hooks`           | Install pre-commit hooks                          |
-| `just check-dev-tools` | Verify uv, just, and python3 are installed        |
-| `just config-init`     | Initialize configuration files from templates     |
-| `just config-validate` | Validate the current configuration                |
-| `just config-show`     | Show the resolved configuration                   |
-| `just docs`            | Preview documentation locally                     |
-| `just test-coverage`   | Run tests with coverage report                    |
-| `just clean`           | Remove build artifacts and caches                 |
-| `uv sync`              | Install/update Python dependencies                |
+!!! tip "Print this"
+
+    | Command                | What it does                                      |
+    | ---------------------- | ------------------------------------------------- |
+    | `just test`            | Run all tests                                     |
+    | `just check`           | Lint, format, and type-check all code             |
+    | `just hooks`           | Install pre-commit hooks                          |
+    | `just check-dev-tools` | Verify uv, just, and python3 are installed        |
+    | `just config-init`     | Initialize configuration files from templates     |
+    | `just config-validate` | Validate the current configuration                |
+    | `just config-show`     | Show the resolved configuration                   |
+    | `just docs`            | Preview documentation locally                     |
+    | `just test-coverage`   | Run tests with coverage report                    |
+    | `just clean`           | Remove build artifacts and caches                 |
+    | `uv sync`              | Install/update Python dependencies                |
 
 ---
 
-## 15. Troubleshooting
+??? question "15. Troubleshooting"
 
-**"command not found" for uv, just, or git**
-:   The tool is not installed or not on your `PATH`. Re-run the installation step and, if needed, open a new terminal window so your shell picks up the updated `PATH`.
+    **"command not found" for uv, just, or git**
+    :   The tool is not installed or not on your `PATH`. Re-run the installation step and, if needed, open a new terminal window so your shell picks up the updated `PATH`.
 
-**"Permission denied (publickey)" when pushing or cloning**
-:   Your SSH key is not set up correctly. Go back to [step 4](#4-set-up-an-ssh-key-for-github) and make sure the key is added to both the SSH agent and your GitHub account.
+    **"Permission denied (publickey)" when pushing or cloning**
+    :   Your SSH key is not set up correctly. Go back to [step 4](#4-set-up-an-ssh-key-for-github) and make sure the key is added to both the SSH agent and your GitHub account.
 
-**`uv sync` fails with a Python version error**
-:   canVODpy requires Python 3.13 or 3.14. Install a supported version with `uv python install 3.13` and try again.
+    **`uv sync` fails with a Python version error**
+    :   canVODpy requires Python 3.13 or 3.14. Install a supported version with `uv python install 3.13` and try again.
 
-**Pre-commit hook fails on commit**
-:   Run `just check` — it will auto-fix most linting and formatting issues. Stage the fixed files and commit again.
+    **Pre-commit hook fails on commit**
+    :   Run `just check` — it will auto-fix most linting and formatting issues. Stage the fixed files and commit again.
 
-**"push rejected" or "failed to push"**
-:   Your branch is behind the remote. Pull the latest changes first:
+    **"push rejected" or "failed to push"**
+    :   Your branch is behind the remote. Pull the latest changes first:
 
-    ```bash
-    git pull --rebase origin my-feature
-    ```
+        ```bash
+        git pull --rebase origin my-feature
+        ```
 
-**Windows: `just` says "could not find the shell" or "system cannot find the path"**
-:   The Justfile expects Git Bash at `C:\Program Files\Git\bin\bash.exe` (the default Git for Windows location). If Git is installed elsewhere, find its location by running in PowerShell:
+    **Windows: `just` says "could not find the shell" or "system cannot find the path"**
+    :   The Justfile expects Git Bash at `C:\Program Files\Git\bin\bash.exe` (the default Git for Windows location). If Git is installed elsewhere, find its location by running in PowerShell:
 
-    ```powershell
-    where.exe bash
-    ```
+        ```powershell
+        where.exe bash
+        ```
 
-    Then update the path in the first lines of the Justfile:
+        Then update the path in the first lines of the Justfile:
 
-    ```
-    set windows-shell := ["C:/YOUR/ACTUAL/PATH/TO/bash.exe", "-c"]
-    ```
+        ```
+        set windows-shell := ["C:/YOUR/ACTUAL/PATH/TO/bash.exe", "-c"]
+        ```
 
-    !!! warning
-        Do **not** commit this change — it's specific to your machine. The default path works for most installations and for CI.
+        !!! warning
+            Do **not** commit this change — it's specific to your machine. The default path works for most installations and for CI.
 
-**Windows: uv install fails with "execution of scripts is disabled"**
-:   PowerShell's default execution policy blocks scripts. Use the bypass flag:
+    **Windows: uv install fails with "execution of scripts is disabled"**
+    :   PowerShell's default execution policy blocks scripts. Use the bypass flag:
 
-    ```powershell
-    powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-    ```
+        ```powershell
+        powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+        ```
 
-**Windows: line ending warnings (`LF will be replaced by CRLF`)**
-:   Configure Git to keep Unix-style line endings:
+    **Windows: line ending warnings (`LF will be replaced by CRLF`)**
+    :   Configure Git to keep Unix-style line endings:
 
-    ```bash
-    git config --global core.autocrlf input
-    ```
+        ```bash
+        git config --global core.autocrlf input
+        ```

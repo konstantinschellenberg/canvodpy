@@ -1,16 +1,66 @@
 # How the Release Infrastructure Works
 
-**Created:** 2026-02-04
-**Audience:** Maintainers & Contributors
+This page documents the complete release automation chain — from commit message to PyPI upload.
 
-## Table of Contents
+<div class="grid cards" markdown>
 
-1. [Conventional Commits System](#conventional-commits-system)
-2. [Git Changelog Generator](#git-changelog-generator)
-3. [Version Management with Commitizen](#version-management-with-commitizen)
-4. [GitHub Releases Automation](#github-releases-automation)
-5. [PyPI Publishing Setup](#pypi-publishing-setup)
-6. [Trusted Publishing with OIDC](#trusted-publishing-with-oidc)
+-   :fontawesome-solid-comment: &nbsp; **Conventional Commits**
+
+    ---
+
+    Structured commit messages that machines can parse.
+    `feat`, `fix`, `docs` determine version bumps automatically.
+
+    [:octicons-arrow-right-24: Details](#conventional-commits-system)
+
+-   :fontawesome-solid-scroll: &nbsp; **Changelog Generator**
+
+    ---
+
+    `git-changelog` reads commit history and produces
+    `CHANGELOG.md` automatically on every release.
+
+    [:octicons-arrow-right-24: Details](#git-changelog-generator)
+
+-   :fontawesome-solid-tag: &nbsp; **Version Management**
+
+    ---
+
+    `commitizen` bumps `version` in all 8 `pyproject.toml` files
+    simultaneously, creates a git tag, and commits.
+
+    [:octicons-arrow-right-24: Details](#version-management-with-commitizen)
+
+-   :fontawesome-brands-github: &nbsp; **GitHub Releases**
+
+    ---
+
+    A workflow detects new tags, creates a draft release from
+    the CHANGELOG, and waits for maintainer approval.
+
+    [:octicons-arrow-right-24: Details](#github-releases-automation)
+
+-   :fontawesome-solid-box-open: &nbsp; **PyPI Publishing**
+
+    ---
+
+    Two workflows: `publish_testpypi.yml` (beta/alpha tags) and
+    `publish_pypi.yml` (stable tags). Triggered by publishing the release.
+
+    [:octicons-arrow-right-24: Details](#pypi-publishing-setup)
+
+-   :fontawesome-solid-lock: &nbsp; **OIDC Authentication**
+
+    ---
+
+    Short-lived JWT tokens from GitHub — no stored API keys.
+    Each workflow run gets a unique 10-minute proof-of-identity.
+
+    [:octicons-arrow-right-24: Details](#trusted-publishing-with-oidc)
+
+</div>
+
+---
 
 ---
 

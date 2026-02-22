@@ -5,7 +5,31 @@ description: Deep dive into how OIDC authentication works for PyPI publishing
 
 # OIDC Trusted Publishing: How It Works
 
-**TL;DR:** OIDC lets GitHub Actions publish to PyPI without passwords or tokens. It uses cryptographic JWT tokens that expire in 10 minutes.
+!!! abstract "TL;DR"
+    OIDC lets GitHub Actions publish to PyPI **without passwords or long-lived tokens**.
+    It uses cryptographic JWT proofs that expire in 10 minutes — no stored secrets.
+
+---
+
+## Traditional vs OIDC
+
+<div class="grid" markdown>
+
+!!! failure "API Tokens (old way)"
+    - Long-lived tokens (months/years)
+    - If GitHub is breached, token leaks
+    - Broad permissions (all packages)
+    - Need manual rotation
+    - Can be accidentally committed to git
+
+!!! success "OIDC (2026 standard)"
+    - Short-lived JWT proof (10 minutes)
+    - No stored secrets anywhere
+    - Scoped to a specific repo + workflow
+    - Zero rotation overhead
+    - Cryptographically verified identity
+
+</div>
 
 ---
 

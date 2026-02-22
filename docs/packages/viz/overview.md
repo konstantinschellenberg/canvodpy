@@ -2,104 +2,128 @@
 
 ## Purpose
 
-The `canvod-viz` package provides 2D and 3D hemispheric visualization for GNSS-T grids, SNR data, and VOD results. It wraps matplotlib (publication-quality 2D polar plots) and plotly (interactive 3D hemispheres) behind a unified API.
+The `canvod-viz` package provides 2D and 3D hemispheric visualization for GNSS-T grids, SNR data, and VOD results. It wraps matplotlib (publication-quality polar plots) and plotly (interactive 3D hemispheres) behind a unified API.
+
+---
 
 ## Components
 
-| Class / Function | Purpose |
-|------------------|---------|
-| `HemisphereVisualizer` | Unified API combining 2D and 3D |
-| `HemisphereVisualizer2D` | Matplotlib polar projection plots |
-| `HemisphereVisualizer3D` | Plotly interactive 3D hemispheres |
-| `visualize_grid` | One-call 2D grid plot |
-| `visualize_grid_3d` | One-call 3D grid plot |
-| `add_tissot_indicatrix` | Overlay angular distortion circles |
-| `PlotStyle` / `PolarPlotStyle` | Styling configuration |
-| `create_publication_style` | Pre-configured publication settings |
-| `create_interactive_style` | Pre-configured interactive settings |
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-circle-half-stroke: &nbsp; **HemisphereVisualizer**
+
+    ---
+
+    Unified entry point combining both 2D and 3D backends.
+    Swap between publication and interactive modes with one method call.
+
+-   :fontawesome-solid-chart-area: &nbsp; **HemisphereVisualizer2D**
+
+    ---
+
+    Matplotlib polar projection plots. Patch-based rendering of grid cells.
+    Publication-quality output at configurable DPI.
+
+-   :fontawesome-solid-cube: &nbsp; **HemisphereVisualizer3D**
+
+    ---
+
+    Plotly interactive 3D hemispheres. Pan, zoom, rotate in the browser.
+    One-call HTML export for sharing.
+
+-   :fontawesome-solid-circle-dot: &nbsp; **Tissot Indicatrix**
+
+    ---
+
+    `add_tissot_indicatrix` — overlay angular distortion circles on 2D
+    plots to evaluate grid cell shape fidelity.
+
+</div>
+
+---
 
 ## Usage
 
-### Unified API (recommended)
+=== "Unified API (recommended)"
 
-```python
-from canvod.grids import create_hemigrid
-from canvod.viz import HemisphereVisualizer
+    ```python
+    from canvod.grids import create_hemigrid
+    from canvod.viz import HemisphereVisualizer
 
-grid = create_hemigrid("equal_area", angular_resolution=10.0)
-viz = HemisphereVisualizer(grid)
+    grid = create_hemigrid("equal_area", angular_resolution=10.0)
+    viz  = HemisphereVisualizer(grid)
 
-# 2D publication plot
-fig_2d, ax_2d = viz.plot_2d(data=vod_data, title="VOD Distribution")
+    # Publication-quality 2D
+    fig_2d, ax_2d = viz.plot_2d(data=vod_data, title="VOD Distribution")
 
-# 3D interactive plot
-fig_3d = viz.plot_3d(data=vod_data, title="Interactive VOD")
-fig_3d.show()
-```
+    # Interactive 3D
+    fig_3d = viz.plot_3d(data=vod_data, title="Interactive VOD")
+    fig_3d.show()
+    ```
 
-### Convenience functions
+=== "Convenience functions"
 
-```python
-from canvod.viz import visualize_grid, visualize_grid_3d, add_tissot_indicatrix
+    ```python
+    from canvod.viz import visualize_grid, visualize_grid_3d, add_tissot_indicatrix
 
-fig, ax = visualize_grid(grid, data=vod_data, cmap="viridis")
-add_tissot_indicatrix(ax, grid, n_sample=5)
+    fig, ax = visualize_grid(grid, data=vod_data, cmap="viridis")
+    add_tissot_indicatrix(ax, grid, n_sample=5)
 
-fig_3d = visualize_grid_3d(grid, data=vod_data)
-```
+    fig_3d = visualize_grid_3d(grid, data=vod_data)
+    ```
 
-### Specialized visualizers
+=== "Publication output"
 
-```python
-from canvod.viz import HemisphereVisualizer2D, HemisphereVisualizer3D
+    ```python
+    viz = HemisphereVisualizer(grid)
+    viz.set_style(create_publication_style())
 
-viz2d = HemisphereVisualizer2D(grid)
-fig, ax = viz2d.plot_grid_patches(data=vod_data, title="VOD")
+    fig, ax = viz.create_publication_figure(
+        data=vod_data,
+        title="VOD Distribution",
+        save_path="figure_3.png",
+        dpi=600,
+    )
+    ```
 
-viz3d = HemisphereVisualizer3D(grid)
-fig = viz3d.plot_hemisphere_surface(data=vod_data, title="Interactive VOD")
-```
+=== "Interactive export"
 
-### Styling
+    ```python
+    viz.set_style(create_interactive_style(dark_mode=True))
 
-```python
-from canvod.viz import HemisphereVisualizer, create_publication_style, create_interactive_style
+    fig = viz.create_interactive_explorer(
+        data=vod_data,
+        dark_mode=True,
+        save_html="explorer.html",
+    )
+    ```
 
-viz = HemisphereVisualizer(grid)
+=== "Side-by-side comparison"
 
-# Publication quality
-viz.set_style(create_publication_style())
-fig, ax = viz.plot_2d(data=vod_data)
+    ```python
+    (fig_2d, ax_2d), fig_3d = viz.create_comparison_plot(data=vod_data)
+    ```
 
-# Interactive dark mode
-viz.set_style(create_interactive_style(dark_mode=True))
-fig = viz.plot_3d(data=vod_data)
-```
+---
 
-### Comparison and export
+## Styling
 
-```python
-viz = HemisphereVisualizer(grid)
+| Style factory | Use case |
+| ------------- | -------- |
+| `create_publication_style()` | Print-ready figures, configurable DPI, white background |
+| `create_interactive_style()` | Browser-ready Plotly, dark mode option |
 
-# Side-by-side 2D + 3D
-(fig_2d, ax_2d), fig_3d = viz.create_comparison_plot(data=vod_data)
+Both return a `PlotStyle` / `PolarPlotStyle` object passed to `viz.set_style()`.
 
-# Publication figure with custom DPI
-fig, ax = viz.create_publication_figure(
-    data=vod_data,
-    title="VOD Distribution",
-    save_path="figure_3.png",
-    dpi=600,
-)
-
-# Interactive HTML export
-fig = viz.create_interactive_explorer(
-    data=vod_data,
-    dark_mode=True,
-    save_html="explorer.html",
-)
-```
+---
 
 ## Dependencies
 
-canvod-viz depends on canvod-grids for grid geometry. 2D plots use matplotlib; 3D plots use plotly.
+!!! info "Optional backends"
+
+    - **matplotlib** — required for `HemisphereVisualizer2D` and all 2D functions
+    - **plotly** — required for `HemisphereVisualizer3D` and all 3D functions
+    - **canvod-grids** — always required for grid geometry
+
+    Neither backend is a hard dependency of `canvod-viz` itself; import errors are
+    raised only when the corresponding visualizer is instantiated.

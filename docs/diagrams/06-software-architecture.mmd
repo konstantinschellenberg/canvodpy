@@ -4,12 +4,12 @@ graph LR
     end
 
     subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers  RINEX v3.04 parser Signal ID mapping Data directory matching"]
+        READERS["canvod-readers  RINEX v3.04 parser (Rnxv3Obs) SBF binary parser (SbfReader) Signal ID mapping (sv|band|code) to_ds_and_auxiliary() API"]
         AUX["canvod-auxiliary  SP3/CLK retrieval Hermite interpolation FTP download management"]
     end
 
     subgraph STORE_LAYER["Persistence Layer"]
-        STORE["canvod-store  Icechunk versioned storage Site/receiver management Metadata tracking"]
+        STORE["canvod-store  Icechunk versioned storage Site/receiver management Generic metadata dataset API Metadata tracking"]
     end
 
     subgraph COMPUTE["Computation Layer"]

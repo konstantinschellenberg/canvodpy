@@ -1,52 +1,59 @@
 # Release Process
 
-**Last Updated:** 2026-02-04
-**Audience:** Maintainers
+!!! warning "Maintainers only"
+    This guide is for repository maintainers with push access to the main branch.
+
+---
 
 ## Prerequisites
 
-- All CI checks passing
-- Main branch is stable
-- Push access to the repository
-- All changes committed and pushed
+Before starting a release:
+
+- [ ] All CI checks passing on `main`
+- [ ] `main` branch is stable
+- [ ] All changes committed and pushed
+- [ ] You have push access to the repository
+
+---
 
 ## Release Types
 
-| Type | Version Bump | Example | Description |
+| Type | Version Bump | Example | When to use |
 |------|-------------|---------|-------------|
-| Patch | 0.1.X | 0.1.0 -> 0.1.1 | Bug fixes only, backward compatible |
-| Minor | 0.X.0 | 0.1.0 -> 0.2.0 | New features, backward compatible |
-| Major | X.0.0 | 0.9.0 -> 1.0.0 | Breaking changes, requires migration guide |
+| Patch | `0.1.X` | 0.1.0 → 0.1.1 | Bug fixes only, fully backwards compatible |
+| Minor | `0.X.0` | 0.1.0 → 0.2.0 | New features, backwards compatible |
+| Major | `X.0.0` | 0.9.0 → 1.0.0 | Breaking changes — requires migration guide |
 
-## Step-by-Step Process
+---
+
+## Step-by-Step
 
 ### 1. Prepare
 
 ```bash
 git checkout main
 git pull origin main
-just test
-just check
+just test && just check
 ```
 
-### 2. Create Release
+### 2. Create the release
 
 ```bash
 just release 0.2.0
 ```
 
 This command:
+
 1. Runs all tests
-2. Generates CHANGELOG.md from commits
-3. Bumps version in all packages
-4. Creates git tag `vX.Y.Z`
-5. Commits changes
+2. Generates `CHANGELOG.md` from conventional commits
+3. Bumps version in all `pyproject.toml` files
+4. Creates git commit + tag `v0.2.0`
 
 ### 3. Review
 
 ```bash
-git log --oneline -5
-git tag | tail -1
+git log --oneline -5   # verify commit
+git tag | tail -1      # verify tag
 ```
 
 ### 4. Push
@@ -58,21 +65,40 @@ git push origin --tags
 
 ### 5. Publish GitHub Release
 
-The `.github/workflows/release.yml` workflow detects the new tag and creates a draft release. Review and publish at https://github.com/nfb2021/canvodpy/releases.
+The `.github/workflows/release.yml` workflow detects the new tag and creates a **draft** release. Review and publish at [github.com/nfb2021/canvodpy/releases](https://github.com/nfb2021/canvodpy/releases).
 
-### 6. PyPI Publishing (Future)
+### 6. Post-release
 
-Once configured, publishing the GitHub release triggers PyPI upload.
+- Monitor issues for regressions
+- Create a Zenodo snapshot for DOI ([Zenodo Setup](guides/ZENODO_SETUP.md))
+- Update citation information if needed
+
+---
 
 ## Troubleshooting
 
-**Tests fail during release**: Fix failing tests before retrying.
+??? failure "Tests fail during release"
+    Fix the failing tests on `main` before retrying `just release`.
 
-**Version bump fails**: Use explicit `X.Y.Z` format without `v` prefix.
+??? failure "Version bump fails"
+    Use an explicit `X.Y.Z` format (no `v` prefix):
+    ```bash
+    just release 0.2.0    # correct
+    just release v0.2.0   # wrong
+    ```
 
-**Tag already exists**: Delete with `git tag -d v0.2.0` and recreate.
+??? failure "Tag already exists"
+    ```bash
+    git tag -d v0.2.0             # delete local tag
+    git push origin :v0.2.0       # delete remote tag (if already pushed)
+    just release 0.2.0            # recreate
+    ```
 
-**Workflow did not trigger**: Verify tag matches pattern `v*.*.*` at https://github.com/nfb2021/canvodpy/actions.
+??? failure "Workflow did not trigger"
+    Verify the tag matches the pattern `v*.*.*` at
+    [github.com/nfb2021/canvodpy/actions](https://github.com/nfb2021/canvodpy/actions).
+
+---
 
 ## Manual Release (Fallback)
 
@@ -80,15 +106,4 @@ Once configured, publishing the GitHub release triggers PyPI upload.
 just changelog v0.2.0
 ```
 
-Then create a release manually at https://github.com/nfb2021/canvodpy/releases/new.
-
-## Post-Release
-
-- Monitor for issues related to the new release
-- Create Zenodo snapshot for DOI (optional)
-- Update citation information
-
-## See Also
-
-- [VERSIONING.md](./VERSIONING.md)
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
+Then create a release manually at [github.com/nfb2021/canvodpy/releases/new](https://github.com/nfb2021/canvodpy/releases/new).

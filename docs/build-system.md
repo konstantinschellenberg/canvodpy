@@ -5,77 +5,82 @@ description: Package building and distribution for canVODpy
 
 # Build System
 
+canVODpy uses `uv_build` as its build backend — a modern, fast backend from the Astral ecosystem with native namespace package support.
+
+---
+
 ## Distribution Formats
 
-Python packages are distributed in two formats:
+=== "Wheel (preferred)"
 
-**Source distribution (sdist):** `canvod_readers-0.1.0.tar.gz` -- contains source code and metadata. Requires a build step during installation.
+    Pre-built, installed by copying to `site-packages`. No build step at install time.
 
-**Wheel (built distribution):** `canvod_readers-0.1.0-py3-none-any.whl` -- pre-built, ready to install by copying to site-packages. Preferred format for installation.
+    ```
+    canvod_readers-0.1.0-py3-none-any.whl
+    └── canvod/
+        └── readers/          ← namespace package (no canvod/__init__.py)
+            ├── __init__.py
+            └── base.py
+    ```
 
-Wheel filename components:
-```
-canvod_readers-0.1.0-py3-none-any.whl
-  package name - version - python - ABI - platform
-```
+    Filename anatomy: `{name}-{version}-{python}-{abi}-{platform}.whl`.
+    The `py3-none-any` suffix means: any Python 3, no native extensions, any platform.
 
-## Build Backend Configuration
+=== "Source Distribution"
+
+    `canvod_readers-0.1.0.tar.gz` — contains source code + metadata.
+    Requires a build step during installation. Provided alongside wheels for PyPI.
+
+---
+
+## Build Configuration
 
 ```toml
 # packages/canvod-readers/pyproject.toml
 [build-system]
-requires = ["uv_build>=0.9.17,<0.10.0"]
+requires      = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "canvod.readers"       # Dot creates namespace package
+module-name = "canvod.readers"       # dot → namespace package
+include     = ["src/canvod/readers/data/*.dat"]
+exclude     = ["src/canvod/readers/tests/"]
 ```
 
-The dotted `module-name` instructs uv_build to create a namespace package structure: `canvod/` contains no `__init__.py`, while `canvod/readers/` is the actual module.
+!!! note "canvod-utils exception"
+    `canvod-utils` uses `hatchling` as its build backend — the only
+    package in the monorepo that does not use `uv_build`.
+
+---
 
 ## Building
 
 ```bash
+# Single package
 cd packages/canvod-readers
 uv build
+# → dist/canvod_readers-0.1.0.tar.gz
+# → dist/canvod_readers-0.1.0-py3-none-any.whl
+
+# All packages at once
+just dist
 ```
 
-This produces:
-- `dist/canvod_readers-0.1.0.tar.gz`
-- `dist/canvod_readers-0.1.0-py3-none-any.whl`
-
-### Wheel Contents
-
-```
-canvod/                           # Namespace directory (no __init__.py)
-  readers/                        # Module directory
-    __init__.py
-    base.py
-    rinex/
-      ...
-canvod_readers-0.1.0.dist-info/   # Metadata
-  METADATA
-  WHEEL
-  RECORD
-```
-
-### Building All Packages
-
-```bash
-just dist                         # Build all packages
-```
+---
 
 ## Package Metadata
 
 ```toml
 [project]
-name = "canvod-readers"
-version = "0.1.0"
-description = "GNSS data format readers for canVODpy"
-readme = "README.md"
-license = {text = "Apache-2.0"}
-authors = [{name = "Nicolas Bader", email = "nicolas.bader@geo.tuwien.ac.at"}]
-keywords = ["gnss", "rinex", "geodesy"]
+name            = "canvod-readers"
+version         = "0.1.0"
+description     = "GNSS data format readers for canVODpy"
+readme          = "README.md"
+license         = {text = "Apache-2.0"}
+authors         = [{name = "Nicolas Bader", email = "nicolas.bader@geo.tuwien.ac.at"}]
+requires-python = ">=3.13"
+keywords        = ["gnss", "rinex", "geodesy", "vod"]
+
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -83,65 +88,76 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
 ]
-requires-python = ">=3.13"
-dependencies = ["numpy>=1.24", "pandas>=2.0"]
+
+dependencies = ["numpy>=2.0", "xarray>=2024.0"]
 
 [project.urls]
-Homepage = "https://github.com/nfb2021/canvodpy"
+Homepage   = "https://github.com/nfb2021/canvodpy"
 Repository = "https://github.com/nfb2021/canvodpy"
-Issues = "https://github.com/nfb2021/canvodpy/issues"
+Issues     = "https://github.com/nfb2021/canvodpy/issues"
 ```
 
-## Publishing to PyPI
+---
 
-### Test on TestPyPI
+## Publishing
 
-```bash
-cd packages/canvod-readers
-uv build
-uv publish --repository testpypi
-pip install --index-url https://test.pypi.org/simple/ canvod-readers
-```
+=== "TestPyPI (test first)"
 
-### Publish to Production
+    ```bash
+    cd packages/canvod-readers
+    uv build
+    uv publish --repository testpypi
 
-```bash
-uv build
-uv publish
-```
+    # Verify installation
+    pip install --index-url https://test.pypi.org/simple/ canvod-readers
+    ```
+
+=== "Production PyPI"
+
+    ```bash
+    uv build
+    uv publish
+    ```
+
+=== "Automated (CI/CD)"
+
+    The `just release` command handles version bump + publish for all packages.
+    See [`docs/RELEASING.md`](../RELEASING.md) for the full release workflow.
+
+---
 
 ## Version Management
 
-All packages follow [Semantic Versioning](https://semver.org/) with unified version numbers.
+All packages follow [Semantic Versioning](https://semver.org/) with unified version numbers across the monorepo.
 
 ```bash
-just bump patch    # 0.1.0 -> 0.1.1
-just bump minor    # 0.1.0 -> 0.2.0
-just bump major    # 0.1.0 -> 1.0.0
+just bump patch    # 0.1.0 → 0.1.1  (bug fix)
+just bump minor    # 0.1.0 → 0.2.0  (new feature, backwards compatible)
+just bump major    # 0.1.0 → 1.0.0  (breaking change)
 ```
 
-Version bumps update `pyproject.toml` in all packages, create a git commit, and tag the release.
+A version bump:
 
-## Including Extra Files
+1. Updates `version` in all `pyproject.toml` files.
+2. Creates a git commit `chore: bump version to x.y.z`.
+3. Creates a git tag `vx.y.z`.
 
-```toml
-[tool.uv.build-backend]
-module-name = "canvod.readers"
-include = ["src/canvod/readers/data/*.dat", "LICENSE", "README.md"]
-exclude = ["src/canvod/readers/tests/", "*.pyc"]
-```
-
-## Console Scripts
-
-```toml
-[project.scripts]
-canvod-read = "canvod.readers.cli:main"
-```
+---
 
 ## Troubleshooting
 
-**ModuleNotFoundError**: Verify `module-name` in `pyproject.toml` uses dotted notation.
+!!! failure "`ModuleNotFoundError` after install"
+    Verify `module-name` in `pyproject.toml` uses dotted notation:
+    ```toml
+    module-name = "canvod.readers"    # correct
+    # module-name = "canvod_readers"  # wrong — creates regular package
+    ```
 
-**Wrong package structure**: Ensure `module-name = "canvod.readers"` (with dot), not `"canvod_readers"`.
+!!! failure "Wrong package structure in wheel"
+    Run `unzip -l dist/*.whl` to inspect contents.
+    The wheel must contain `canvod/readers/` but **not** `canvod/__init__.py`.
 
-**Build failures**: Run `uv build --verbose` for detailed diagnostics.
+!!! failure "Build failures"
+    ```bash
+    uv build --verbose    # detailed diagnostics
+    ```

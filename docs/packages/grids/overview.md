@@ -2,118 +2,197 @@
 
 ## Purpose
 
-The `canvod-grids` package provides spatial grid implementations for hemispheric GNSS signal analysis. It discretizes the hemisphere visible from a ground-based receiver into cells, which is required for spatially resolved VOD estimation.
+The `canvod-grids` package provides spatial grid implementations for hemispheric GNSS signal analysis. It discretizes the hemisphere visible from a ground-based receiver into cells — a prerequisite for spatially resolved VOD estimation.
+
+---
 
 ## Grid Types
 
-Seven grid implementations are available, all inheriting from `BaseGridBuilder`:
+Seven implementations are available, all inheriting from `BaseGridBuilder`:
 
-| Builder | Grid Type | Notes |
-|---------|-----------|-------|
-| `EqualAreaBuilder` | Equal-area | Cells of approximately equal solid angle (recommended) |
-| `EqualAngleBuilder` | Equal-angle | Regular angular spacing; cells near zenith are smaller |
-| `EquirectangularBuilder` | Equirectangular | Simple rectangular latitude/longitude grid |
-| `HEALPixBuilder` | HEALPix | Hierarchical Equal Area isoLatitude Pixelization (requires `healpy`) |
-| `GeodesicBuilder` | Geodesic | Icosahedron subdivision; near-uniform cell area |
-| `FibonacciBuilder` | Fibonacci | Fibonacci-sphere sampling (requires `scipy`) |
-| `HTMBuilder` | HTM | Hierarchical Triangular Mesh |
+<div class="grid cards" markdown>
 
-All builders accept `angular_resolution` (degrees) and produce a `GridData` object.
+-   :fontawesome-solid-border-all: &nbsp; **EqualAreaBuilder** *(recommended)*
+
+    ---
+
+    Cells of approximately equal solid angle. Ensures uniform spatial
+    sampling across the hemisphere, avoiding zenith over-weighting.
+
+-   :fontawesome-solid-table-cells: &nbsp; **EqualAngleBuilder**
+
+    ---
+
+    Regular angular spacing in θ and φ. Cells near zenith are smaller —
+    appropriate when you want uniform angular resolution.
+
+-   :fontawesome-solid-grip: &nbsp; **EquirectangularBuilder**
+
+    ---
+
+    Simple rectangular latitude/longitude grid. Fast to compute;
+    strong area distortion at low elevations.
+
+-   :fontawesome-solid-circle-dot: &nbsp; **HEALPixBuilder**
+
+    ---
+
+    Hierarchical Equal Area isoLatitude Pixelization. All cells have
+    identical areas; supports multi-resolution refinement.
+    Requires `healpy`.
+
+-   :fontawesome-solid-dice-d20: &nbsp; **GeodesicBuilder**
+
+    ---
+
+    Icosahedron subdivision. Near-uniform cell area with triangular
+    cell boundaries.
+
+-   :fontawesome-solid-seedling: &nbsp; **FibonacciBuilder**
+
+    ---
+
+    Fibonacci-sphere sampling. Aesthetically uniform point
+    distribution; ideal for scatter-plot analyses.
+    Requires `scipy`.
+
+-   :fontawesome-solid-triangle-exclamation: &nbsp; **HTMBuilder**
+
+    ---
+
+    Hierarchical Triangular Mesh. Recursive triangular decomposition
+    of the sphere; supports efficient spatial indexing.
+
+</div>
+
+All builders accept `angular_resolution` (degrees) and `cutoff_theta` (maximum zenith angle) and return a `GridData` object.
+
+---
 
 ## Usage
 
-### Factory function
+=== "Factory function"
 
-```python
-from canvod.grids import create_hemigrid
+    ```python
+    from canvod.grids import create_hemigrid
 
-grid = create_hemigrid("equal_area", angular_resolution=5.0)
-```
+    grid = create_hemigrid("equal_area", angular_resolution=5.0)
+    print(grid.ncells)   # 216
+    print(grid.nbands)   # 18
+    ```
 
-### Builder pattern
+=== "Builder pattern"
 
-```python
-from canvod.grids import EqualAreaBuilder
+    ```python
+    from canvod.grids import EqualAreaBuilder
 
-builder = EqualAreaBuilder(angular_resolution=5.0, cutoff_theta=10.0)
-grid = builder.build()
-```
+    builder = EqualAreaBuilder(angular_resolution=5.0, cutoff_theta=10.0)
+    grid = builder.build()
+    ```
 
-### Via canvodpy factory
+=== "canvodpy factory"
 
-```python
-from canvodpy import GridFactory
+    ```python
+    from canvodpy import GridFactory
 
-builder = GridFactory.create("equal_area", angular_resolution=5.0)
-grid = builder.build()
-```
+    builder = GridFactory.create("equal_area", angular_resolution=5.0)
+    grid = builder.build()
+    print(grid.grid.head())  # Polars DataFrame with cell geometry
+    ```
+
+---
 
 ## GridData
 
 The `GridData` object returned by all builders provides:
 
-- `df` — Polars DataFrame with cell geometry (boundaries, centers, solid angles)
-- `ncells` — Total number of grid cells
-- `nbands` — Number of elevation bands
-- `definition` — Human-readable grid description
+| Attribute | Type | Description |
+| --------- | ---- | ----------- |
+| `grid` | `polars.DataFrame` | Cell geometry (boundaries, centres, solid angles) |
+| `ncells` | `int` | Total number of grid cells |
+| `nbands` | `int` | Number of elevation bands |
+| `definition` | `str` | Human-readable grid description |
 
-## Operations
+---
 
-Functions in `canvod.grids.operations` handle the interface between grids and xarray Datasets:
+## Grid Operations
 
-| Function | Purpose |
-|----------|---------|
-| `add_cell_ids_to_ds_fast` | Assign each observation to a grid cell |
-| `add_cell_ids_to_vod` | Assign cell IDs to VOD datasets |
-| `add_cell_ids_to_vod_fast` | Assign cell IDs to VOD datasets (KD-tree accelerated) |
-| `grid_to_dataset` | Convert GridData to an xarray Dataset |
-| `extract_grid_vertices` | Get cell boundary polygons |
-| `store_grid` / `load_grid` | Persist and load grid definitions |
+`canvod.grids.operations` handles the interface between grids and xarray Datasets:
 
-## Aggregation
+<div class="grid cards" markdown>
 
-`CellAggregator` and associated functions compute summary statistics over grid cells:
+-   :fontawesome-solid-map: &nbsp; **Cell Assignment**
 
-- `aggregate_data_to_grid` — Assign data to grid cells and aggregate
-- `compute_hemisphere_percell` — Per-cell statistics across the full hemisphere
-- `compute_zenith_percell` — Zenith-weighted per-cell statistics
-- `compute_percell_timeseries` — Per-cell time series
-- `compute_global_average` / `compute_regional_average` — Spatial averages
-- `analyze_diurnal_patterns` / `analyze_spatial_patterns` — Pattern analysis
+    ---
+
+    `add_cell_ids_to_ds_fast` — KDTree-accelerated assignment of each
+    observation to a grid cell. O(n log m) for n observations, m cells.
+
+    `add_cell_ids_to_vod_fast` — Same for VOD datasets.
+
+-   :fontawesome-solid-floppy-disk: &nbsp; **Grid Persistence**
+
+    ---
+
+    `store_grid` / `load_grid` — Save and reload grid definitions
+    as Zarr/NetCDF for reproducible workflows.
+
+    `grid_to_dataset` — Convert `GridData` to xarray Dataset.
+
+-   :fontawesome-solid-chart-pie: &nbsp; **Aggregation**
+
+    ---
+
+    `aggregate_data_to_grid` — Assign and aggregate per cell.
+
+    `compute_hemisphere_percell` — Per-cell statistics.
+
+    `compute_zenith_percell` — Zenith-weighted statistics.
+
+    `compute_percell_timeseries` — Per-cell time series.
+
+</div>
+
+---
 
 ## Analysis Subpackage
 
-`canvod.grids.analysis` provides per-cell and global analysis tools:
+`canvod.grids.analysis` provides filtering, weighting, and pattern analysis:
 
 | Module | Purpose |
-|--------|---------|
-| `filtering` | Global statistical filters (IQR, Z-score) |
-| `per_cell_filtering` | Per-cell variants of the above filters |
-| `hampel_filtering` | Hampel (median-MAD) outlier filtering |
+| ------ | ------- |
+| `filtering` | Global IQR, Z-score statistical filters |
+| `per_cell_filtering` | Per-cell variants of the above |
+| `hampel_filtering` | Hampel (median-MAD) outlier detection |
 | `sigma_clip_filter` | Numba-accelerated sigma-clipping |
 | `masking` | Spatial and temporal mask construction |
 | `weighting` | Per-cell weight calculators |
 | `solar` | Solar geometry (elevation, azimuth) |
-| `temporal` | Weighted temporal aggregation and diurnal analysis |
+| `temporal` | Diurnal aggregation and analysis |
 | `spatial` | Per-cell spatial statistics |
-| `per_cell_analysis` | Multi-dataset per-cell VOD analysis |
-| `analysis_storage` | Persistent Icechunk storage for results (requires `canvod-store`) |
 
-## Workflows
-
-`canvod.grids.workflows` contains the end-to-end pipeline classes that tie together filtering, grid operations, and Icechunk persistence. This module requires `canvod-store` at runtime.
-
-- `AdaptedVODWorkflow` — Full pipeline: filtering, grid operations, Icechunk persistence
-- `get_workflow_for_store` — Create a workflow from an existing Icechunk store path
-- `check_processed_data_status` — Check which dates have already been processed
-
-## Role in the VOD Pipeline
-
-Grids discretize the hemisphere above the receiver into cells. Each GNSS satellite observation is assigned to a grid cell based on its elevation and azimuth angles (computed by canvod-auxiliary). VOD is then estimated per cell or aggregated across the hemisphere.
+---
 
 ## Coordinate Convention
 
-All grids use standard spherical coordinates:
+!!! note "Angles"
 
-- **phi** — Azimuth angle, 0 to 2pi (0 = North, pi/2 = East, clockwise)
-- **theta** — Polar angle from zenith, 0 to pi/2 (0 = zenith, pi/2 = horizon)
+    All grids use standard spherical coordinates:
+
+    - **phi** (φ): azimuth 0 → 2π · 0 = North · π/2 = East · clockwise
+    - **theta** (θ): polar angle from zenith · 0 = zenith · π/2 = horizon
+
+    This matches the SBF reader and the canvod-auxiliary coordinate output —
+    no conversion needed.
+
+---
+
+## Role in the VOD Pipeline
+
+```mermaid
+flowchart LR
+    A["Augmented Dataset\n(epoch × sid, with θ, φ)"] --> B["Grid Assignment\nadd_cell_ids_to_ds_fast"]
+    B --> C["Gridded Dataset\n+ cell_id coordinate"]
+    C --> D["VOD per cell\nTau-Omega inversion"]
+    D --> E["Hemispherical Map\ncanvod-viz"]
+```

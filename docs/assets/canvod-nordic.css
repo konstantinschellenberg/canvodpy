@@ -623,33 +623,51 @@ body{
    ========================================================= */
 .hero{
   text-align: center;
-  padding: 3rem 1rem 2rem;
-}
-
-.hero h1{
-  font-size: 2.8rem !important;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+  padding: 4rem 1rem 2.5rem;
+  border-radius: 0 0 var(--radius) var(--radius);
   margin-bottom: 0.5rem;
 }
 
+.hero h1{
+  font-size: 3.2rem !important;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.4rem;
+  line-height: 1.1;
+}
+
+/* Tagline (second paragraph) */
 .hero p:first-of-type{
-  font-size: 1.15rem;
+  font-size: 1.05rem;
   color: var(--muted);
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.6rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  font-weight: 500;
+}
+
+/* Sub-tagline (third paragraph) */
+.hero p:first-of-type + p{
+  font-size: 1.1rem;
+  color: var(--text);
+  margin-bottom: 1.4rem;
+  max-width: 52ch;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .hero .md-button{
   display: inline-block;
   margin: 0.3rem;
-  padding: 0.6rem 1.4rem;
+  padding: 0.65rem 1.5rem;
   border-radius: 8px;
   font-weight: 600;
   font-size: 0.9rem;
   text-decoration: none !important;
   border: 2px solid var(--link);
   color: var(--text) !important;
-  transition: all 0.15s ease;
+  transition: all 0.18s ease;
+  letter-spacing: 0.01em;
 }
 
 .hero .md-button.md-button--primary,
@@ -666,18 +684,66 @@ body{
   border-color: var(--link-hover);
   color: var(--bg) !important;
   text-decoration: none !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--link-hover) 25%, transparent);
 }
 
-.hero .md-button:hover{
-  background: var(--link-hover);
+.hero .md-button:not(.md-button--primary):hover{
+  background: color-mix(in srgb, var(--link) 10%, transparent);
   border-color: var(--link-hover);
-  color: var(--bg) !important;
+  color: var(--link-hover) !important;
   text-decoration: none !important;
+  transform: translateY(-1px);
 }
 
 /* Badges row */
 .hero p:has(a > img){
   margin-bottom: 1.5rem;
+}
+
+/* =========================================================
+   Card grid enhancements
+   ========================================================= */
+
+/* Card hover lift — Zensical "levitate" effect */
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li{
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover{
+  transform: translateY(-3px);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--link) 15%, transparent) !important;
+}
+
+/* Section dividers: generous breathing room */
+.md-typeset hr{
+  margin: 2.4rem 0 !important;
+}
+
+/* =========================================================
+   Admonition color overrides — keep Nordic palette
+   ========================================================= */
+.md-typeset .admonition.tip,
+.md-typeset details.tip{
+  border-left-color: var(--g4) !important;
+}
+.md-typeset .admonition.info,
+.md-typeset details.info{
+  border-left-color: var(--g3) !important;
+}
+.md-typeset .admonition.success,
+.md-typeset details.success{
+  border-left-color: var(--g4) !important;
+}
+.md-typeset .admonition.warning,
+.md-typeset details.warning{
+  border-left-color: color-mix(in srgb, var(--g4) 70%, #c8a400) !important;
+}
+.md-typeset .admonition.abstract,
+.md-typeset details.abstract{
+  border-left-color: var(--g3) !important;
 }
 
 /* =========================================================

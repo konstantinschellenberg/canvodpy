@@ -83,7 +83,28 @@ class GNSSDataReader(ABC):
         """Validate Dataset structure."""
         validator = DatasetStructureValidator(dataset=dataset)
         validator.validate_all(required_vars=required_vars)
+
+    def to_ds_and_auxiliary(
+        self, **kwargs: object
+    ) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
+        """Produce the obs dataset and any auxiliary datasets in a single call.
+
+        Default: calls ``to_ds(**kwargs)`` and returns an empty auxiliary dict.
+        Readers that produce metadata (e.g. SBF) override this to collect both
+        in a single file scan.
+
+        Returns
+        -------
+        tuple[xr.Dataset, dict[str, xr.Dataset]]
+            ``(obs_ds, {"name": aux_ds, ...})``.  Auxiliary dict is empty for
+            readers with no extra data (RINEX v2/v3).
+        """
+        return self.to_ds(**kwargs), {}
 ```
+
+The `to_ds_and_auxiliary()` default is non-abstract: RINEX readers inherit it unchanged
+and return `{}` auxiliary. `SbfReader` overrides it to collect both obs and metadata in a
+single `parser.read()` pass — avoiding a second scan of the binary file.
 
 ### Contract Guarantees
 
@@ -111,6 +132,7 @@ graph TB
 
     subgraph "Implementation Layer"
         D[Rnxv3Obs]
+        Da[SbfReader]
         E[Future: Rnxv2Obs]
         F[Future: Rnxv4Obs]
     end
@@ -127,6 +149,7 @@ graph TB
 
     A --> B
     D -.implements.-> B
+    Da -.implements.-> B
     E -.implements.-> B
     F -.implements.-> B
 
@@ -135,16 +158,18 @@ graph TB
     D --> H
     D --> I
     D --> C
+    Da --> G
+    Da --> C
 
 ```
 
 ### Layer Responsibilities
 
-**User Layer** -- Instantiates readers, calls `to_ds()` and `iter_epochs()`, and operates on returned Datasets.
+**User Layer** -- Instantiates readers, calls `to_ds()`, `to_ds_and_auxiliary()`, or `iter_epochs()`, and operates on returned Datasets.
 
 **Interface Layer (ABC)** -- Defines required methods, enforces contracts, and validates output structure.
 
-**Implementation Layer (Concrete Readers)** -- Parses specific formats, implements abstract methods, and handles format-specific details.
+**Implementation Layer (Concrete Readers)** -- Parses specific formats, implements abstract methods, and handles format-specific details. `Rnxv3Obs` reads RINEX text; `SbfReader` reads Septentrio binary and overrides `to_ds_and_auxiliary()` for a combined single-pass scan.
 
 **Support Layer** -- Provides constellation specifications (GPS, Galileo, etc.), Signal ID mapping, and metadata templates.
 
@@ -199,6 +224,41 @@ Key interactions in this flow:
 4. **Validator** ensures output meets structural requirements.
 
 ## Design Principles
+
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-shield-halved: &nbsp; **Early Validation**
+
+    ---
+
+    Errors discovered during analysis are expensive to diagnose. Validation happens at
+    parse time via Pydantic — invalid headers, wrong RINEX versions, and bad dtypes
+    fail immediately with structured error messages.
+
+-   :fontawesome-solid-snowflake: &nbsp; **Immutability**
+
+    ---
+
+    Readers are `frozen=True` Pydantic models. Once constructed, `reader.fpath`
+    cannot be reassigned — predictable, thread-safe, cacheable.
+
+-   :fontawesome-solid-puzzle-piece: &nbsp; **Separation of Concerns**
+
+    ---
+
+    Format-specific parsing (RINEX text / SBF binary) is contained within the reader.
+    Generic processing — Signal ID mapping, coordinate transforms, validation — lives in
+    shared helpers used by all readers.
+
+-   :fontawesome-solid-check-double: &nbsp; **Mandatory Validation**
+
+    ---
+
+    Every Dataset must pass `DatasetStructureValidator` before being returned.
+    The base class `validate_output()` is called at the end of every `to_ds()` —
+    impossible to accidentally skip it.
+
+</div>
 
 ### Early Validation with Pydantic
 

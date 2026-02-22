@@ -2,36 +2,44 @@ flowchart TD
     Start([🚀 Start Processing]) --> Input
 
     subgraph Input["📥 Data Ingestion"]
-        RINEX["📄 RINEX Files<br/>(Observations)"]
-        SP3["🛰️ SP3 Files<br/>(Orbits)"]
-        CLK["⏰ CLK Files<br/>(Clocks)"]
+        RINEX["📄 RINEX Files\n(.XXo, all constellations)"]
+        SBF["📡 SBF Files\n(.XX_, Septentrio)"]
+        SP3["🛰️ SP3 Files\n(Precise Orbits)"]
+        CLK["⏰ CLK Files\n(Precise Clocks)"]
     end
 
     subgraph Reading["🔍 Reading & Parsing"]
-        RinexReader["Rnxv3Obs<br/>Parse RINEX v3.04"]
-        AuxReader["SP3/CLK Parsers<br/>Load Auxiliary Data"]
+        RinexReader["Rnxv3Obs\nParse RINEX v3.04"]
+        SbfReader["SbfReader\nSingle-pass binary decode"]
+        AuxReader["SP3/CLK Parsers\nLoad Auxiliary Data"]
     end
 
-    subgraph Processing["⚙️ Processing"]
-        Interp["Interpolation<br/>Orbit/Clock to Obs Times"]
-        Position["Position Calculation<br/>ECEF → Spherical (r,θ,φ)"]
-        Augment["Dataset Augmentation<br/>Merge RINEX + Aux"]
+    subgraph Processing["⚙️ Processing — RINEX path"]
+        Interp["Hermite Interpolation\nOrbits/clocks → obs epochs"]
+        Position["Coordinate Transform\nECEF → spherical (r, θ, φ)"]
+        Augment["Dataset Augmentation\nMerge RINEX + geometry"]
     end
 
-    subgraph Storage["💾 Storage"]
-        Icechunk["Icechunk Store<br/>Versioned Datasets"]
+    subgraph SBFPath["⚡ Processing — SBF path (no download)"]
+        SbfObs["Observations Dataset\nSNR · PR · Phase · Doppler\n(epoch × sid)"]
+        SbfMeta["Metadata Dataset\nDOP · PVT · θ · φ · quality\n(epoch, epoch × sid)"]
+    end
+
+    subgraph Storage["💾 Versioned Storage (Icechunk)"]
+        Icechunk["Observations Store\n(epoch × sid)"]
+        MetaStore["Metadata Store\ngroup/metadata/sbf_obs"]
     end
 
     subgraph Analysis["📊 Analysis"]
-        GridAssign["Grid Assignment<br/>Map to Hemisphere Cells"]
-        VODCalc["VOD Calculation<br/>Tau-Omega Model"]
-        Aggregate["Aggregation<br/>Per-cell Statistics"]
+        GridAssign["Hemispheric Grid Assignment\nEqual-area / HEALPix / geodesic"]
+        VODCalc["VOD Retrieval\nTau-Omega model · canopy vs reference"]
+        Aggregate["Aggregation\nPer-cell statistics"]
     end
 
     subgraph Output["📈 Output"]
-        Viz2D["2D Hemisphere Plots<br/>Polar Projection"]
-        Viz3D["3D Interactive Plots<br/>Plotly Surface"]
-        Export["Data Export<br/>NetCDF/CSV"]
+        Viz2D["2D Hemisphere Plots\nPolar projection"]
+        Viz3D["3D Interactive Plots\nPlotly surface"]
+        Export["Data Export\nNetCDF / CSV"]
     end
 
     RINEX --> RinexReader
@@ -42,8 +50,14 @@ flowchart TD
     AuxReader --> Interp
     Interp --> Position
     Position --> Augment
-
     Augment --> Icechunk
+
+    SBF --> SbfReader
+    SbfReader --> SbfObs
+    SbfReader --> SbfMeta
+    SbfObs --> Icechunk
+    SbfMeta --> MetaStore
+
     Icechunk --> GridAssign
     GridAssign --> VODCalc
     VODCalc --> Aggregate
@@ -61,6 +75,7 @@ flowchart TD
     style Input fill:#fff3e0,stroke:#e65100,stroke-width:2px
     style Reading fill:#ffecb3,stroke:#f57c00,stroke-width:2px
     style Processing fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    style SBFPath fill:#e8eaf6,stroke:#3949ab,stroke-width:2px
     style Storage fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
     style Analysis fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style Output fill:#e0f2f1,stroke:#00695c,stroke-width:2px

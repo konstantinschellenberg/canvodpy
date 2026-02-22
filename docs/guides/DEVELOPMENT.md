@@ -1,155 +1,154 @@
 # Development Guide
 
+Quick reference for day-to-day canVODpy development.
+
+---
+
 ## Initial Setup
 
 ```bash
 git clone https://github.com/nfb2021/canvodpy.git
 cd canvodpy
-git submodule update --init --recursive
-uv sync
-just test
+git submodule update --init --recursive   # test data + demo data
+uv sync                                    # install all packages (editable)
+just hooks                                 # install pre-commit hooks
+just test                                  # verify everything works
 ```
 
-The submodule step pulls two external data repositories:
+!!! info "Submodules"
+    Two data repositories are pulled as submodules:
 
-- **`packages/canvod-readers/tests/test_data`** — validation test data (falsified/corrupted RINEX files)
-- **`demo`** — clean real-world data for demos and documentation
+    - **`packages/canvod-readers/tests/test_data`** — falsified/corrupted RINEX files for validation tests
+    - **`demo`** — clean real-world data for demos and documentation
 
-Tests that depend on these datasets are automatically skipped if the submodules are not initialized.
+    Tests that depend on these datasets are automatically skipped if submodules are not initialised.
+
+---
 
 ## Prerequisites
 
-Two external tools are required:
+Two tools must be installed outside `uv`:
 
-1. **uv** -- Python package manager ([installation](https://docs.astral.sh/uv/getting-started/installation/))
-2. **just** -- Command runner ([installation](https://github.com/casey/just))
-
-Verify installation:
+| Tool | Install | Purpose |
+|------|---------|---------|
+| **uv** | `brew install uv` | Python + dependency management |
+| **just** | `brew install just` | Task runner |
 
 ```bash
-just check-dev-tools
+just check-dev-tools   # verify both are present
 ```
+
+[:octicons-arrow-right-24: Full installation guide](getting-started.md)
+
+---
 
 ## Configuration Management
 
-canVODpy uses three YAML files in the `config/` directory:
+canVODpy uses three YAML files in `config/`:
 
 | File | Purpose |
 |------|---------|
-| `sites.yaml` | Research sites: data root paths, receiver definitions (name, type, directory), and VOD analysis pairs. Each receiver's `directory` is the full relative path from the site data root to the raw RINEX date folders (e.g. `01_reference/01_GNSS/01_raw`). |
-| `processing.yaml` | Processing parameters: metadata, credentials (NASA Earthdata), auxiliary data settings, time aggregation, compression, Icechunk storage, and store strategies. |
-| `sids.yaml` | Signal ID filtering: choose `all`, a named `preset` (e.g. `gps_galileo`), or list `custom` SIDs to keep. |
+| `sites.yaml` | Research sites, receiver definitions, data root paths, VOD analysis pairs |
+| `processing.yaml` | Processing parameters, NASA Earthdata credentials, storage strategies, Icechunk config |
+| `sids.yaml` | Signal ID filtering — `all`, a named `preset`, or `custom` list |
 
 Each file has a `.example` template in the same directory.
 
-### Just Commands
+=== "First-time setup"
 
-```bash
-just config-init             # Initialize config files from templates
-just config-show             # View resolved settings
-just config-validate         # Validate configuration
-```
+    ```bash
+    just config-init        # copy .example templates → YAML files
+    # edit config/sites.yaml and config/processing.yaml
+    just config-validate    # check for errors
+    just config-show        # print resolved config
+    ```
 
-### CLI Configuration Tool
+=== "Daily use"
 
-```bash
-uv run just config-init         # Initialize configuration files
-uv run just config-show         # View current settings
-uv run just config-validate     # Validate configuration
-uv run just config-edit processing  # Edit processing config
-```
+    ```bash
+    just config-validate    # after editing
+    just config-show        # inspect current values
+    ```
 
-### First-Time Setup
-
-1. Initialize config files: `just config-init`
-2. Edit research sites: `uv run just config-edit sites`
-3. Edit processing configuration: `uv run just config-edit processing`
-4. Validate: `just config-validate`
+---
 
 ## Testing
 
 ```bash
-just test                    # All tests
-just test-package canvod-readers  # Specific package
-just test-coverage           # With coverage report
+just test                            # all tests
+just test-package canvod-readers     # specific package
+just test-coverage                   # with HTML coverage report
 ```
 
-Tests are located in each package's `tests/` directory.
+Tests live in `packages/<pkg>/tests/`. Integration tests are marked
+`@pytest.mark.integration` and excluded from the default run.
+
+---
 
 ## Code Quality
 
 ```bash
-just check                   # Lint + format + type-check
-just check-lint              # Linting only
-just check-format            # Formatting only
+just check          # lint + format + type-check (run before committing)
+just check-lint     # ruff linting only
+just check-format   # ruff formatting only
 ```
 
-Tools used:
-- **ruff**: Linting and formatting
-- **ty**: Type checking
-- **pytest**: Testing with coverage
+| Tool | Purpose |
+|------|---------|
+| **ruff** | Linting + formatting (replaces flake8, black, isort) |
+| **ty** | Type checking (replaces mypy) |
+| **pytest** | Testing with coverage |
 
-## Documentation
-
-```bash
-just docs                    # Build and serve locally
-```
-
-Documentation is built with MyST/Zensical and served at http://localhost:3000.
-
-## Dependency Analysis
-
-```bash
-just deps-report             # Full metrics report
-just deps-graph              # Mermaid dependency graph
-```
-
-Architecture summary:
-```
-Foundation (0 deps):          Consumers (1 dep):
-  canvod-readers              canvod-auxiliary -> canvod-readers
-  canvod-grids                canvod-viz -> canvod-grids
-  canvod-vod                  canvod-store -> canvod-grids
-  canvod-utils
-```
+---
 
 ## Contributing Workflow
 
-1. Create a feature branch: `git checkout -b feature/my-feature`
-2. Make changes in `packages/<package>/src/canvod/<package>/`
-3. Add tests in `packages/<package>/tests/`
-4. Run quality checks: `just check && just test`
-5. Commit with conventional commits:
-   ```bash
-   git commit -m "feat(readers): add RINEX 4.0 support"
-   ```
-6. Push and create PR: `git push origin feature/my-feature`
+```bash
+git checkout -b feature/my-feature
+# … make changes in packages/<pkg>/src/ …
+# … add tests in packages/<pkg>/tests/ …
+just check && just test
+git add packages/<pkg>/src/... packages/<pkg>/tests/...
+git commit -m "feat(readers): add RINEX 4.0 support"
+git push origin feature/my-feature
+# → open pull request on GitHub
+```
 
 ### Conventional Commit Scopes
 
-`readers`, `aux`, `grids`, `vod`, `store`, `viz`, `utils`, `docs`, `ci`, `deps`
+`readers` · `aux` · `grids` · `vod` · `store` · `viz` · `utils` · `docs` · `ci` · `deps`
 
-## Common Just Commands
+---
+
+## All Just Commands
 
 ```bash
-just                         # List all commands
-just check                   # Lint + format + type-check
-just test                    # Run all tests
-just sync                    # Install/update dependencies
-just clean                   # Remove build artifacts
-just hooks                   # Install pre-commit hooks
-just config-init             # Initialize config files from templates
-just config-validate         # Validate configuration
-just config-show             # View resolved configuration
-just docs                    # Preview documentation
-just build-all               # Build all packages
-just release <VERSION>       # Full release workflow
+just                     # list all commands
+just check               # lint + format + type-check
+just test                # run all tests
+just sync                # install/update dependencies
+just clean               # remove build artifacts
+just hooks               # install pre-commit hooks
+just config-init         # initialize config files
+just config-validate     # validate configuration
+just config-show         # view resolved configuration
+just docs                # preview documentation (localhost:3000)
+just build-all           # build all packages
+just deps-report         # dependency metrics report
+just deps-graph          # mermaid dependency graph
 ```
+
+---
 
 ## Troubleshooting
 
-**"No module named 'canvod.X'"**: Run `uv sync` to install packages.
+??? failure "`No module named 'canvod.X'`"
+    Run `uv sync` to install/reinstall packages in editable mode.
 
-**"Command not found: canvodpy"**: Use `uv run just config-init`.
+??? failure "`Command not found: just`"
+    Install just: `brew install just` (macOS) or see [getting-started](getting-started.md).
 
-**Tests fail after dependency changes**: Run `uv sync --all-extras`.
+??? failure "Tests fail after dependency changes"
+    ```bash
+    uv sync --all-extras
+    ```

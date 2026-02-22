@@ -3,25 +3,47 @@ title: Setting Up DOI and Citations (Zenodo)
 description: Make canvodpy citable with DOI for FAIR science
 ---
 
-# DOI and Citations Setup for FAIR Science
+# DOI and Citations Setup (Zenodo)
 
-**Goal:** Make canvodpy properly citable with permanent DOI for academic papers.
-
-**Standard Solution:** Zenodo + CITATION.cff + DOI badge
+Make canvodpy properly citable with a permanent DOI for academic papers using **Zenodo + CITATION.cff**.
 
 ---
 
 ## Zenodo
 
-[Zenodo](https://zenodo.org) is a research data repository operated by CERN:
+[Zenodo](https://zenodo.org) is a research data repository operated by CERN.
 
-- **Free for open source**
-- **Automatic DOI** for each GitHub release
-- **Permanent archival** (CERN guarantees 20+ years)
-- **FAIR compliant** (Findable, Accessible, Interoperable, Reusable)
-- **Integrates with GitHub** (fully automated)
-- **Searchable** by researchers worldwide
-- **Version-specific DOIs** (each release gets unique DOI)
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-link: &nbsp; **Automatic DOI**
+
+    ---
+
+    Each GitHub release automatically gets a permanent DOI
+    (`10.5281/zenodo.XXXXX`). No manual uploads.
+
+-   :fontawesome-solid-archive: &nbsp; **Permanent Archival**
+
+    ---
+
+    CERN guarantees 20+ years of preservation.
+    Every release is archived forever — reproducibility guaranteed.
+
+-   :fontawesome-solid-magnifying-glass: &nbsp; **FAIR Compliant**
+
+    ---
+
+    Findable · Accessible · Interoperable · Reusable.
+    Searchable by researchers worldwide, indexed by Google Scholar.
+
+-   :fontawesome-brands-github: &nbsp; **GitHub Integration**
+
+    ---
+
+    Link your repo once. Every subsequent GitHub release triggers
+    automatic archival and DOI minting.
+
+</div>
 
 ---
 
@@ -62,19 +84,13 @@ Zenodo. https://doi.org/10.5281/zenodo.XXXXX
 
 ---
 
-## Step 1: Create CITATION.cff (Done)
+## Step 1: Create CITATION.cff *(Done)*
 
-**File created:** `CITATION.cff`
+`CITATION.cff` enables the **"Cite this repository"** button on GitHub, exports to BibTeX/APA/EndNote, and provides metadata for Zenodo.
 
-This enables:
-- "Cite this repository" button on GitHub
-- Machine-readable citation metadata
-- Export to BibTeX, APA, EndNote, etc.
-- Zenodo reads this for metadata
-
-**TODO:** Add your ORCID iD to `CITATION.cff` (line 14)
-- Get ORCID: https://orcid.org/register
-- Helps link your publications to your code
+!!! tip "Add your ORCID iD"
+    Edit `CITATION.cff` line 14 and add your ORCID identifier.
+    Get one at [orcid.org/register](https://orcid.org/register) — it links your publications to your researcher profile.
 
 ---
 
@@ -223,62 +239,37 @@ Researchers cite specific versions:
 
 ---
 
-## Benefits for Your Project
+## Benefits
 
-### Academic Recognition
-
-- **Citable software** = recognized academic output
-- **DOI** = trackable impact (who cites your work)
-- **ORCID integration** = links to your researcher profile
-- **Searchable** = increases discoverability
-
-### FAIR Compliance
-
-- **Findable:** DOI, Zenodo indexing, GitHub
-- **Accessible:** Open access, permanent archival
-- **Interoperable:** Standard metadata formats
-- **Reusable:** Clear license, version tracking
-
-### Professional Standards
-
-- **Permanent archival** (CERN guarantees preservation)
-- **Version tracking** (every release archived)
-- **Metadata standards** (Dublin Core, DataCite)
-- **Trusted repository** (used by CERN, NASA, ESA)
+| Category | What you get |
+|----------|-------------|
+| Academic recognition | Citable software output — DOI trackable in citations |
+| ORCID integration | Links code releases to your researcher profile |
+| FAIR compliance | Findable, Accessible, Interoperable, Reusable |
+| Permanent archival | CERN preserves every release indefinitely |
+| Trusted repository | Used by CERN, NASA, ESA — accepted by all journals |
 
 ---
 
 ## Troubleshooting
 
-### "I don't see my repo on Zenodo"
+??? failure "Repo not visible on Zenodo"
+    1. Ensure you logged in **with GitHub** (not email)
+    2. Check the repo is **public** — Zenodo only indexes public repos
+    3. Log out and back in; sync can take a few minutes
 
-**Solutions:**
-1. Ensure you logged in with GitHub
-2. Try logging out and back in
-3. Check repo is public (Zenodo only indexes public repos)
-4. Wait a few minutes (sync can take time)
+??? failure "No DOI created for a release"
+    1. Verify the toggle is **ON** at [zenodo.org/account/settings/github/](https://zenodo.org/account/settings/github/)
+    2. Ensure the GitHub release is **published** (not a draft)
+    3. Check your Zenodo email for error notifications
 
-### "No DOI was created for my release"
+??? question "How to update citation metadata?"
+    Update `CITATION.cff`, then create a new release.
+    Zenodo reads the updated file for the new DOI automatically.
 
-**Solutions:**
-1. Check toggle is ON at https://zenodo.org/account/settings/github/
-2. Ensure release is published (not draft)
-3. Check Zenodo email for errors
-4. May need to create release again
-
-### "How do I update citation metadata?"
-
-**Solution:**
-1. Update `CITATION.cff` in your repo
-2. Create new release
-3. Zenodo reads updated metadata for new DOI
-
-### "Can I get DOI for old releases?"
-
-**Solution:**
-- No, Zenodo only archives releases created AFTER integration
-- But: You can create new tags/releases
-- Old code is still in GitHub history
+??? question "Can I get a DOI for old releases?"
+    No — Zenodo only archives releases created **after** the integration was enabled.
+    You can create new patch/beta releases to archive historical code states.
 
 ---
 
