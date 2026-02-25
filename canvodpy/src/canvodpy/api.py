@@ -118,6 +118,7 @@ class Site:
         aux_agency: str = "COD",
         n_workers: int = 12,
         dry_run: bool = False,
+        batch_hours: float | None = None,
     ) -> Pipeline:
         """Create a processing pipeline for this site.
 
@@ -131,6 +132,8 @@ class Site:
             Number of parallel workers
         dry_run : bool, default False
             If True, simulate processing without execution
+        batch_hours : float, optional
+            Hours of data per processing batch. If None, uses config default.
 
         Returns
         -------
@@ -150,6 +153,7 @@ class Site:
             aux_agency=aux_agency,
             n_workers=n_workers,
             dry_run=dry_run,
+            batch_hours=batch_hours,
         )
 
     def __repr__(self) -> str:
@@ -205,20 +209,27 @@ class Pipeline:
         aux_agency: str = "COD",
         n_workers: int = 12,
         dry_run: bool = False,
+        batch_hours: float | None = None,
     ) -> None:
         # Handle both Site object and string
         if isinstance(site, str):
             site = Site(site)
 
         self.site = site
-        if keep_vars is None:
-            from canvod.utils.config import load_config
 
-            keep_vars = load_config().processing.processing.keep_rnx_vars
+        from canvod.utils.config import load_config
+
+        config = load_config()
+        if keep_vars is None:
+            keep_vars = config.processing.processing.keep_rnx_vars
         self.keep_vars = keep_vars
         self.aux_agency = aux_agency
         self.n_workers = n_workers
         self.dry_run = dry_run
+
+        if batch_hours is None:
+            batch_hours = config.processing.processing.batch_hours
+        self.batch_hours = batch_hours
 
         # Setup logging
         from canvodpy.logging import get_logger
@@ -236,6 +247,7 @@ class Pipeline:
             site=site._site,
             n_max_workers=n_workers,
             dry_run=dry_run,
+            batch_hours=batch_hours,
         )
 
         self.log.info(
@@ -244,7 +256,18 @@ class Pipeline:
             n_workers=n_workers,
             keep_vars=len(self.keep_vars),
             dry_run=dry_run,
+            batch_hours=batch_hours,
         )
+
+    def close(self) -> None:
+        """Shut down the Dask cluster managed by the orchestrator."""
+        self._orchestrator.close()
+
+    def __enter__(self) -> Pipeline:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def process_date(self, date: str) -> dict[str, xr.Dataset]:
         """Process RINEX data for one date.
@@ -414,7 +437,8 @@ class Pipeline:
         return (
             f"Pipeline(site='{self.site.name}', "
             f"keep_vars={len(self.keep_vars)} vars, "
-            f"workers={self.n_workers})"
+            f"workers={self.n_workers}, "
+            f"batch_hours={self.batch_hours})"
         )
 
 

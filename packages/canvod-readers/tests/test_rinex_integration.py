@@ -9,7 +9,7 @@ from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
-RINEX_FILE = TEST_DATA_DIR / "01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+RINEX_FILE = TEST_DATA_DIR / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
 
 
 @pytest.fixture
@@ -109,7 +109,8 @@ class TestRINEXIntegration:
         freq_center = ds.freq_center.values
         valid_freqs = freq_center[~np.isnan(freq_center)]
         assert len(valid_freqs) > 0, "Should have some valid frequencies"
-        assert np.all(valid_freqs > 0), "All valid frequencies should be positive"
+        assert np.all(
+            valid_freqs > 0), "All valid frequencies should be positive"
         assert np.all(valid_freqs < 3000), "Frequencies should be < 3000 MHz"
 
         # Check frequency ranges (excluding NaN values)
@@ -117,8 +118,7 @@ class TestRINEXIntegration:
         freq_max = ds.freq_max.values
         valid_mask = ~(np.isnan(freq_min) | np.isnan(freq_max))
         assert np.all(freq_min[valid_mask] < freq_max[valid_mask]), (
-            "freq_min should be < freq_max"
-        )
+            "freq_min should be < freq_max")
 
     def test_band_coordinate_in_dataset(self, rinex_file):
         """Test band coordinate is correctly set."""
@@ -185,7 +185,8 @@ class TestRINEXIntegration:
             if var in ds.data_vars:
                 available_vars.append(var)
 
-        assert len(available_vars) > 0, "At least one data variable should be present"
+        assert len(
+            available_vars) > 0, "At least one data variable should be present"
 
         # Check each available variable has correct dimensions
         for var in available_vars:
@@ -244,7 +245,8 @@ class TestRINEXIntegration:
         # Check data is not all NaN
         if "SNR" in ds.data_vars:
             snr_data = ds["SNR"].values
-            assert not np.all(np.isnan(snr_data)), "SNR data should not be all NaN"
+            assert not np.all(
+                np.isnan(snr_data)), "SNR data should not be all NaN"
 
 
 class TestSignalMappingEdgeCases:

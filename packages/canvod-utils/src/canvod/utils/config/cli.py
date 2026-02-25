@@ -361,6 +361,24 @@ def _show_processing(config: ProcessingConfig) -> None:
     )
     table.add_row("GLONASS FDMA", glonass_mode)
     table.add_row("Keep RINEX Vars", ", ".join(config.processing.keep_rnx_vars))
+    table.add_row("Batch Hours", str(config.processing.batch_hours))
+    mem_str = (
+        f"{config.processing.max_memory_gb} GB"
+        if config.processing.max_memory_gb
+        else "[dim]no limit[/dim]"
+    )
+    table.add_row("Max Memory", mem_str)
+    affinity_str = (
+        str(config.processing.cpu_affinity)
+        if config.processing.cpu_affinity
+        else "[dim]no restriction[/dim]"
+    )
+    table.add_row("CPU Affinity", affinity_str)
+    table.add_row("Nice Priority", str(config.processing.nice_priority))
+    table.add_row(
+        "Dask Dashboard",
+        "[dim]http://localhost:8787 (available when pipeline runs)[/dim]",
+    )
     console.print(table)
     console.print()
 

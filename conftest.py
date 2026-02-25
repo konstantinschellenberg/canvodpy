@@ -1,5 +1,6 @@
 """Pytest configuration for canvodpy workspace."""
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,25 @@ import pytest
 # Existing submodule paths
 TEST_DATA_ROOT = Path(__file__).parent / "packages/canvod-readers/tests/test_data"
 DEMO_ROOT = Path(__file__).parent / "demo"
+
+
+# ============================================================================
+# Dask Shutdown Noise Suppression
+# ============================================================================
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _suppress_dask_shutdown_noise():
+    """Silence Dask nanny/worker loggers during pytest teardown.
+
+    Dask's nanny runs background threads that may try to log after pytest has
+    closed ``sys.stderr``, raising ``ValueError: I/O operation on closed file``.
+    Disabling the ``distributed`` logger hierarchy in the teardown phase
+    prevents this.
+    """
+    yield
+    for name in ("distributed", "distributed.nanny", "distributed.worker"):
+        logging.getLogger(name).disabled = True
 
 
 # ============================================================================

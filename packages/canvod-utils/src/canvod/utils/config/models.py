@@ -153,6 +153,27 @@ class ProcessingParams(BaseModel):
         True,
         description="Treat GLONASS FDMA bands as one band",
     )
+    batch_hours: float = Field(
+        24.0,
+        gt=0,
+        le=720,
+        description="Hours of data per processing batch",
+    )
+    max_memory_gb: float | None = Field(
+        None,
+        gt=0,
+        description="Soft RAM limit for processing (None = no limit)",
+    )
+    cpu_affinity: list[int] | None = Field(
+        None,
+        description="Pin workers to specific CPU core IDs (None = no restriction)",
+    )
+    nice_priority: int = Field(
+        0,
+        ge=0,
+        le=19,
+        description="Process nice value (0=normal, 10=low, 19=lowest)",
+    )
 
 
 class CompressionConfig(BaseModel):

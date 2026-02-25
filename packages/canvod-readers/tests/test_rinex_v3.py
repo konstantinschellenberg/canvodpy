@@ -8,7 +8,7 @@ from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
-RINEX_FILE = TEST_DATA_DIR / "01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+RINEX_FILE = TEST_DATA_DIR / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
 
 
 @pytest.fixture
@@ -232,7 +232,8 @@ class TestErrorHandling:
             Rnxv3Header.from_file(invalid_file)
 
 
-@pytest.mark.parametrize("data_var", ["SNR", "Pseudorange", "Phase", "Doppler"])
+@pytest.mark.parametrize("data_var",
+                         ["SNR", "Pseudorange", "Phase", "Doppler"])
 def test_individual_data_vars(rinex_file, data_var):
     """Test each data variable can be read individually."""
     obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")

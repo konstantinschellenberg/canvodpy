@@ -34,12 +34,13 @@ dependencies = [
     "tqdm>=4.65",
     "tomli>=2.0.0",
     "natsort>=8.0.0",
-    "dask>=2026.1.1",
+    "dask[distributed]>=2026.1.1",
     "mystmd>=1.8.0",
     "docker>=7.1.0",
     "howfairis>=0.13.0",
     "pyarrow>=23.0.1",
     "palettable>=3.3.3",
+    "psutil>=5.9.0",
 ]
 
 [dependency-groups]

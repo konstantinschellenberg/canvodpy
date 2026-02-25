@@ -133,83 +133,84 @@ def diagnose_processing(
     # Get all configured receivers
     all_receivers = sorted(site.active_receivers.keys())
     timing_log = TimingLogger(expected_receivers=all_receivers)
-    orchestrator = PipelineOrchestrator(site=site, dry_run=False)
 
     counter = 0
     garbage_collect = 0
     days_since_rechunk = 0
 
     # Main processing loop
-    for date_key, datasets, receiver_times in orchestrator.process_by_date(
-        keep_vars=keep_vars, start_from=start_from, end_at=end_at
-    ):
-        day_start_time = datetime.now()  # Capture start time
+    # Context manager ensures Dask cluster is shut down on exit
+    with PipelineOrchestrator(site=site, dry_run=False) as orchestrator:
+        for date_key, datasets, receiver_times in orchestrator.process_by_date(
+            keep_vars=keep_vars, start_from=start_from, end_at=end_at
+        ):
+            day_start_time = datetime.now()  # Capture start time
 
-        print(f"\n{'=' * 80}")
-        print(f"Processing {date_key}")
-        print(f"{'=' * 80}\n")
-
-        try:
-            # Track timing per receiver
-            for receiver_name, ds in datasets.items():
-                print(f"\n{'─' * 80}")
-                print(f"{receiver_name.upper()} PROCESSING")
-                print(f"{'─' * 80}")
-                print(f"  Dataset shape: {dict(ds.sizes)}")
-                print(f"  Processing time: {receiver_times[receiver_name]:.2f}s")
-
-            day_end_time = datetime.now()  # Capture end time
-            # Calculate actual total from receiver times
-            total_time = sum(receiver_times.values())
-
-            # Summary
             print(f"\n{'=' * 80}")
-            print("SUMMARY")
-            print(f"{'=' * 80}")
-            for receiver_name, ds in datasets.items():
-                print(
-                    f"{receiver_name}: {dict(ds.sizes)} "
-                    f"({receiver_times[receiver_name]:.2f}s)"
+            print(f"Processing {date_key}")
+            print(f"{'=' * 80}\n")
+
+            try:
+                # Track timing per receiver
+                for receiver_name, ds in datasets.items():
+                    print(f"\n{'─' * 80}")
+                    print(f"{receiver_name.upper()} PROCESSING")
+                    print(f"{'─' * 80}")
+                    print(f"  Dataset shape: {dict(ds.sizes)}")
+                    print(f"  Processing time: {receiver_times[receiver_name]:.2f}s")
+
+                day_end_time = datetime.now()  # Capture end time
+                # Calculate actual total from receiver times
+                total_time = sum(receiver_times.values())
+
+                # Summary
+                print(f"\n{'=' * 80}")
+                print("SUMMARY")
+                print(f"{'=' * 80}")
+                for receiver_name, ds in datasets.items():
+                    print(
+                        f"{receiver_name}: {dict(ds.sizes)} "
+                        f"({receiver_times[receiver_name]:.2f}s)"
+                    )
+                print(f"Total time: {total_time:.2f}s")
+                print(f"\n✓ Successfully processed {date_key}")
+
+                # LOG TO CSV with actual receiver times
+                timing_log.log(
+                    day=date_key,
+                    start_time=day_start_time,
+                    end_time=day_end_time,
+                    receiver_times=receiver_times,
+                    total_time=total_time,
                 )
-            print(f"Total time: {total_time:.2f}s")
-            print(f"\n✓ Successfully processed {date_key}")
 
-            # LOG TO CSV with actual receiver times
-            timing_log.log(
-                day=date_key,
-                start_time=day_start_time,
-                end_time=day_end_time,
-                receiver_times=receiver_times,
-                total_time=total_time,
-            )
+                days_since_rechunk += 1
 
-            days_since_rechunk += 1
+            except Exception as e:
+                print(f"\n✗ Failed {date_key}: {e}")
+                import traceback
 
-        except Exception as e:
-            print(f"\n✗ Failed {date_key}: {e}")
-            import traceback
+                traceback.print_exc()
 
-            traceback.print_exc()
+            finally:
+                counter += 1
+                garbage_collect += 1
 
-        finally:
-            counter += 1
-            garbage_collect += 1
+                # Rechunking logic commented out (as in original)
+                # if days_since_rechunk >= 2:
+                #     print(f"\n{'='*80}")
+                #     print("🔄 RECHUNKING STORE (every 2 days)")
+                #     print(f"{'='*80}\n")
+                #     # Rechunking logic would go here
+                #     days_since_rechunk = 0
 
-            # Rechunking logic commented out (as in original)
-            # if days_since_rechunk >= 2:
-            #     print(f"\n{'='*80}")
-            #     print("🔄 RECHUNKING STORE (every 2 days)")
-            #     print(f"{'='*80}\n")
-            #     # Rechunking logic would go here
-            #     days_since_rechunk = 0
-
-        # Garbage collection every 5 days
-        if garbage_collect % 5 == 0:
-            print("\n💤 Pausing for 60s before garbage collection...")
-            time.sleep(60)
-            print("\n🗑️  Running garbage collection...")
-            gc.collect()
-            print("✓ Garbage collection done")
+            # Garbage collection every 5 days
+            if garbage_collect % 5 == 0:
+                print("\n💤 Pausing for 60s before garbage collection...")
+                time.sleep(60)
+                print("\n🗑️  Running garbage collection...")
+                gc.collect()
+                print("✓ Garbage collection done")
 
         # Optional: Stop after N days for diagnostics
         # if counter == 30:

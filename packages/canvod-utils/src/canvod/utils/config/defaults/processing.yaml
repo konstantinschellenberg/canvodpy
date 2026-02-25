@@ -25,6 +25,10 @@ processing:
     - Phase
     - Doppler
   aggregate_glonass_fdma: true
+  batch_hours: 24
+  max_memory_gb: null
+  cpu_affinity: null
+  nice_priority: 0
 
 compression:
   zlib: true
