@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import os
 import time as _time
 from collections import defaultdict
 from collections.abc import Generator
+from datetime import datetime
 from pathlib import Path
 
 import pint
@@ -14,8 +16,19 @@ from canvod.readers.gnss_specs.constants import UREG
 from canvod.store import GnssResearchSite
 from canvod.utils.tools import YYYYDOY
 
+try:
+    from dask.distributed import as_completed as dask_as_completed
+
+    _HAS_DISTRIBUTED = True
+except ImportError:
+    _HAS_DISTRIBUTED = False
+    dask_as_completed = None  # type: ignore[assignment]
+
 from canvodpy.logging import get_logger
-from canvodpy.orchestrator.processor import RinexDataProcessor
+from canvodpy.orchestrator.processor import (
+    RinexDataProcessor,
+    preprocess_with_hermite_aux,
+)
 from canvodpy.orchestrator.resources import DaskClusterManager, MemoryMonitor
 
 
@@ -29,8 +42,9 @@ class PipelineOrchestrator:
     ----------
     site : GnssResearchSite
         Research site configuration
-    n_max_workers : int
-        Maximum parallel workers per day
+    n_max_workers : int | None
+        Maximum parallel workers per day. ``None`` means auto-detect
+        (Dask/OS picks based on ``os.cpu_count()``).
     dry_run : bool
         If True, only simulate processing without executing
     batch_hours : float
@@ -47,7 +61,7 @@ class PipelineOrchestrator:
     def __init__(
         self,
         site: GnssResearchSite,
-        n_max_workers: int = 12,
+        n_max_workers: int | None = None,
         dry_run: bool = False,
         batch_hours: float = 24.0,
         max_memory_gb: float | None = None,
@@ -65,14 +79,37 @@ class PipelineOrchestrator:
         self._memory_monitor = MemoryMonitor(max_memory_gb=max_memory_gb)
         self._logger = get_logger(__name__).bind(site=site.site_name)
 
-        # Create Dask LocalCluster for parallel RINEX processing
-        memory_limit: str | float = "auto"
-        if max_memory_gb is not None and n_max_workers > 0:
-            memory_limit = max_memory_gb / n_max_workers * (1024**3)  # bytes
+        # Create Dask LocalCluster for multi-DOY flat submission.
+        if n_max_workers is not None:
+            # Manual mode: cap workers to cpu_count so Dask doesn't
+            # over-subscribe the machine.
+            dask_workers: int | None = min(
+                n_max_workers, os.cpu_count() or n_max_workers
+            )
+            memory_limit: str | float = "auto"
+            if max_memory_gb is not None and dask_workers > 0:
+                memory_limit = max_memory_gb / dask_workers * (1024**3)  # bytes
+
+            self._logger.info(
+                "resource_mode_manual",
+                n_workers=dask_workers,
+                max_memory_gb=max_memory_gb,
+                cpu_affinity=cpu_affinity,
+                nice_priority=nice_priority,
+            )
+        else:
+            # Auto mode: let Dask/OS auto-detect everything.
+            dask_workers = None
+            memory_limit = "auto"
+
+            self._logger.info(
+                "resource_mode_auto",
+                detected_cores=os.cpu_count(),
+            )
 
         try:
             self._cluster_manager = DaskClusterManager(
-                n_workers=n_max_workers,
+                n_workers=dask_workers,
                 memory_limit_per_worker=memory_limit,
                 cpu_affinity=cpu_affinity,
                 nice_priority=nice_priority,
@@ -364,16 +401,15 @@ class PipelineOrchestrator:
             yyyydoy=YYYYDOY.from_str(date_key),
         )
 
-        dask_client = (
-            self._cluster_manager.client if self._cluster_manager is not None else None
-        )
-
+        # Single-DOY path: ProcessPoolExecutor is faster than Dask for local
+        # workloads (no scheduler/serialization overhead).  Dask is reserved
+        # for the flat multi-DOY submission in _process_multi_day_batches().
         try:
             processor = RinexDataProcessor(
                 matched_data_dirs=matched_dirs,
                 site=self.site,
                 n_max_workers=self.n_max_workers,
-                dask_client=dask_client,
+                dask_client=None,
             )
         except RuntimeError as e:
             if "Failed to download" in str(e):
@@ -424,6 +460,64 @@ class PipelineOrchestrator:
 
         return date_key, datasets, timings
 
+    @staticmethod
+    def _build_receiver_configs(
+        receivers: dict[str, tuple[Path, str, Path | None]],
+    ) -> list[tuple[str, str, Path, Path | None]]:
+        """Build sorted receiver config tuples from the receivers dict.
+
+        Parameters
+        ----------
+        receivers : dict
+            ``{store_group: (data_dir, receiver_type, position_data_dir)}``.
+
+        Returns
+        -------
+        list[tuple[str, str, Path, Path | None]]
+            ``(receiver_name, receiver_type, data_dir, position_data_dir)`` tuples.
+
+        """
+        return [
+            (name, rtype, ddir, pdir)
+            for name, (ddir, rtype, pdir) in sorted(receivers.items())
+        ]
+
+    def _create_processor_for_date(
+        self,
+        date_key: str,
+        receivers: dict[str, tuple[Path, str, Path | None]],
+    ) -> RinexDataProcessor:
+        """Create a RinexDataProcessor for a single DOY.
+
+        Parameters
+        ----------
+        date_key : str
+            YYYYDOY string.
+        receivers : dict
+            ``{store_group: (data_dir, receiver_type, position_data_dir)}``.
+
+        Returns
+        -------
+        RinexDataProcessor
+
+        """
+        receiver_configs = self._build_receiver_configs(receivers)
+        first_data_dir = receiver_configs[0][2]
+        matched_dirs = MatchedDirs(
+            canopy_data_dir=first_data_dir,
+            reference_data_dir=first_data_dir,
+            yyyydoy=YYYYDOY.from_str(date_key),
+        )
+        dask_client = (
+            self._cluster_manager.client if self._cluster_manager is not None else None
+        )
+        return RinexDataProcessor(
+            matched_data_dirs=matched_dirs,
+            site=self.site,
+            n_max_workers=self.n_max_workers,
+            dask_client=dask_client,
+        )
+
     def _process_multi_day_batches(
         self,
         filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None]]]],
@@ -431,8 +525,14 @@ class PipelineOrchestrator:
     ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]], None, None]:
         """Process dates in multi-day batches (batch_hours >= 24).
 
-        Accumulates multiple calendar days into one batch, but still yields
-        per-DOY and commits to Icechunk per-DOY (sequential writes).
+        When ``days_per_batch > 1`` and a Dask cluster is available, RINEX
+        files from ALL DOYs in a batch are submitted to Dask as one flat
+        pool (Phase 2). Auxiliary data and receiver positions are prepared
+        sequentially per DOY first (Phase 1), and Icechunk writes happen
+        sequentially afterwards (Phase 3).
+
+        When ``days_per_batch == 1`` or no Dask cluster is available, falls
+        back to sequential ``_process_single_date()`` calls.
 
         Parameters
         ----------
@@ -449,6 +549,12 @@ class PipelineOrchestrator:
         """
         days_per_batch = max(1, round(self.batch_hours / 24))
         total_batches = (len(filtered_dates) + days_per_batch - 1) // days_per_batch
+        dask_client = (
+            self._cluster_manager.client if self._cluster_manager is not None else None
+        )
+        use_flat_dask = (
+            days_per_batch > 1 and dask_client is not None and _HAS_DISTRIBUTED
+        )
 
         self._logger.info(
             "multi_day_batch_strategy",
@@ -456,6 +562,7 @@ class PipelineOrchestrator:
             days_per_batch=days_per_batch,
             total_dates=len(filtered_dates),
             total_batches=total_batches,
+            flat_dask=use_flat_dask,
         )
 
         # Partition dates into batches
@@ -478,25 +585,173 @@ class PipelineOrchestrator:
                 context=f"before_batch_{batch_idx + 1}"
             )
 
-            # Process each DOY in the batch sequentially
-            # (Icechunk commits must be sequential for local store)
-            doys_succeeded = 0
-            doys_failed = 0
+            if not use_flat_dask:
+                # Fallback: sequential _process_single_date (batch_hours=24
+                # or no Dask cluster)
+                doys_succeeded = 0
+                doys_failed = 0
+                for date_key, receivers in batch:
+                    result = self._process_single_date(date_key, receivers, keep_vars)
+                    if result is not None:
+                        doys_succeeded += 1
+                        yield result
+                    else:
+                        doys_failed += 1
+
+                batch_elapsed = _time.monotonic() - batch_start_time
+                self._logger.info(
+                    "batch_complete",
+                    batch_index=batch_idx + 1,
+                    total_batches=total_batches,
+                    batch_dates=batch_date_keys,
+                    doys_succeeded=doys_succeeded,
+                    doys_failed=doys_failed,
+                    batch_seconds=round(batch_elapsed, 2),
+                )
+                continue
+
+            # ── Phase 1: Prepare (sequential, fast) ───────────────────
+            doy_contexts: dict[
+                str,
+                tuple[RinexDataProcessor, list[tuple[str, list[Path]]]],
+            ] = {}
+            all_tasks: list[tuple[str, tuple]] = []
+
             for date_key, receivers in batch:
-                result = self._process_single_date(date_key, receivers, keep_vars)
-                if result is not None:
-                    doys_succeeded += 1
-                    self._memory_monitor.log_memory_stats(
-                        context=f"after_doy_{date_key}"
+                try:
+                    processor = self._create_processor_for_date(date_key, receivers)
+                except RuntimeError as e:
+                    if "Failed to download" in str(e):
+                        self._logger.warning(
+                            "auxiliary_download_failed",
+                            date=date_key,
+                            error=str(e),
+                        )
+                        continue
+                    raise
+
+                receiver_configs = self._build_receiver_configs(receivers)
+                try:
+                    task_descriptors, receiver_file_map = processor.prepare_batch_tasks(
+                        keep_vars, receiver_configs
                     )
-                    yield result
-                else:
-                    doys_failed += 1
-                    self._logger.warning(
-                        "doy_failed_in_batch",
+                except (OSError, RuntimeError, ValueError) as e:
+                    self._logger.error(
+                        "prepare_batch_failed",
                         date=date_key,
+                        error=str(e),
+                    )
+                    continue
+
+                doy_contexts[date_key] = (processor, receiver_file_map)
+                for task_args in task_descriptors:
+                    all_tasks.append((date_key, task_args))
+
+            if not all_tasks:
+                self._logger.warning(
+                    "batch_no_tasks",
+                    batch_index=batch_idx + 1,
+                    batch_dates=batch_date_keys,
+                )
+                continue
+
+            self._logger.info(
+                "flat_dask_submission",
+                batch_index=batch_idx + 1,
+                total_tasks=len(all_tasks),
+                doys_with_tasks=len(doy_contexts),
+            )
+
+            # ── Phase 2: Flat Dask submission ─────────────────────────
+            future_to_meta: dict = {}
+            for date_key, task_args in all_tasks:
+                fut = dask_client.submit(
+                    preprocess_with_hermite_aux, *task_args, pure=False
+                )
+                receiver_name = task_args[4]  # 5th element
+                future_to_meta[fut] = (date_key, receiver_name)
+
+            # Collect results grouped by (date_key, receiver_name)
+            grouped_results: dict[str, dict[str, list[tuple[Path, xr.Dataset]]]] = (
+                defaultdict(lambda: defaultdict(list))
+            )
+            tasks_succeeded = 0
+            tasks_failed = 0
+
+            for fut in dask_as_completed(future_to_meta):
+                date_key, receiver_name = future_to_meta[fut]
+                try:
+                    fname, ds = fut.result()
+                    grouped_results[date_key][receiver_name].append((fname, ds))
+                    tasks_succeeded += 1
+                except Exception:
+                    tasks_failed += 1
+                    self._logger.exception(
+                        "dask_task_failed",
+                        date=date_key,
+                        receiver=receiver_name,
                         batch_index=batch_idx + 1,
                     )
+
+            self._logger.info(
+                "flat_dask_complete",
+                batch_index=batch_idx + 1,
+                tasks_succeeded=tasks_succeeded,
+                tasks_failed=tasks_failed,
+            )
+
+            # ── Phase 3: Icechunk write + yield (sequential) ─────────
+            doys_succeeded = 0
+            doys_failed = 0
+
+            for date_key, _receivers in batch:
+                if date_key not in grouped_results:
+                    continue
+
+                processor, receiver_file_map = doy_contexts[date_key]
+                datasets: dict[str, xr.Dataset] = {}
+                timings: dict[str, float] = {}
+
+                for receiver_name, rinex_files in receiver_file_map:
+                    if receiver_name not in grouped_results[date_key]:
+                        continue
+
+                    augmented = sorted(
+                        grouped_results[date_key][receiver_name],
+                        key=lambda x: x[0].name,
+                    )
+
+                    t0 = _time.monotonic()
+                    try:
+                        processor._append_to_icechunk(
+                            augmented, receiver_name, rinex_files
+                        )
+                    except (OSError, RuntimeError, ValueError):
+                        self._logger.exception(
+                            "icechunk_write_failed",
+                            date=date_key,
+                            receiver=receiver_name,
+                        )
+                        continue
+
+                    # Read back daily dataset
+                    date_obj = processor.matched_data_dirs.yyyydoy.date
+                    time_range = (
+                        datetime.combine(date_obj, datetime.min.time()),
+                        datetime.combine(date_obj, datetime.max.time()),
+                    )
+                    daily_ds = self.site.read_receiver_data(
+                        receiver_name=receiver_name,
+                        time_range=time_range,
+                    )
+                    datasets[receiver_name] = daily_ds
+                    timings[receiver_name] = _time.monotonic() - t0
+
+                if datasets:
+                    doys_succeeded += 1
+                    yield (date_key, datasets, timings)
+                else:
+                    doys_failed += 1
 
             batch_elapsed = _time.monotonic() - batch_start_time
             self._logger.info(
@@ -762,12 +1017,24 @@ if __name__ == "__main__":
     from canvod.utils.config import load_config
 
     cfg = load_config()
+    proc = cfg.processing.processing
     site = GnssResearchSite(site_name="Rosalia")
 
-    # Process all dates
-    keep_vars = cfg.processing.processing.keep_rnx_vars
-    with PipelineOrchestrator(site=site, dry_run=False) as orchestrator:
-        for date_key, datasets in orchestrator.process_by_date(keep_vars=keep_vars):
+    # All params from config — no hardcoded defaults
+    keep_vars = proc.keep_rnx_vars
+    resources = proc.resolve_resources()
+    with PipelineOrchestrator(
+        site=site,
+        dry_run=False,
+        n_max_workers=resources["n_workers"],
+        batch_hours=proc.batch_hours,
+        max_memory_gb=resources["max_memory_gb"],
+        cpu_affinity=resources["cpu_affinity"],
+        nice_priority=resources["nice_priority"],
+    ) as orchestrator:
+        for date_key, datasets, _timings in orchestrator.process_by_date(
+            keep_vars=keep_vars
+        ):
             print(f"\nProcessed date: {date_key}")
             for receiver_name, ds in datasets.items():
                 print(f"  {receiver_name}: {dict(ds.sizes)}")

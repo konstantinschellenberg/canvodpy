@@ -10,11 +10,29 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request
 
-from tqdm import tqdm
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 
 from canvod.auxiliary._internal import get_logger
 
 log = get_logger(__name__)
+
+
+def _download_progress() -> Progress:
+    """Create a Rich progress bar configured for file downloads."""
+    return Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+    )
 
 
 class FileDownloader(ABC):
@@ -221,14 +239,15 @@ class FtpDownloader(FileDownloader):
         if "cddis.eosdis.nasa.gov" in url:
             return self._download_from_nasa_cddis(url, destination)
         else:
-            with tqdm(unit="B", unit_scale=True, desc=destination.name) as pbar:
+            with _download_progress() as progress:
+                task = progress.add_task(destination.name, total=None)
 
-                def update_pbar(count, block_size, total_size):
+                def update_progress(count, block_size, total_size):
                     if total_size != -1:
-                        pbar.total = total_size
-                    pbar.update(block_size)
+                        progress.update(task, total=total_size)
+                    progress.advance(task, block_size)
 
-                request.urlretrieve(url, temp_path, reporthook=update_pbar)
+                request.urlretrieve(url, temp_path, reporthook=update_progress)
 
         if url.endswith(".gz"):
             with gzip.open(temp_path, "rb") as f_in:
@@ -273,20 +292,21 @@ class FtpDownloader(FileDownloader):
 
         temp_path = destination.with_suffix(destination.suffix + ".tmp")
         with temp_path.open("wb") as f:
-            with tqdm(unit="B", unit_scale=True, desc=destination.name) as pbar:
-
-                def write_callback(data):
-                    f.write(data)
-                    pbar.update(len(data))
-
+            with _download_progress() as progress:
+                total = None
                 try:
                     size = ftps.size(filename)
                     if size:
-                        pbar.total = size
+                        total = size
                 except (OSError, error_perm):
                     pass
 
-                print(f"Retrieving file: {filename}")
+                task = progress.add_task(filename, total=total)
+
+                def write_callback(data):
+                    f.write(data)
+                    progress.advance(task, len(data))
+
                 ftps.retrbinary(f"RETR {filename}", write_callback)
 
         ftps.quit()

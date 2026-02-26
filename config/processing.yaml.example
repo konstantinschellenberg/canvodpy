@@ -47,15 +47,57 @@ aux_data:
 # =============================================================================
 
 processing:
-  time_aggregation_seconds: 5
-  n_max_threads: 20
+
+  # --- RINEX observation settings -----------------------------------------
+  # Variables to keep. Each maps to a RINEX obs code prefix:
+  #   SNR         - Signal-to-Noise Ratio (dBHz)   [S-codes: S1C, S2W, ...]
+  #   Pseudorange - Code pseudorange (metres)       [C-codes: C1C, C2W, ...]
+  #   Phase       - Carrier phase (cycles)          [L-codes: L1C, L2W, ...]
+  #   Doppler     - Doppler shift (Hz)              [D-codes: D1C, D2W, ...]
   keep_rnx_vars:
     - SNR
+    # - Pseudorange
+    # - Phase
+    # - Doppler
+  aggregate_glonass_fdma: true    # Treat all GLONASS FDMA bands as one band
 
-  # GLONASS FDMA band aggregation
-  # true: Treat all GLONASS FDMA bands as one band
-  # false: Treat each GLONASS FDMA band individually
-  aggregate_glonass_fdma: true
+  # --- Batch strategy -----------------------------------------------------
+  # >= 24: multi-day strategy (accumulates calendar days)
+  # <  24: sub-day strategy (splits RINEX files within a day)
+  batch_hours: 24
+
+  # --- Resource mode ------------------------------------------------------
+  # 'auto'   — Dask/OS auto-detects workers and memory (personal machines)
+  # 'manual' — hard caps below are enforced (shared servers)
+  resource_mode: auto
+
+  # --- Parallelism primer ------------------------------------------------
+  # Your CPU has a fixed number of "cores" — independent units that can
+  # each run one computation at the same time. Check yours with:
+  #   python -c "import os; print(os.cpu_count())"
+  #
+  # A "worker" is a separate Python process that occupies one core.
+  # Setting n_max_threads higher than your core count gives no speed-up
+  # for CPU-heavy work (like RINEX processing) and can actually slow
+  # things down because workers compete for the same cores.
+  #
+  # A "thread" is a lightweight path inside a single worker. Threads
+  # help with waiting on disk or network I/O, but Python's GIL (Global
+  # Interpreter Lock) prevents them from speeding up number crunching.
+  # canvodpy uses 1 thread per worker, so each worker = 1 process = 1 core.
+  #
+  # Rule of thumb: set n_max_threads equal to your core count (or a bit
+  # below to leave headroom for the OS). On a laptop with 8 cores, 6-8
+  # is a good starting point.
+  # -----------------------------------------------------------------------
+
+  # Manual-mode settings (ignored when resource_mode: auto)
+  # n_max_threads: 8           # Worker processes (≤ your core count)
+  # max_memory_gb: 16          # Total RAM budget (null = no limit)
+  # cpu_affinity: [0, 1, 2, 3] # Pin to CPU core IDs, Linux only
+  # nice_priority: 10          # OS priority (0 = normal, 19 = lowest)
+
+  # Dask dashboard: http://localhost:8787/status
 
 # =============================================================================
 # Compression

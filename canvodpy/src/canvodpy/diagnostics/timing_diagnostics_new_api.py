@@ -124,8 +124,16 @@ def diagnose_processing_new_api(
     print("=" * 80)
     print(f"Start time: {datetime.now()}")
     cfg = load_config()
-    keep_vars = cfg.processing.processing.keep_rnx_vars
+    proc = cfg.processing.processing
+    keep_vars = proc.keep_rnx_vars
     print(f"keep_rnx_vars: {keep_vars}")
+    print(f"resource_mode: {proc.resource_mode}")
+    print(f"n_max_threads (workers): {proc.n_max_threads}")
+    print(f"batch_hours: {proc.batch_hours}")
+    print(f"max_memory_gb: {proc.max_memory_gb}")
+    print(f"cpu_affinity: {proc.cpu_affinity}")
+    print(f"nice_priority: {proc.nice_priority}")
+    print(f"rinex_store_strategy: {cfg.processing.storage.rinex_store_strategy}")
     if start_from:
         print(f"Starting from: {start_from}")
     if end_at:
@@ -225,10 +233,11 @@ def diagnose_processing_new_api(
 
 if __name__ == "__main__":
     # Process everything
-    # diagnose_processing_new_api()
+    diagnose_processing_new_api()
 
     # Start from a specific date
-    diagnose_processing_new_api(start_from="2025225", end_at="2025225")  # July 1, 2024
+    # diagnose_processing_new_api(start_from="2025225",
+    #                             end_at="2025225")  # July 1, 2024
 
     # Process a specific range
     # diagnose_processing_new_api(start_from="2025278", end_at="2025280")

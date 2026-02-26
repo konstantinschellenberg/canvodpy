@@ -38,7 +38,15 @@ from icechunk.session import ForkSession
 from icechunk.xarray import to_icechunk
 from natsort import natsorted
 from pydantic import ValidationError
-from tqdm import tqdm
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+    TimeRemainingColumn,
+)
 
 from canvodpy.logging import get_logger
 from canvodpy.orchestrator.interpolator import (
@@ -52,6 +60,19 @@ from canvodpy.utils.telemetry import trace_icechunk_write
 # ============================================================================
 # MODULE-LEVEL FUNCTIONS (Required for Dask / ProcessPoolExecutor serialization)
 # ============================================================================
+
+
+def _processing_progress() -> Progress:
+    """Create a Rich progress bar for RINEX processing tasks."""
+    return Progress(
+        SpinnerColumn(),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+        TextColumn("eta"),
+        TimeRemainingColumn(),
+    )
 
 
 def preprocess_with_hermite_aux(
@@ -464,8 +485,10 @@ class RinexDataProcessor:
         Research site with Icechunk stores
     aux_file_path : Path, optional
         Root path for auxiliary files
-    n_max_workers : int, default 12
-        Maximum parallel workers (CPUs) for RINEX processing
+    n_max_workers : int | None, default None
+        Maximum parallel workers (CPUs) for RINEX processing.
+        ``None`` lets ``ProcessPoolExecutor`` auto-detect via
+        ``os.cpu_count()``.
     dask_client : dask.distributed.Client, optional
         Dask distributed client for parallel task submission.
         When provided, tasks are submitted to the long-lived cluster.
@@ -478,17 +501,20 @@ class RinexDataProcessor:
         matched_data_dirs: MatchedDirs,
         site: GnssResearchSite,
         aux_file_path: Path | None = None,
-        n_max_workers: int = 12,
+        n_max_workers: int | None = None,
         dask_client: Client | None = None,
     ) -> None:
         self.matched_data_dirs = matched_data_dirs
         self.site = site
         self.aux_file_path = aux_file_path
-        self.n_max_workers = min(n_max_workers, os.cpu_count() or 12)
+        if n_max_workers is not None:
+            self.n_max_workers = min(n_max_workers, os.cpu_count() or n_max_workers)
+        else:
+            self.n_max_workers = None
         self._dask_client = dask_client
         self._logger = get_logger(__name__).bind(
             site=site.site_name,
-            workers=self.n_max_workers,
+            workers=self.n_max_workers or os.cpu_count(),
             component="processor",  # Enable component-specific logging
         )
         # Dedicated logger for icechunk store operations
@@ -726,6 +752,70 @@ class RinexDataProcessor:
 
         return natsorted(rinex_files)
 
+    def _compute_receiver_position(
+        self,
+        position_files: list[Path],
+        receiver_name: str,
+    ) -> ECEFPosition | None:
+        """Compute ECEF position from the first valid RINEX file header.
+
+        Parameters
+        ----------
+        position_files : list[Path]
+            RINEX files to try (first valid one wins).
+        receiver_name : str
+            Receiver name for logging.
+
+        Returns
+        -------
+        ECEFPosition | None
+            Computed position, or None if no valid file found.
+
+        """
+        first_rnx = None
+        for ff in position_files:
+            try:
+                first_rnx = Rnxv3Obs(fpath=ff, include_auxiliary=False)
+                break
+            except ValidationError as e:
+                self._logger.warning(
+                    "Validation error for %s: %s",
+                    ff.name,
+                    e,
+                )
+                for error in e.errors():
+                    self._logger.debug("Field: %s", error["loc"])
+                    self._logger.debug("Message: %s", error["msg"])
+                    self._logger.debug("Type: %s", error["type"])
+            except pydantic_core.ValidationError as e:
+                self._logger.warning(
+                    "Core validation error for %s: %s",
+                    ff.name,
+                    e,
+                )
+            except (OSError, RuntimeError, ValueError) as e:
+                self._logger.warning(
+                    "Unexpected error for %s: %s",
+                    ff.name,
+                    e,
+                )
+
+        if first_rnx is None:
+            self._logger.error(
+                "No valid RINEX files found for %s",
+                receiver_name,
+            )
+            return None
+
+        first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
+        receiver_position = ECEFPosition.from_ds_metadata(first_ds)
+        self._logger.info(
+            "Computed receiver position for %s: %s",
+            receiver_name,
+            receiver_position,
+        )
+        return receiver_position
+
     def _ensure_aux_data_preprocessed(
         self,
         canopy_files: list[Path],
@@ -854,11 +944,12 @@ class RinexDataProcessor:
             executor_type="dask.distributed",
         )
 
+        effective_workers = self.n_max_workers or os.cpu_count() or 1
         self._logger.debug(
             "parallel_config",
             max_workers=self.n_max_workers,
             cpu_count=os.cpu_count(),
-            files_per_worker=round(len(rinex_files) / self.n_max_workers, 1),
+            files_per_worker=round(len(rinex_files) / effective_workers, 1),
         )
 
         results: list[tuple[Path, xr.Dataset]] = []
@@ -890,37 +981,37 @@ class RinexDataProcessor:
         completed_count = 0
         failed_count = 0
 
-        for fut in tqdm(
-            dask_as_completed(future_to_file),
-            total=len(future_to_file),
-            desc=f"Processing {receiver_type}",
-            unit="file",
-        ):
-            try:
-                fname, ds_augmented = fut.result()
-                results.append((fname, ds_augmented))
-                completed_count += 1
+        yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
+        desc = f"{yyyydoy} {receiver_type}"
+        with _processing_progress() as progress:
+            task = progress.add_task(desc, total=len(future_to_file))
+            for fut in dask_as_completed(future_to_file):
+                try:
+                    fname, ds_augmented = fut.result()
+                    results.append((fname, ds_augmented))
+                    completed_count += 1
 
-                if completed_count % 10 == 0:
-                    self._logger.debug(
-                        "processing_progress",
-                        completed=completed_count,
-                        total=len(future_to_file),
-                        failed=failed_count,
-                        progress_pct=round(
-                            100 * completed_count / len(future_to_file), 1
-                        ),
+                    if completed_count % 10 == 0:
+                        self._logger.debug(
+                            "processing_progress",
+                            completed=completed_count,
+                            total=len(future_to_file),
+                            failed=failed_count,
+                            progress_pct=round(
+                                100 * completed_count / len(future_to_file), 1
+                            ),
+                        )
+                except (OSError, RuntimeError, ValueError) as e:
+                    failed_file = future_to_file[fut].name
+                    failed_count += 1
+                    self._logger.error(
+                        "file_processing_failed",
+                        file=failed_file,
+                        error=str(e),
+                        exception=type(e).__name__,
+                        failed_count=failed_count,
                     )
-            except (OSError, RuntimeError, ValueError) as e:
-                failed_file = future_to_file[fut].name
-                failed_count += 1
-                self._logger.error(
-                    "file_processing_failed",
-                    file=failed_file,
-                    error=str(e),
-                    exception=type(e).__name__,
-                    failed_count=failed_count,
-                )
+                progress.advance(task)
 
         # Sort chronologically by filename
         self._logger.debug("sorting_results_chronologically")
@@ -960,11 +1051,12 @@ class RinexDataProcessor:
             executor_type="ProcessPoolExecutor",
         )
 
+        effective_workers = self.n_max_workers or os.cpu_count() or 1
         self._logger.debug(
             "parallel_config",
             max_workers=self.n_max_workers,
             cpu_count=os.cpu_count(),
-            files_per_worker=round(len(rinex_files) / self.n_max_workers, 1),
+            files_per_worker=round(len(rinex_files) / effective_workers, 1),
         )
 
         results: list[tuple[Path, xr.Dataset]] = []
@@ -994,35 +1086,37 @@ class RinexDataProcessor:
             completed_count = 0
             failed_count = 0
 
-            for fut in tqdm(
-                as_completed(futures),
-                total=len(futures),
-                desc=f"Processing {receiver_type}",
-                unit="file",
-            ):
-                try:
-                    fname, ds_augmented = fut.result()
-                    results.append((fname, ds_augmented))
-                    completed_count += 1
+            yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
+            desc = f"{yyyydoy} {receiver_type}"
+            with _processing_progress() as progress:
+                task = progress.add_task(desc, total=len(futures))
+                for fut in as_completed(futures):
+                    try:
+                        fname, ds_augmented = fut.result()
+                        results.append((fname, ds_augmented))
+                        completed_count += 1
 
-                    if completed_count % 10 == 0:
-                        self._logger.debug(
-                            "processing_progress",
-                            completed=completed_count,
-                            total=len(futures),
-                            failed=failed_count,
-                            progress_pct=round(100 * completed_count / len(futures), 1),
+                        if completed_count % 10 == 0:
+                            self._logger.debug(
+                                "processing_progress",
+                                completed=completed_count,
+                                total=len(futures),
+                                failed=failed_count,
+                                progress_pct=round(
+                                    100 * completed_count / len(futures), 1
+                                ),
+                            )
+                    except (OSError, RuntimeError, ValueError) as e:
+                        failed_file = futures[fut].name
+                        failed_count += 1
+                        self._logger.error(
+                            "file_processing_failed",
+                            file=failed_file,
+                            error=str(e),
+                            exception=type(e).__name__,
+                            failed_count=failed_count,
                         )
-                except (OSError, RuntimeError, ValueError) as e:
-                    failed_file = futures[fut].name
-                    failed_count += 1
-                    self._logger.error(
-                        "file_processing_failed",
-                        file=failed_file,
-                        error=str(e),
-                        exception=type(e).__name__,
-                        failed_count=failed_count,
-                    )
+                    progress.advance(task)
 
         # Sort chronologically by filename
         self._logger.debug("sorting_results_chronologically")
@@ -1099,9 +1193,12 @@ class RinexDataProcessor:
         skip_count = 0
         append_count = 0
 
-        for idx, (fname, ds) in enumerate(
-            tqdm(augmented_datasets, desc=f"Appending {receiver_name}")
-        ):
+        yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
+        desc = f"{yyyydoy} Appending {receiver_name}"
+        _progress = _processing_progress()
+        _progress.start()
+        _task = _progress.add_task(desc, total=len(augmented_datasets))
+        for idx, (fname, ds) in enumerate(augmented_datasets):
             log = self._logger.bind(file=fname.name)
 
             if idx % 20 == 0:  # Log progress every 20 files
@@ -1307,6 +1404,8 @@ class RinexDataProcessor:
                     error=str(e),
                     exception=type(e).__name__,
                 )
+            _progress.advance(_task)
+        _progress.stop()
 
         duration = time.time() - start_time
 
@@ -2173,6 +2272,102 @@ class RinexDataProcessor:
 
             yield daily_dataset
 
+    def prepare_batch_tasks(
+        self,
+        keep_vars: list[str] | None,
+        receiver_configs: list[tuple[str, str, Path, Path | None]],
+    ) -> tuple[list[tuple], list[tuple[str, list[Path]]]]:
+        """Prepare aux Zarr and task descriptors for flat Dask submission.
+
+        Performs Phase 1 work for one DOY without submitting to Dask:
+        normalize configs, preprocess aux data, compute positions, and
+        build a flat list of task arguments.
+
+        Parameters
+        ----------
+        keep_vars : list[str] | None
+            Variables to keep in datasets.
+        receiver_configs : list[tuple[str, str, Path, Path | None]]
+            ``(receiver_name, receiver_type, data_dir, position_data_dir)``
+            tuples.
+
+        Returns
+        -------
+        task_descriptors : list[tuple]
+            Each tuple contains the args for ``preprocess_with_hermite_aux``:
+            ``(rnx_file, keep_vars, aux_zarr_path, position, receiver_name, keep_sids)``.
+        receiver_file_map : list[tuple[str, list[Path]]]
+            ``(receiver_name, rinex_files)`` for each receiver — needed for the
+            Icechunk write phase.
+
+        """
+        if keep_vars is None:
+            keep_vars = load_config().processing.processing.keep_rnx_vars
+
+        # Get first receiver files to infer sampling rate for aux preprocessing
+        first_receiver_name, _first_type, first_data_dir, _ = receiver_configs[0]
+        first_files = self._get_rinex_files(first_data_dir)
+
+        if not first_files:
+            msg = (
+                f"No RINEX files found for {first_receiver_name} - "
+                "cannot infer sampling rate"
+            )
+            self._logger.error(
+                "prepare_batch_failed",
+                reason="no_rinex_files",
+                receiver=first_receiver_name,
+            )
+            raise ValueError(msg)
+
+        date_str = self.matched_data_dirs.yyyydoy.to_str()
+        aux_zarr_path = self._ensure_aux_data_preprocessed(first_files, date_str)
+
+        task_descriptors: list[tuple] = []
+        receiver_file_map: list[tuple[str, list[Path]]] = []
+
+        for (
+            receiver_name,
+            _receiver_type,
+            data_dir,
+            position_data_dir,
+        ) in receiver_configs:
+            rinex_files = self._get_rinex_files(data_dir)
+            if not rinex_files:
+                self._logger.warning(
+                    "no_rinex_files_found",
+                    receiver=receiver_name,
+                    data_dir=str(data_dir),
+                )
+                continue
+
+            position_files = (
+                self._get_rinex_files(position_data_dir)
+                if position_data_dir
+                else rinex_files
+            )
+            receiver_position = self._compute_receiver_position(
+                position_files, receiver_name
+            )
+            if receiver_position is None:
+                continue
+
+            receiver_file_map.append((receiver_name, rinex_files))
+
+            for rnx_file in rinex_files:
+                task_descriptors.append(
+                    (
+                        rnx_file,
+                        keep_vars,
+                        aux_zarr_path,
+                        receiver_position,
+                        receiver_name,
+                        self.keep_sids,
+                    )
+                )
+
+        return task_descriptors, receiver_file_map
+
     def parsed_rinex_data_gen(
         self,
         keep_vars: list[str] | None = None,
@@ -2296,49 +2491,11 @@ class RinexDataProcessor:
                 if position_data_dir
                 else rinex_files
             )
-            first_rnx = None
-            for _f, ff in enumerate(position_files):
-                try:
-                    first_rnx = Rnxv3Obs(fpath=ff, include_auxiliary=False)
-                    break
-                except ValidationError as e:
-                    self._logger.warning(
-                        "Validation error for %s: %s",
-                        ff.name,
-                        e,
-                    )
-                    for error in e.errors():
-                        self._logger.debug("Field: %s", error["loc"])
-                        self._logger.debug("Message: %s", error["msg"])
-                        self._logger.debug("Type: %s", error["type"])
-                except pydantic_core.ValidationError as e:
-                    self._logger.warning(
-                        "Core validation error for %s: %s",
-                        ff.name,
-                        e,
-                    )
-                except (OSError, RuntimeError, ValueError) as e:
-                    self._logger.warning(
-                        "Unexpected error for %s: %s",
-                        ff.name,
-                        e,
-                    )
-
-            if first_rnx is None:
-                self._logger.error(
-                    "No valid RINEX files found for %s",
-                    receiver_name,
-                )
-                continue
-
-            first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
-            receiver_position = ECEFPosition.from_ds_metadata(first_ds)
-            self._logger.info(
-                "Computed receiver position for %s: %s (from %s)",
-                receiver_name,
-                receiver_position,
-                str(position_data_dir) if position_data_dir else "own files",
+            receiver_position = self._compute_receiver_position(
+                position_files, receiver_name
             )
+            if receiver_position is None:
+                continue
 
             if data_dir not in _rinex_cache:
                 # First time seeing this data_dir — full parallel processing
@@ -2714,14 +2871,14 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                 for rinex_file in rinex_files_sorted
             ]
 
-            for fut in tqdm(
-                dask_as_completed(futures),
-                total=len(futures),
-                desc=f"Writing {receiver_name}",
-                unit="file",
-            ):
-                returned_fork = fut.result()
-                remote_sessions.append(returned_fork)
+            yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
+            desc = f"{yyyydoy} Writing {receiver_name}"
+            with _processing_progress() as progress:
+                task = progress.add_task(desc, total=len(futures))
+                for fut in dask_as_completed(futures):
+                    returned_fork = fut.result()
+                    remote_sessions.append(returned_fork)
+                    progress.advance(task)
         else:
             self._logger.info(
                 "cooperative_writing_started",
@@ -2744,14 +2901,14 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                     for rinex_file in rinex_files_sorted
                 ]
 
-                for fut in tqdm(
-                    as_completed(futures),
-                    total=len(futures),
-                    desc=f"Writing {receiver_name}",
-                    unit="file",
-                ):
-                    returned_fork = fut.result()
-                    remote_sessions.append(returned_fork)
+                yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
+                desc = f"{yyyydoy} Writing {receiver_name}"
+                with _processing_progress() as progress:
+                    task = progress.add_task(desc, total=len(futures))
+                    for fut in as_completed(futures):
+                        returned_fork = fut.result()
+                        remote_sessions.append(returned_fork)
+                        progress.advance(task)
 
         # Merge all remote sessions
         session.merge(*remote_sessions)

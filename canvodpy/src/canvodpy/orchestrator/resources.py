@@ -147,8 +147,9 @@ class DaskClusterManager:
 
     Parameters
     ----------
-    n_workers : int
-        Number of worker processes.
+    n_workers : int | None
+        Number of worker processes. ``None`` lets Dask auto-detect
+        (defaults to ``os.cpu_count()``).
     memory_limit_per_worker : str | float
         Per-worker memory limit. ``"auto"`` lets Dask choose
         (system RAM / n_workers). A float is interpreted as bytes.
@@ -161,7 +162,7 @@ class DaskClusterManager:
 
     def __init__(
         self,
-        n_workers: int = 4,
+        n_workers: int | None = None,
         memory_limit_per_worker: str | float = "auto",
         cpu_affinity: list[int] | None = None,
         nice_priority: int = 0,
@@ -173,19 +174,23 @@ class DaskClusterManager:
             )
             raise ImportError(msg)
 
-        self._cluster = LocalCluster(
-            n_workers=n_workers,
-            threads_per_worker=1,
-            memory_limit=memory_limit_per_worker,
-        )
+        cluster_kwargs: dict = {
+            "threads_per_worker": 1,
+            "memory_limit": memory_limit_per_worker,
+        }
+        if n_workers is not None:
+            cluster_kwargs["n_workers"] = n_workers
+
+        self._cluster = LocalCluster(**cluster_kwargs)
         self._client = Client(self._cluster)
 
-        # Register resource init plugin on all workers
-        plugin = ResourceInitPlugin(
-            cpu_affinity=cpu_affinity,
-            nice_value=nice_priority,
-        )
-        self._client.register_plugin(plugin)
+        # Only register resource init plugin if affinity or nice is set
+        if cpu_affinity is not None or nice_priority > 0:
+            plugin = ResourceInitPlugin(
+                cpu_affinity=cpu_affinity,
+                nice_value=nice_priority,
+            )
+            self._client.register_plugin(plugin)
 
         self.log_cluster_info()
 

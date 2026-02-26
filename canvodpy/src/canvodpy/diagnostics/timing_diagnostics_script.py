@@ -130,6 +130,7 @@ def diagnose_processing(
 
     # Initialize site and orchestrator
     site = GnssResearchSite(site_name="Rosalia")
+    proc = cfg.processing.processing
     # Get all configured receivers
     all_receivers = sorted(site.active_receivers.keys())
     timing_log = TimingLogger(expected_receivers=all_receivers)
@@ -140,7 +141,17 @@ def diagnose_processing(
 
     # Main processing loop
     # Context manager ensures Dask cluster is shut down on exit
-    with PipelineOrchestrator(site=site, dry_run=False) as orchestrator:
+    # All params from config — no hardcoded defaults
+    resources = proc.resolve_resources()
+    with PipelineOrchestrator(
+        site=site,
+        dry_run=False,
+        n_max_workers=resources["n_workers"],
+        batch_hours=proc.batch_hours,
+        max_memory_gb=resources["max_memory_gb"],
+        cpu_affinity=resources["cpu_affinity"],
+        nice_priority=resources["nice_priority"],
+    ) as orchestrator:
         for date_key, datasets, receiver_times in orchestrator.process_by_date(
             keep_vars=keep_vars, start_from=start_from, end_at=end_at
         ):

@@ -153,7 +153,8 @@ class IcechunkDataReader:
         if site_name is None:
             site_name = next(iter(config.sites.sites))
         if n_max_workers is None:
-            n_max_workers = config.processing.processing.n_max_threads
+            resources = config.processing.processing.resolve_resources()
+            n_max_workers = resources["n_workers"]
 
         self.matched_dirs = matched_dirs
         self.site_name = site_name

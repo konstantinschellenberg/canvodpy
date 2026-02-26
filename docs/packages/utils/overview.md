@@ -58,8 +58,7 @@ User configuration overrides package defaults for any specified values. Unset ke
       product_type: final
 
     processing:
-      time_aggregation_seconds: 15
-      n_max_threads: 20
+      resource_mode: auto
       keep_rnx_vars: [SNR]
 
     icechunk:

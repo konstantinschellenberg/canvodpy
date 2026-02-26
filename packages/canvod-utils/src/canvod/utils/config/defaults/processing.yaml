@@ -17,8 +17,6 @@ aux_data:
   product_type: final
 
 processing:
-  time_aggregation_seconds: 15
-  n_max_threads: 20
   keep_rnx_vars:
     - SNR
     - Pseudorange
@@ -26,9 +24,9 @@ processing:
     - Doppler
   aggregate_glonass_fdma: true
   batch_hours: 24
-  max_memory_gb: null
-  cpu_affinity: null
-  nice_priority: 0
+  resource_mode: auto
+  # n_max_threads, max_memory_gb, cpu_affinity, nice_priority
+  # are only used when resource_mode: manual
 
 compression:
   zlib: true

@@ -133,17 +133,21 @@ class ProcessingParams(BaseModel):
     This is a Pydantic model for configuration validation.
     """
 
-    time_aggregation_seconds: int = Field(
-        15,
-        ge=1,
-        le=300,
-        description="Time aggregation window in seconds",
+    resource_mode: Literal["auto", "manual"] = Field(
+        "auto",
+        description=(
+            "'auto': Dask/OS auto-detects workers and memory (local machines). "
+            "'manual': hard caps via n_max_threads, max_memory_gb, etc. (shared servers)."
+        ),
     )
-    n_max_threads: int = Field(
-        20,
+    n_max_threads: int | None = Field(
+        None,
         ge=1,
         le=100,
-        description="Maximum number of threads for parallel processing",
+        description=(
+            "Max worker processes. Required when resource_mode='manual'. "
+            "Ignored in 'auto'."
+        ),
     )
     keep_rnx_vars: list[str] = Field(
         default_factory=lambda: ["SNR", "Pseudorange", "Phase", "Doppler"],
@@ -174,6 +178,57 @@ class ProcessingParams(BaseModel):
         le=19,
         description="Process nice value (0=normal, 10=low, 19=lowest)",
     )
+
+    @model_validator(mode="after")
+    def validate_resource_mode(self) -> "ProcessingParams":
+        """Validate resource_mode constraints.
+
+        In 'manual' mode, ``n_max_threads`` must be set.
+        In 'auto' mode, ``n_max_threads`` is ignored with a warning if set.
+        """
+        if self.resource_mode == "manual" and self.n_max_threads is None:
+            msg = (
+                "n_max_threads is required when resource_mode='manual'. "
+                "Set n_max_threads to the number of worker processes you want."
+            )
+            raise ValueError(msg)
+        if self.resource_mode == "auto" and self.n_max_threads is not None:
+            import warnings
+
+            warnings.warn(
+                f"resource_mode='auto' ignores n_max_threads={self.n_max_threads}. "
+                "Set resource_mode='manual' to enforce hard caps, "
+                "or remove n_max_threads for auto mode.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+    def resolve_resources(self) -> dict:
+        """Resolve effective resource settings based on resource_mode.
+
+        Returns
+        -------
+        dict
+            Resolved resource values with keys: ``n_workers``,
+            ``max_memory_gb``, ``cpu_affinity``, ``nice_priority``.
+            In auto mode, ``n_workers`` and ``max_memory_gb`` are ``None``
+            (let Dask/OS decide).
+        """
+        if self.resource_mode == "auto":
+            return {
+                "n_workers": None,
+                "max_memory_gb": None,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+            }
+        # manual mode
+        return {
+            "n_workers": self.n_max_threads,
+            "max_memory_gb": self.max_memory_gb,
+            "cpu_affinity": self.cpu_affinity,
+            "nice_priority": self.nice_priority,
+        }
 
 
 class CompressionConfig(BaseModel):

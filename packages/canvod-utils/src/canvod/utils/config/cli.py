@@ -351,10 +351,10 @@ def _show_processing(config: ProcessingConfig) -> None:
 
     table.add_row("Agency", config.aux_data.agency)
     table.add_row("Product Type", config.aux_data.product_type)
-    table.add_row("Max Threads", str(config.processing.n_max_threads))
+    table.add_row("Resource Mode", config.processing.resource_mode)
     table.add_row(
-        "Time Aggregation",
-        f"{config.processing.time_aggregation_seconds}s",
+        "Max Threads",
+        str(config.processing.n_max_threads or "auto"),
     )
     glonass_mode = (
         "Aggregated" if config.processing.aggregate_glonass_fdma else "Individual"
