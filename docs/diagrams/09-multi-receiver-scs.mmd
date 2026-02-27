@@ -1,36 +1,36 @@
 flowchart TD
-    subgraph FIELD["Field Setup"]
+    subgraph FIELD[Field Setup]
         C1["Canopy Receiver 1 (below canopy, NE)"]
         C2["Canopy Receiver 2 (below canopy, SW)"]
         R1["Reference Receiver (open sky)"]
     end
 
-    subgraph SCS_CONFIG["SCS Configuration (sites.yaml)"]
+    subgraph SCS_CONFIG[SCS Configuration - sites.yaml]
         C1_CFG["canopy_01 type: canopy scs_from: null (uses own position)"]
         C2_CFG["canopy_02 type: canopy scs_from: null (uses own position)"]
         R1_CFG["reference_01 type: reference scs_from:   - canopy_01   - canopy_02"]
     end
 
-    subgraph EXPANSION["SCS Processing Expansion"]
+    subgraph EXPANSION[SCS Processing Expansion]
         C1_PROC["Process canopy_01 position: canopy_01"]
         C2_PROC["Process canopy_02 position: canopy_02"]
         R1_C1["Process reference_01 position: canopy_01 (satellite geometry relative to canopy_01)"]
         R1_C2["Process reference_01 position: canopy_02 (satellite geometry relative to canopy_02)"]
     end
 
-    subgraph STORE_GROUPS["RINEX Store Groups"]
+    subgraph STORE_GROUPS[RINEX Store Groups]
         SG1["canopy_01"]
         SG2["canopy_02"]
         SG3["reference_01_canopy_01"]
         SG4["reference_01_canopy_02"]
     end
 
-    subgraph VOD_PAIRS["VOD Analysis Pairs"]
+    subgraph VOD_PAIRS[VOD Analysis Pairs]
         VP1["canopy_01 vs reference_01_canopy_01"]
         VP2["canopy_02 vs reference_01_canopy_02"]
     end
 
-    subgraph VOD_OUT["VOD Output"]
+    subgraph VOD_OUT[VOD Output]
         V1["VOD (canopy_01) SNR attenuation by canopy at position 1"]
         V2["VOD (canopy_02) SNR attenuation by canopy at position 2"]
     end

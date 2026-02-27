@@ -79,8 +79,7 @@ aux_data:
   product_type: final
 
 processing:
-  time_aggregation_seconds: 15
-  n_max_threads: 20
+  resource_mode: auto
   keep_rnx_vars: [SNR]
   aggregate_glonass_fdma: true
 ```

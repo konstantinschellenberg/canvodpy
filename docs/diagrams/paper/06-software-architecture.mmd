@@ -1,27 +1,27 @@
 graph TD
-    subgraph API["Orchestration"]
+    subgraph API[Orchestration]
         CANVODPY["canvodpy"]
     end
 
-    subgraph IO["Data I/O"]
+    subgraph IO[Data IO]
         READERS["canvod-readers"]
         AUX["canvod-auxiliary"]
     end
 
-    subgraph PERSIST["Persistence"]
+    subgraph PERSIST[Persistence]
         STORE["canvod-store"]
     end
 
-    subgraph COMPUTE["Computation"]
+    subgraph COMPUTE[Computation]
         GRIDS["canvod-grids"]
         VOD["canvod-vod"]
     end
 
-    subgraph PRESENT["Presentation"]
+    subgraph PRESENT[Presentation]
         VIZ["canvod-viz"]
     end
 
-    subgraph FOUNDATION["Foundation"]
+    subgraph FOUNDATION[Foundation]
         UTILS["canvod-utils"]
     end
 

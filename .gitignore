@@ -333,6 +333,9 @@ config/sids.yaml
 
 # Prevent config directory in packages
 canvodpy/config/
+docs/diagrams/node_modules/
+docs/diagrams/package.json
+docs/diagrams/package-lock.json
 packages/*/config/
 
 # Session documentation archive

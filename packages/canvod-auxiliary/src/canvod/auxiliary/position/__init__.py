@@ -13,6 +13,6 @@ from .spherical_coords import (
 __all__ = [
     "ECEFPosition",
     "GeodeticPosition",
-    "compute_spherical_coordinates",
     "add_spherical_coords_to_dataset",
+    "compute_spherical_coordinates",
 ]

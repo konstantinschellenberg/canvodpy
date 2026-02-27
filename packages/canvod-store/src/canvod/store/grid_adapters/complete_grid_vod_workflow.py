@@ -12,6 +12,8 @@ import polars as pl
 import zarr
 
 if TYPE_CHECKING:
+    import xarray as xr
+
     from canvod.store.store import MyIcechunkStore
 try:
     from gnssvodpy.hemigrid.storage.grid_storage import (
@@ -512,7 +514,7 @@ class HemiGridStorageAdapter:
         elif grid_type == "fibonacci":
             grid_data = getattr(self._grid, "_grid_data", None)
             if grid_data and getattr(grid_data, "points_xyz", None) is not None:
-                metadata["n_points"] = int(len(grid_data.points_xyz))
+                metadata["n_points"] = len(grid_data.points_xyz)
 
         return metadata
 
@@ -897,8 +899,9 @@ def store_grid(
     str
         Icechunk snapshot ID.
     """
-    from canvod.grids.operations import grid_to_dataset
     from icechunk.xarray import to_icechunk as _to_icechunk
+
+    from canvod.grids.operations import grid_to_dataset
 
     print(f"\nStoring grid '{grid_name}'...")
 

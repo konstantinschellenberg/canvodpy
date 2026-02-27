@@ -8,7 +8,6 @@ This script tests:
 4. Integration with aux pipeline config
 """
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -67,13 +66,8 @@ def test_site_data_roots():
 
 def test_imports():
     """Test all critical imports work."""
-    from canvod.utils.config import load_config
     from canvod.utils.config.models import (
-        CanvodConfig,
         CredentialsConfig,
-        ProcessingConfig,
-        SidsConfig,
-        SitesConfig,
     )
 
     # CredentialsConfig should work with defaults

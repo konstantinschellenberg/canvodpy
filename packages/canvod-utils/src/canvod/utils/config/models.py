@@ -119,10 +119,10 @@ class AuxDataConfig(BaseModel):
             # NASA first (requires auth), ESA fallback (no auth)
             return [
                 ("ftp://gdc.cddis.eosdis.nasa.gov", cddis_mail),
-                ("ftp://gssc.esa.int/gnss", None),
+                ("ftp://gssc.esa.int", None),
             ]
         # ESA only (no auth required)
-        return [("ftp://gssc.esa.int/gnss", None)]
+        return [("ftp://gssc.esa.int", None)]
 
 
 class ProcessingParams(BaseModel):
@@ -133,17 +133,21 @@ class ProcessingParams(BaseModel):
     This is a Pydantic model for configuration validation.
     """
 
-    time_aggregation_seconds: int = Field(
-        15,
-        ge=1,
-        le=300,
-        description="Time aggregation window in seconds",
+    resource_mode: Literal["auto", "manual"] = Field(
+        "auto",
+        description=(
+            "'auto': Dask/OS auto-detects workers and memory (local machines). "
+            "'manual': hard caps via n_max_threads, max_memory_gb, etc. (shared servers)."
+        ),
     )
-    n_max_threads: int = Field(
-        20,
+    n_max_threads: int | None = Field(
+        None,
         ge=1,
         le=100,
-        description="Maximum number of threads for parallel processing",
+        description=(
+            "Max worker processes. Required when resource_mode='manual'. "
+            "Ignored in 'auto'."
+        ),
     )
     keep_rnx_vars: list[str] = Field(
         default_factory=lambda: ["SNR", "Pseudorange", "Phase", "Doppler"],
@@ -153,6 +157,91 @@ class ProcessingParams(BaseModel):
         True,
         description="Treat GLONASS FDMA bands as one band",
     )
+    batch_hours: float = Field(
+        24.0,
+        gt=0,
+        le=720,
+        description="Hours of data per processing batch",
+    )
+    max_memory_gb: float | None = Field(
+        None,
+        gt=0,
+        description="Soft RAM limit for processing (None = no limit)",
+    )
+    cpu_affinity: list[int] | None = Field(
+        None,
+        description="Pin workers to specific CPU core IDs (None = no restriction)",
+    )
+    nice_priority: int = Field(
+        0,
+        ge=0,
+        le=19,
+        description="Process nice value (0=normal, 10=low, 19=lowest)",
+    )
+    threads_per_worker: int | None = Field(
+        None,
+        ge=1,
+        le=8,
+        description=(
+            "Threads per Dask worker process. None lets Dask decide (usually 1). "
+            "Values >1 help with numpy/xarray ops and I/O (GIL-releasing) but not "
+            "pure-Python RINEX text parsing. Fewer workers x more threads = less "
+            "memory overhead + shared aux data within a worker."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_resource_mode(self) -> "ProcessingParams":
+        """Validate resource_mode constraints.
+
+        In 'manual' mode, ``n_max_threads`` must be set.
+        In 'auto' mode, ``n_max_threads`` is ignored with a warning if set.
+        """
+        if self.resource_mode == "manual" and self.n_max_threads is None:
+            msg = (
+                "n_max_threads is required when resource_mode='manual'. "
+                "Set n_max_threads to the number of worker processes you want."
+            )
+            raise ValueError(msg)
+        if self.resource_mode == "auto" and self.n_max_threads is not None:
+            import warnings
+
+            warnings.warn(
+                f"resource_mode='auto' ignores n_max_threads={self.n_max_threads}. "
+                "Set resource_mode='manual' to enforce hard caps, "
+                "or remove n_max_threads for auto mode.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+    def resolve_resources(self) -> dict:
+        """Resolve effective resource settings based on resource_mode.
+
+        Returns
+        -------
+        dict
+            Resolved resource values with keys: ``n_workers``,
+            ``max_memory_gb``, ``cpu_affinity``, ``nice_priority``.
+            In auto mode, ``n_workers`` and ``max_memory_gb`` are ``None``
+            (let Dask/OS decide).
+        """
+        if self.resource_mode == "auto":
+            return {
+                "n_workers": None,
+                "max_memory_gb": None,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": self.threads_per_worker,
+            }
+        # manual mode
+        return {
+            "n_workers": self.n_max_threads,
+            "max_memory_gb": self.max_memory_gb,
+            "cpu_affinity": self.cpu_affinity,
+            "nice_priority": self.nice_priority,
+            "threads_per_worker": self.threads_per_worker,
+        }
 
 
 class CompressionConfig(BaseModel):

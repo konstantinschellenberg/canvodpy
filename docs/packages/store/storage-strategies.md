@@ -92,7 +92,7 @@ The write strategy controls how `MyIcechunkStore` handles the time range already
 
 ## Recommended Defaults
 
-!!! success "Raw RINEX / SBF observations → `skip`"
+!!! success "Raw RINEX observations → `skip`"
     Raw GNSS data never changes after collection.
     Skip prevents accidental re-ingestion and keeps ingest pipelines
     idempotent — safe to restart at any point.

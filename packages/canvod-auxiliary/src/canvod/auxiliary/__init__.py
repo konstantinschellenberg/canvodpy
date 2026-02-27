@@ -52,56 +52,60 @@ from canvod.auxiliary.preprocessing import (
 
 # Product registry
 from canvod.auxiliary.products import (
-    PRODUCT_REGISTRY,
+    FtpServerConfig,
+    ProductRegistry,
     ProductSpec,
     get_product_spec,
     get_products_for_agency,
+    get_registry,
     list_agencies,
-    list_available_products,
+    list_products,
 )
 
 __version__ = "0.1.0"
 
 __all__ = [
-    # File handlers
-    "Sp3File",
-    "ClkFile",
     "AuxFile",
-    # Interpolation
-    "Interpolator",
-    "InterpolatorConfig",
-    "Sp3Config",
+    "ClkFile",
     "ClockConfig",
-    "Sp3InterpolationStrategy",
     "ClockInterpolationStrategy",
-    "create_interpolator_from_attrs",
     # Dataset matching
     "DatasetMatcher",
     # Position and coordinates
     "ECEFPosition",
-    "GeodeticPosition",
-    "compute_spherical_coordinates",
-    "add_spherical_coords_to_dataset",
-    # Preprocessing
-    "preprocess_aux_for_interpolation",
-    "prep_aux_ds",
-    "map_aux_sv_to_sid",
-    "create_sv_to_sid_mapping",
-    "pad_to_global_sid",
-    "normalize_sid_dtype",
-    "strip_fillvalue",
-    "add_future_datavars",
     # Utilities
     "FileDownloader",
     "FtpDownloader",
-    "GnssData",
     # Product registry
-    "PRODUCT_REGISTRY",
+    "FtpServerConfig",
+    "GeodeticPosition",
+    "GnssData",
+    # Interpolation
+    "Interpolator",
+    "InterpolatorConfig",
+    "ProductRegistry",
     "ProductSpec",
+    "Sp3Config",
+    # File handlers
+    "Sp3File",
+    "Sp3InterpolationStrategy",
+    "add_future_datavars",
+    "add_spherical_coords_to_dataset",
+    "compute_spherical_coordinates",
+    "create_interpolator_from_attrs",
+    "create_sv_to_sid_mapping",
     "get_product_spec",
-    "list_available_products",
-    "list_agencies",
     "get_products_for_agency",
+    "get_registry",
+    "list_agencies",
+    "list_products",
+    "map_aux_sv_to_sid",
+    "normalize_sid_dtype",
+    "pad_to_global_sid",
+    "prep_aux_ds",
+    # Preprocessing
+    "preprocess_aux_for_interpolation",
+    "strip_fillvalue",
 ]
 
 # Try to import pipeline (requires gnssvodpy)

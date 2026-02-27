@@ -5,6 +5,7 @@ from typing import Any
 
 import numpy as np
 import polars as pl
+
 from canvod.grids.core.grid_data import GridData
 
 
@@ -135,7 +136,7 @@ class BaseGridBuilder(ABC):
             "angular_resolution": self.angular_resolution,
             "cutoff_theta": self.cutoff_theta,
         }
-        if "metadata" in extra_kwargs and extra_kwargs["metadata"]:
+        if extra_kwargs.get("metadata"):
             extra_kwargs["metadata"] = {**builder_meta, **extra_kwargs["metadata"]}
         else:
             extra_kwargs["metadata"] = builder_meta

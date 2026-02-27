@@ -6,26 +6,30 @@ from canvod.auxiliary.products.models import (
     ProductRequest,
     Sp3Header,
 )
-from canvod.auxiliary.products.registry import (
-    PRODUCT_REGISTRY,
+from canvod.auxiliary.products.registry_config import (
+    FtpServerConfig,
+    ProductRegistry,
     ProductSpec,
     get_product_spec,
     get_products_for_agency,
+    get_registry,
     list_agencies,
-    list_available_products,
+    list_products,
 )
 
 __all__ = [
+    "ClkHeader",
+    "FileValidationResult",
     # Registry
-    "PRODUCT_REGISTRY",
+    "FtpServerConfig",
+    "ProductRegistry",
+    "ProductRequest",
     "ProductSpec",
-    "get_product_spec",
-    "list_available_products",
-    "list_agencies",
-    "get_products_for_agency",
     # Models
     "Sp3Header",
-    "ClkHeader",
-    "ProductRequest",
-    "FileValidationResult",
+    "get_product_spec",
+    "get_products_for_agency",
+    "get_registry",
+    "list_agencies",
+    "list_products",
 ]

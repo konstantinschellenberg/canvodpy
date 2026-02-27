@@ -114,8 +114,3 @@ augmented_ds = add_spherical_coords_to_dataset(rinex_ds, r, theta, phi)
 # augmented_ds["phi"]     → geographic azimuth [rad]
 # augmented_ds["r"]       → slant range [m]
 ```
-
-!!! tip "SBF geometry mode"
-    If you are using `SbfReader`, `theta` and `phi` come directly from
-    the SatVisibility SBF blocks — no SP3 download or interpolation needed.
-    Set `use_sbf_geometry=True` on `RinexDataProcessor` to use this fast path.

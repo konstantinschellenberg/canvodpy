@@ -1,27 +1,27 @@
 flowchart TD
     %% ── Configuration ──
-    subgraph CFG["Configuration"]
+    subgraph CFG[Configuration]
         YAML["YAML Config Files (processing, sites, sids)"]
         PYDANTIC["Pydantic Validation + Deep Merge with Defaults"]
         CONFIG["CanvodConfig"]
     end
 
     %% ── Site Initialization ──
-    subgraph INIT["Site Initialization"]
+    subgraph INIT[Site Initialization]
         SITE["Site(name) Load receiver configs, initialize stores"]
         RINEX_STORE["RINEX Icechunk Store (versioned observations)"]
         VOD_STORE["VOD Icechunk Store (versioned retrievals)"]
     end
 
     %% ── Data Discovery ──
-    subgraph DISCOVERY["Data Discovery (per DOY)"]
+    subgraph DISCOVERY[Data Discovery per DOY]
         MATCHER["PairDataDirMatcher (ThreadPoolExecutor)"]
         EXPAND["SCS Expansion Reference receivers expanded per canopy position"]
         SCHEDULE["Processing Schedule {date: {group: (dir, type, pos_dir)}}"]
     end
 
     %% ── Auxiliary Data (once per DOY) ──
-    subgraph AUX["Auxiliary Data Pipeline (sequential, once per DOY)"]
+    subgraph AUX[Auxiliary Data Pipeline - once per DOY]
         FTP["FTP Download ESA primary / NASA fallback"]
         SP3_PARSE["Parse SP3 Ephemerides (ECEF positions + velocities)"]
         CLK_PARSE["Parse CLK Corrections (satellite clock offsets)"]
@@ -32,8 +32,8 @@ flowchart TD
     end
 
     %% ── Parallel RINEX Processing ──
-    subgraph PARALLEL["Parallel RINEX Processing (ProcessPoolExecutor, n workers)"]
-        subgraph WORKER["Per Hourly File (independent process)"]
+    subgraph PARALLEL[Parallel RINEX Processing]
+        subgraph WORKER[Per Hourly File - independent process]
             READ["1. Read RINEX v3.04 (Rnxv3Obs.to_ds)"]
             FILTER["2. Filter Signals (keep_vars, keep_sids)"]
             SLICE_AUX["3. Slice Auxiliary (nearest-epoch match)"]
@@ -43,7 +43,7 @@ flowchart TD
     end
 
     %% ── Storage ──
-    subgraph WRITE["Icechunk Storage (sequential)"]
+    subgraph WRITE[Icechunk Storage - sequential]
         HASH_CHECK["Check RINEX File Hash (skip if exists)"]
         NORMALIZE["Normalize Encodings (dtype compatibility)"]
         APPEND["Append to Group (epoch dimension)"]
@@ -51,15 +51,8 @@ flowchart TD
         META["Update Metadata (hash, epochs, snapshot, timestamp)"]
     end
 
-    %% ── Grid Assignment ──
-    subgraph GRID["Hemispheric Grid Assignment"]
-        BUILD_GRID["Construct Grid (equal-area, HEALPix, geodesic, fibonacci, ...)"]
-        KDTREE["Build KDTree (cell centres in Cartesian coordinates)"]
-        ASSIGN["Spatial Query (O(n log m) per observation)"]
-    end
-
     %% ── VOD Retrieval ──
-    subgraph VOD["VOD Retrieval"]
+    subgraph VOD[VOD Retrieval]
         LOAD_C["Load Canopy Dataset (from RINEX store)"]
         LOAD_R["Load Reference Dataset (from RINEX store, SCS-matched group)"]
         DELTA["Compute Delta-SNR (SNR_canopy - SNR_ref)"]
@@ -68,8 +61,15 @@ flowchart TD
         VOD_DS["VOD Dataset (per sid, epoch, cell)"]
     end
 
+    %% ── Grid Assignment ──
+    subgraph GRID[Hemispheric Grid Assignment]
+        BUILD_GRID["Construct Grid (equal-area, HEALPix, geodesic, fibonacci, ...)"]
+        KDTREE["Build KDTree (cell centres in Cartesian coordinates)"]
+        ASSIGN["Spatial Query (O(n log m) per observation)"]
+    end
+
     %% ── Output ──
-    subgraph OUTPUT["Output"]
+    subgraph OUTPUT[Output]
         VOD_WRITE["Write to VOD Store (versioned, per analysis pair)"]
         VIZ_2D["2D Hemispheric Plot (polar projection)"]
         VIZ_3D["3D Interactive Surface (Plotly)"]
@@ -117,23 +117,23 @@ flowchart TD
     COMMIT --> META
     META --> RINEX_STORE
 
-    %% Grid
-    RINEX_STORE --> BUILD_GRID
-    BUILD_GRID --> KDTREE
-    KDTREE --> ASSIGN
-
     %% VOD
-    ASSIGN --> LOAD_C
-    ASSIGN --> LOAD_R
+    RINEX_STORE --> LOAD_C
+    RINEX_STORE --> LOAD_R
     LOAD_C --> DELTA
     LOAD_R --> DELTA
     DELTA --> TRANSMISSIVITY
     TRANSMISSIVITY --> TAU
     TAU --> VOD_DS
 
+    %% Grid
+    VOD_DS --> BUILD_GRID
+    BUILD_GRID --> KDTREE
+    KDTREE --> ASSIGN
+
     %% Output
-    VOD_DS --> VOD_WRITE
+    ASSIGN --> VOD_WRITE
     VOD_WRITE --> VOD_STORE
-    VOD_DS --> VIZ_2D
-    VOD_DS --> VIZ_3D
-    VOD_DS --> EXPORT
+    ASSIGN --> VIZ_2D
+    ASSIGN --> VIZ_3D
+    ASSIGN --> EXPORT

@@ -174,10 +174,14 @@ class TauOmegaZerothOrder(VODCalculator):
         xr.DataArray
             Linear-scale values.
         """
-        return np.power(10, delta_snr_db / 10)
+        return 10 ** (delta_snr_db / 10)
 
     def calculate_vod(self) -> xr.Dataset:
         """Calculate VOD using the zeroth-order approximation.
+
+        Returns a lazy xarray.Dataset when the inputs are dask-backed so that
+        the caller can rechunk and let a single write trigger computation.
+        For in-memory (numpy) inputs the result is computed immediately.
 
         Returns
         -------
@@ -187,7 +191,7 @@ class TauOmegaZerothOrder(VODCalculator):
         Raises
         ------
         ValueError
-            If all delta SNR values are NaN.
+            If all delta SNR values are NaN (eager arrays only).
         """
         start_time = time.time()
         log.info(
@@ -199,20 +203,20 @@ class TauOmegaZerothOrder(VODCalculator):
 
         delta_snr = self.get_delta_snr()
 
-        # Scalar reductions: .load() materialises a single value from dask
-        if delta_snr.isnull().all().load().item():
-            log.error(
-                "vod_calculation_failed",
-                reason="all_delta_snr_nan",
-            )
+        # Detect lazy (dask-backed) arrays — avoid .item()/.any()/.all() on
+        # large dask arrays, as each call triggers a full compute pass.
+        _lazy = delta_snr.chunks is not None
+
+        if not _lazy and delta_snr.isnull().all():
+            log.error("vod_calculation_failed", reason="all_delta_snr_nan")
             raise ValueError(
                 "All delta_snr values are NaN - check data alignment",
             )
 
         canopy_transmissivity = self.decibel2linear(delta_snr)
 
-        if (canopy_transmissivity <= 0).any().load().item():
-            n_invalid = int((canopy_transmissivity <= 0).sum().load().item())
+        if not _lazy and (canopy_transmissivity <= 0).any():
+            n_invalid = int((canopy_transmissivity <= 0).sum())
             total = canopy_transmissivity.size
             print(
                 f"Warning: {n_invalid}/{total} transmissivity values <= 0 "
@@ -238,14 +242,21 @@ class TauOmegaZerothOrder(VODCalculator):
         )
 
         duration = time.time() - start_time
-        n_valid = int((~vod.isnull()).sum().load().item())
-
-        log.info(
-            "vod_calculation_complete",
-            duration_seconds=round(duration, 2),
-            vod_values=vod.size,
-            valid_values=n_valid,
-            valid_percent=round(100 * n_valid / vod.size, 2),
-        )
+        if not _lazy:
+            n_valid = int((~vod.isnull()).sum())
+            log.info(
+                "vod_calculation_complete",
+                duration_seconds=round(duration, 2),
+                vod_values=vod.size,
+                valid_values=n_valid,
+                valid_percent=round(100 * n_valid / vod.size, 2),
+            )
+        else:
+            log.info(
+                "vod_calculation_complete",
+                duration_seconds=round(duration, 2),
+                vod_values=vod.size,
+                note="lazy graph built; compute deferred to write",
+            )
 
         return vod_ds

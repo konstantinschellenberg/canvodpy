@@ -174,6 +174,7 @@ class DatasetMatcher:
                 f"Dataset '{name}' missing interpolation configuration. "
                 "Will use nearest-neighbor interpolation.",
                 UserWarning,
+                stacklevel=2,
             )
 
     def _get_temporal_interval(self, ds: xr.Dataset) -> float:

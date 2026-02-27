@@ -2,6 +2,7 @@
 
 import numpy as np
 import polars as pl
+
 from canvod.grids.core.grid_builder import BaseGridBuilder
 from canvod.grids.core.grid_types import GridType
 

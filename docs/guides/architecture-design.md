@@ -77,7 +77,6 @@ flowchart LR
 
     subgraph BUILTIN["Built-in"]
         RINEX3["Rnxv3Obs"]
-        SBF["SbfReader"]
         EA["EqualAreaBuilder"]
         HP["HEALPixBuilder"]
         TO["TauOmegaZerothOrder"]
@@ -93,7 +92,6 @@ flowchart LR
     VOD_ABC    --> VF
 
     RINEX3 --> RF
-    SBF    --> RF
     EA     --> GF
     HP     --> GF
     TO     --> VF
@@ -165,12 +163,12 @@ canvodpy exposes four API levels — all backed by the same packages:
 === "Level 4 — Direct Package Access"
 
     ```python
-    from canvod.readers import Rnxv3Obs, SbfReader
+    from canvod.readers import Rnxv3Obs
     from canvod.grids   import EqualAreaBuilder
     from canvod.vod     import TauOmegaZerothOrder
 
-    reader = SbfReader(fpath=Path("station.sbf"))
-    ds, aux = reader.to_ds_and_auxiliary()
+    reader = Rnxv3Obs(fpath=Path("station.25o"))
+    ds = reader.to_ds(keep_rnx_data_vars=["SNR"])
     ```
 
 ---

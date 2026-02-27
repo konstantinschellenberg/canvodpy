@@ -2,10 +2,7 @@
 
 from unittest.mock import patch
 
-import pytest
-
 from canvodpy.fluent import FluentWorkflow, step, terminal
-
 
 # ---------------------------------------------------------------------------
 # Minimal stub workflow to test decorator mechanics without real data

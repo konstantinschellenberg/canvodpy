@@ -5,22 +5,29 @@ repos:
       # Run the linter
       - id: ruff-check
         args: [--fix]
+        stages: [pre-commit]
       # Run the formatter
       - id: ruff-format
+        stages: [pre-commit]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.9.22
     hooks:
       # Update the uv lockfile
       - id: uv-lock
+        stages: [pre-commit]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: check-added-large-files
+        stages: [pre-commit]
       - id: detect-private-key
+        stages: [pre-commit]
       - id: end-of-file-fixer
+        stages: [pre-commit]
 
   - repo: https://github.com/commitizen-tools/commitizen
     rev: v4.13.3

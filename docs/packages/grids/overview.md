@@ -182,8 +182,7 @@ The `GridData` object returned by all builders provides:
     - **phi** (φ): azimuth 0 → 2π · 0 = North · π/2 = East · clockwise
     - **theta** (θ): polar angle from zenith · 0 = zenith · π/2 = horizon
 
-    This matches the SBF reader and the canvod-auxiliary coordinate output —
-    no conversion needed.
+    This matches the canvod-auxiliary coordinate output — no conversion needed.
 
 ---
 

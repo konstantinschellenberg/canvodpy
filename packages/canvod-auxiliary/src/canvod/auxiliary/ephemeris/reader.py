@@ -16,7 +16,7 @@ from canvod.auxiliary.interpolation import (
     Sp3Config,
     Sp3InterpolationStrategy,
 )
-from canvod.auxiliary.products.registry import ProductSpec, get_product_spec
+from canvod.auxiliary.products.registry_config import ProductSpec, get_product_spec
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -118,7 +118,6 @@ class Sp3File(AuxFile):
             "filename": orbit_file,
             "type": "orbit",
             "agency": self.agency,
-            "latency": self.product_spec.latency_hours,
         }
 
         try:
@@ -126,8 +125,8 @@ class Sp3File(AuxFile):
             print(f"Downloaded orbit file for {self.agency} on date {self.date}")
         except Exception as e:
             raise RuntimeError(
-                f"Failed to download SP3 file from all available servers: {str(e)}"
-            )
+                f"Failed to download SP3 file from all available servers: {e!s}"
+            ) from e
 
     def read_file(self) -> xr.Dataset:
         """Read and validate SP3 file.

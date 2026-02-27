@@ -252,8 +252,8 @@ def decode_offsets_msb(offset_msb: int) -> tuple[int, int]:
     -----
     Source: RefGuide-4.14.0, MeasEpochChannelType2.OffsetMSB, p.263.
     """
-    code_raw = offset_msb & 0x07             # bits 0-2
-    doppler_raw = (offset_msb >> 3) & 0x1F   # bits 3-7
+    code_raw = offset_msb & 0x07  # bits 0-2
+    doppler_raw = (offset_msb >> 3) & 0x1F  # bits 3-7
     return _signed_n_bit(code_raw, 3), _signed_n_bit(doppler_raw, 5)
 
 
@@ -353,10 +353,10 @@ def doppler2_hz(
 # ---------------------------------------------------------------------------
 
 _G1_BASE: pint.Quantity = 1602.000 * UREG.MHz
-_G1_STEP: pint.Quantity = (9 / 16) * UREG.MHz   # per slot
+_G1_STEP: pint.Quantity = (9 / 16) * UREG.MHz  # per slot
 _G2_BASE: pint.Quantity = 1246.000 * UREG.MHz
-_G2_STEP: pint.Quantity = (7 / 16) * UREG.MHz   # per slot
-_FREQ_NR_OFFSET: int = 8                          # slot = FreqNr - 8
+_G2_STEP: pint.Quantity = (7 / 16) * UREG.MHz  # per slot
+_FREQ_NR_OFFSET: int = 8  # slot = FreqNr - 8
 
 
 def glonass_freq_hz(signal_num: int, freq_nr: int) -> pint.Quantity:
@@ -389,7 +389,7 @@ def glonass_freq_hz(signal_num: int, freq_nr: int) -> pint.Quantity:
     """
     slot = freq_nr - _FREQ_NR_OFFSET
     match signal_num:
-        case 8 | 9:    # G1 band: L1CA, L1P
+        case 8 | 9:  # G1 band: L1CA, L1P
             return _G1_BASE + slot * _G1_STEP
         case 10 | 11:  # G2 band: L2P, L2CA
             return _G2_BASE + slot * _G2_STEP

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import plotly.graph_objects as go
+
 from canvod.viz.hemisphere_2d import HemisphereVisualizer2D
 from canvod.viz.hemisphere_3d import HemisphereVisualizer3D
 from canvod.viz.styles import (
@@ -21,9 +22,10 @@ from canvod.viz.styles import (
 
 if TYPE_CHECKING:
     import numpy as np
-    from canvod.grids import HemiGrid
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+
+    from canvod.grids import HemiGrid
 
 
 class HemisphereVisualizer:

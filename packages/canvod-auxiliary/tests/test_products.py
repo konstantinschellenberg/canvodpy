@@ -6,7 +6,7 @@ from canvod.auxiliary.products import (
     ProductSpec,
     get_product_spec,
     list_agencies,
-    list_available_products,
+    list_products,
 )
 
 
@@ -23,13 +23,12 @@ class TestProductSpec:
             sampling_rate="05M",
             duration="01D",
             available_formats=["SP3", "CLK"],
+            ftp_servers=[],
             ftp_path_pattern="/gnss/products/{gps_week}/{file}",
-            latency_hours=336,
             description="Test product",
         )
 
         assert spec.agency_code == "COD"
-        assert spec.latency_hours == 336
         assert "SP3" in spec.available_formats
 
     def test_minimal_product_spec(self):
@@ -42,12 +41,11 @@ class TestProductSpec:
             sampling_rate="05M",
             duration="01D",
             available_formats=["SP3"],
+            ftp_servers=[],
             ftp_path_pattern="/path/{file}",
-            latency_hours=24,
         )
 
         assert spec.agency_code == "COD"
-        assert spec.latency_hours == 24
 
 
 class TestGetProductSpec:
@@ -61,39 +59,36 @@ class TestGetProductSpec:
         assert spec.agency_code == "COD"
         assert "SP3" in spec.available_formats
         assert "CLK" in spec.available_formats
-        assert spec.latency_hours == 168  # 7 days
 
     def test_gfz_rapid_product(self):
         """Test retrieving GFZ rapid product."""
         spec = get_product_spec("GFZ", "rapid")
 
         assert spec is not None
-        assert spec.latency_hours < 168  # Less than final
 
     def test_esa_rapid_product(self):
         """Test retrieving ESA rapid product."""
         spec = get_product_spec("ESA", "rapid")
 
         assert spec is not None
-        assert spec.latency_hours < 100  # Rapid products have lower latency
 
     def test_invalid_agency_raises(self):
-        """Test invalid agency raises ValueError."""
-        with pytest.raises(ValueError):
+        """Test invalid agency raises KeyError."""
+        with pytest.raises(KeyError):
             get_product_spec("INVALID_AGENCY", "final")
 
     def test_invalid_product_type_raises(self):
-        """Test invalid product type raises ValueError."""
-        with pytest.raises(ValueError):
+        """Test invalid product type raises KeyError."""
+        with pytest.raises(KeyError):
             get_product_spec("COD", "invalid_product")
 
 
 class TestListAvailableProducts:
-    """Test list_available_products function."""
+    """Test list_products function."""
 
     def test_returns_list(self):
         """Test function returns list of tuples."""
-        products = list_available_products()
+        products = list_products()
 
         assert isinstance(products, list)
         assert len(products) > 0
@@ -103,7 +98,7 @@ class TestListAvailableProducts:
 
     def test_contains_expected_agencies(self):
         """Test registry contains expected agencies."""
-        products = list_available_products()
+        products = list_products()
         agencies = {agency for agency, _ in products}
 
         expected = ["COD", "GFZ", "ESA", "JPL"]
@@ -112,7 +107,7 @@ class TestListAvailableProducts:
 
     def test_each_agency_has_products(self):
         """Test each agency has at least one product."""
-        products = list_available_products()
+        products = list_products()
         agencies = {}
 
         for agency, product_type in products:
@@ -125,7 +120,7 @@ class TestListAvailableProducts:
 
     def test_final_products_exist(self):
         """Test most agencies have final products."""
-        products = list_available_products()
+        products = list_products()
 
         agencies_with_final = {
             agency for agency, product_type in products if product_type == "final"
@@ -165,14 +160,14 @@ class TestProductRegistry:
 
     def test_minimum_product_count(self):
         """Test registry has minimum number of products."""
-        products = list_available_products()
+        products = list_products()
 
         # Should have at least 10 products total
         assert len(products) >= 10
 
     def test_all_specs_valid(self):
         """Test all product specs can be retrieved."""
-        products = list_available_products()
+        products = list_products()
 
         for agency, product_type in products:
             spec = get_product_spec(agency, product_type)
@@ -181,7 +176,7 @@ class TestProductRegistry:
 
     def test_url_templates_format(self):
         """Test URL templates contain expected placeholders."""
-        products = list_available_products()
+        products = list_products()
 
         for agency, product_type in products:
             spec = get_product_spec(agency, product_type)
@@ -190,27 +185,14 @@ class TestProductRegistry:
             path = spec.ftp_path_pattern
             assert any(ph in path for ph in ["{gps_week}", "{file}"])
 
-    def test_latency_ordering(self):
-        """Test product latencies are ordered correctly."""
-        # Rapid should have lower latency than final
-
-        try:
-            rapid = get_product_spec("COD", "rapid")
-            final = get_product_spec("COD", "final")
-
-            assert rapid.latency_hours < final.latency_hours
-        except ValueError:
-            pytest.skip("COD doesn't have both product types")
-
     def test_auth_requirements_specified(self):
         """Test that products have consistent structure."""
-        products = list_available_products()
+        products = list_products()
 
         # Check all products have valid specs
         for agency, product_type in products:
             spec = get_product_spec(agency, product_type)
             assert spec.agency_code is not None
-            assert spec.latency_hours >= 0
 
 
 class TestProductSpecConfiguration:

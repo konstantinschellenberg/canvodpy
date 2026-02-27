@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 
 from canvod.utils.config import load_config
-
 from canvodpy.api import Site
 
 
@@ -27,8 +26,10 @@ class TimingLogger:
     def __init__(self, filename=None, expected_receivers=None):
         # Default to .logs directory in project root
         if filename is None:
-            filename = (load_config().processing.logging.get_log_dir() /
-                        "timing_log_new_api.csv")
+            filename = (
+                load_config().processing.logging.get_log_dir()
+                / "timing_log_new_api.csv"
+            )
         self.filename = filename
         self.file_exists = Path(filename).exists()
 
@@ -44,9 +45,10 @@ class TimingLogger:
 
         # Fixed fieldnames for consistent CSV structure
         self.fieldnames = (
-            ["day", "start_time", "end_time"] +
-            [f"{name}_seconds"
-             for name in self.expected_receivers] + ["total_seconds"])
+            ["day", "start_time", "end_time"]
+            + [f"{name}_seconds" for name in self.expected_receivers]
+            + ["total_seconds"]
+        )
 
     def log(self, day, start_time, end_time, receiver_times, total_time):
         """Log a day's processing times."""
@@ -121,8 +123,16 @@ def diagnose_processing_new_api(
     print("=" * 80)
     print(f"Start time: {datetime.now()}")
     cfg = load_config()
-    keep_vars = cfg.processing.processing.keep_rnx_vars
+    proc = cfg.processing.processing
+    keep_vars = proc.keep_rnx_vars
     print(f"keep_rnx_vars: {keep_vars}")
+    print(f"resource_mode: {proc.resource_mode}")
+    print(f"n_max_threads (workers): {proc.n_max_threads}")
+    print(f"batch_hours: {proc.batch_hours}")
+    print(f"max_memory_gb: {proc.max_memory_gb}")
+    print(f"cpu_affinity: {proc.cpu_affinity}")
+    print(f"nice_priority: {proc.nice_priority}")
+    print(f"rinex_store_strategy: {cfg.processing.storage.rinex_store_strategy}")
     if start_from:
         print(f"Starting from: {start_from}")
     if end_at:
@@ -131,7 +141,6 @@ def diagnose_processing_new_api(
 
     # Initialize site and pipeline using NEW API
     site = Site("Rosalia")
-    pipeline = site.pipeline(keep_vars=keep_vars, dry_run=False)
 
     # Get all configured receivers
     all_receivers = sorted(site.active_receivers.keys())
@@ -142,76 +151,79 @@ def diagnose_processing_new_api(
     days_since_rechunk = 0
 
     # Main processing loop using NEW API
-    # Note: Pipeline.process_range() doesn't return timing info,
-    # so we need to time manually
-    for date_key, datasets in pipeline.process_range(
+    # Context manager ensures Dask cluster is shut down on exit
+    with site.pipeline(keep_vars=keep_vars, dry_run=False) as pipeline:
+        for date_key, datasets in pipeline.process_range(
             start=start_from or "2000001",  # Default to very early date
             end=end_at or "2099365",  # Default to far future date
-    ):
-        day_start_time = datetime.now()
+        ):
+            day_start_time = datetime.now()
 
-        print(f"\n{'=' * 80}")
-        print(f"Processing {date_key}")
-        print(f"{'=' * 80}\n")
-
-        try:
-            # Track timing per receiver manually
-            receiver_times = {}
-            receiver_start = datetime.now()
-
-            for receiver_name, ds in datasets.items():
-                print(f"\n{'─' * 80}")
-                print(f"{receiver_name.upper()} PROCESSING")
-                print(f"{'─' * 80}")
-                print(f"  Dataset shape: {dict(ds.sizes)}")
-
-                # Manual timing (less accurate than orchestrator's internal timing)
-                receiver_end = datetime.now()
-                receiver_times[receiver_name] = (
-                    receiver_end - receiver_start).total_seconds()
-                receiver_start = receiver_end
-
-            day_end_time = datetime.now()
-            total_time = sum(receiver_times.values())
-
-            # Summary
             print(f"\n{'=' * 80}")
-            print("SUMMARY")
-            print(f"{'=' * 80}")
-            for receiver_name, ds in datasets.items():
-                print(f"{receiver_name}: {dict(ds.sizes)} "
-                      f"({receiver_times[receiver_name]:.2f}s)")
-            print(f"Total time: {total_time:.2f}s")
-            print(f"\n✓ Successfully processed {date_key}")
+            print(f"Processing {date_key}")
+            print(f"{'=' * 80}\n")
 
-            # LOG TO CSV
-            timing_log.log(
-                day=date_key,
-                start_time=day_start_time,
-                end_time=day_end_time,
-                receiver_times=receiver_times,
-                total_time=total_time,
-            )
+            try:
+                # Track timing per receiver manually
+                receiver_times = {}
+                receiver_start = datetime.now()
 
-            days_since_rechunk += 1
+                for receiver_name, ds in datasets.items():
+                    print(f"\n{'─' * 80}")
+                    print(f"{receiver_name.upper()} PROCESSING")
+                    print(f"{'─' * 80}")
+                    print(f"  Dataset shape: {dict(ds.sizes)}")
 
-        except Exception as e:
-            print(f"\n✗ Failed {date_key}: {e}")
-            import traceback
+                    # Manual timing (less accurate than orchestrator's internal timing)
+                    receiver_end = datetime.now()
+                    receiver_times[receiver_name] = (
+                        receiver_end - receiver_start
+                    ).total_seconds()
+                    receiver_start = receiver_end
 
-            traceback.print_exc()
+                day_end_time = datetime.now()
+                total_time = sum(receiver_times.values())
 
-        finally:
-            counter += 1
-            garbage_collect += 1
+                # Summary
+                print(f"\n{'=' * 80}")
+                print("SUMMARY")
+                print(f"{'=' * 80}")
+                for receiver_name, ds in datasets.items():
+                    print(
+                        f"{receiver_name}: {dict(ds.sizes)} "
+                        f"({receiver_times[receiver_name]:.2f}s)"
+                    )
+                print(f"Total time: {total_time:.2f}s")
+                print(f"\n✓ Successfully processed {date_key}")
 
-        # Garbage collection every 5 days
-        if garbage_collect % 5 == 0:
-            print("\n💤 Pausing for 60s before garbage collection...")
-            time.sleep(60)
-            print("\n🗑️  Running garbage collection...")
-            gc.collect()
-            print("✓ Garbage collection done")
+                # LOG TO CSV
+                timing_log.log(
+                    day=date_key,
+                    start_time=day_start_time,
+                    end_time=day_end_time,
+                    receiver_times=receiver_times,
+                    total_time=total_time,
+                )
+
+                days_since_rechunk += 1
+
+            except Exception as e:
+                print(f"\n✗ Failed {date_key}: {e}")
+                import traceback
+
+                traceback.print_exc()
+
+            finally:
+                counter += 1
+                garbage_collect += 1
+
+            # Garbage collection every 5 days
+            if garbage_collect % 5 == 0:
+                print("\n💤 Pausing for 60s before garbage collection...")
+                time.sleep(60)
+                print("\n🗑️  Running garbage collection...")
+                gc.collect()
+                print("✓ Garbage collection done")
 
     print(f"\n{'=' * 80}")
     print(f"End time: {datetime.now()}")
@@ -220,11 +232,10 @@ def diagnose_processing_new_api(
 
 if __name__ == "__main__":
     # Process everything
-    # diagnose_processing_new_api()
+    diagnose_processing_new_api()
 
     # Start from a specific date
-    diagnose_processing_new_api(start_from="2025224",
-                                end_at="2025224")  # July 1, 2024
+    diagnose_processing_new_api(start_from="2025224", end_at="2025224")
 
     # Process a specific range
     # diagnose_processing_new_api(start_from="2025278", end_at="2025280")

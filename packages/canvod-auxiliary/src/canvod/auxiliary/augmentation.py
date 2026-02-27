@@ -751,10 +751,10 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import xarray as xr
-    from canvod.readers import MatchedDirs
-    from canvod.utils.tools import YYYYDOY
 
     from canvod.auxiliary.pipeline import AuxDataPipeline
+    from canvod.readers import MatchedDirs
+    from canvod.utils.tools import YYYYDOY
 
     print("\n" + "=" * 60)
     print("AUGMENTATION FRAMEWORK EXAMPLES")

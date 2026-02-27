@@ -1,6 +1,10 @@
 """Band registry and plotting helpers for GNSS signals."""
 
 import matplotlib.pyplot as plt
+from matplotlib import gridspec, patches
+from pint import Quantity
+from pydantic import BaseModel
+
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
     GALILEO,
@@ -10,9 +14,6 @@ from canvod.readers.gnss_specs.constellations import (
     QZSS,
     SBAS,
 )
-from matplotlib import gridspec, patches
-from pint import Quantity
-from pydantic import BaseModel
 
 
 class Bands(BaseModel):

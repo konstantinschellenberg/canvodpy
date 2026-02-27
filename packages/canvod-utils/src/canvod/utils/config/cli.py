@@ -36,7 +36,7 @@ def find_monorepo_root() -> Path:
     current = Path.cwd().resolve()
 
     # Walk up directory tree looking for .git
-    for parent in [current] + list(current.parents):
+    for parent in [current, *list(current.parents)]:
         if (parent / ".git").exists():
             return parent
 
@@ -259,7 +259,9 @@ def validate(
                     has_data = any(True for _ in recv_dir.rglob("*") if _.is_file())
 
                 if has_data:
-                    console.print(f"  [green]✓ {site_name}/{recv_name}: {recv_dir}[/green]")
+                    console.print(
+                        f"  [green]✓ {site_name}/{recv_name}: {recv_dir}[/green]"
+                    )
                 else:
                     console.print(
                         f"  [yellow]⚠️  {site_name}/{recv_name}: {recv_dir} "
@@ -403,16 +405,34 @@ def _show_processing(config: ProcessingConfig) -> None:
 
     table.add_row("Agency", config.aux_data.agency)
     table.add_row("Product Type", config.aux_data.product_type)
-    table.add_row("Max Threads", str(config.processing.n_max_threads))
+    table.add_row("Resource Mode", config.processing.resource_mode)
     table.add_row(
-        "Time Aggregation",
-        f"{config.processing.time_aggregation_seconds}s",
+        "Max Threads",
+        str(config.processing.n_max_threads or "auto"),
     )
     glonass_mode = (
         "Aggregated" if config.processing.aggregate_glonass_fdma else "Individual"
     )
     table.add_row("GLONASS FDMA", glonass_mode)
     table.add_row("Keep RINEX Vars", ", ".join(config.processing.keep_rnx_vars))
+    table.add_row("Batch Hours", str(config.processing.batch_hours))
+    mem_str = (
+        f"{config.processing.max_memory_gb} GB"
+        if config.processing.max_memory_gb
+        else "[dim]no limit[/dim]"
+    )
+    table.add_row("Max Memory", mem_str)
+    affinity_str = (
+        str(config.processing.cpu_affinity)
+        if config.processing.cpu_affinity
+        else "[dim]no restriction[/dim]"
+    )
+    table.add_row("CPU Affinity", affinity_str)
+    table.add_row("Nice Priority", str(config.processing.nice_priority))
+    table.add_row(
+        "Dask Dashboard",
+        "[dim]http://localhost:8787 (available when pipeline runs)[/dim]",
+    )
     console.print(table)
     console.print()
 

@@ -45,33 +45,47 @@ User configuration overrides package defaults for any specified values. Unset ke
 
     ```yaml
     metadata:
-      author: Nicolas Francois Bader
-      email: nicolas.bader@tuwien.ac.at
-      institution: TU Wien
+      author: Your Name
+      email: your.email@example.com
+      institution: Your Institution
 
     credentials:
-      cddis_mail: your.email@example.com
-      gnss_root_dir: /path/to/gnss/data
+      nasa_earthdata_acc_mail: null  # NASA CDDIS auth (optional)
 
     aux_data:
       agency: COD
       product_type: final
 
     processing:
-      time_aggregation_seconds: 15
-      n_max_threads: 20
       keep_rnx_vars: [SNR]
+      aggregate_glonass_fdma: true
+      batch_hours: 24
+      resource_mode: auto
+      # n_max_threads: 8       # manual mode only
+      # max_memory_gb: 16      # manual mode only
+
+    compression:
+      zlib: true
+      complevel: 5
 
     icechunk:
       compression_level: 5
       compression_algorithm: zstd
+      inline_threshold: 512
+      get_concurrency: 1
+      # manifest_preload_enabled: false
+      # manifest_preload_max_refs: 100000000
+      # manifest_preload_pattern: "epoch|sid"
       chunk_strategies:
         rinex_store:
           epoch: 34560
           sid: -1
+        vod_store:
+          epoch: 34560
+          sid: -1
 
     storage:
-      stores_root_dir: /path/to/stores
+      stores_root_dir: /path/to/your/gnss/stores
       rinex_store_strategy: skip
       vod_store_strategy: overwrite
     ```

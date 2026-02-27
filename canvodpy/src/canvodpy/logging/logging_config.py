@@ -13,6 +13,7 @@ from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 
 import structlog
+
 from canvod.utils.config import load_config
 
 

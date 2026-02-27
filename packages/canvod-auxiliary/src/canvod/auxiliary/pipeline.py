@@ -10,15 +10,15 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from canvod.readers.matching import MatchedDirs
-from canvod.readers.matching.dir_matcher import DataDirMatcher
-from canvod.utils.tools import YYYYDOY
 
 from canvod.auxiliary._internal import get_logger
 from canvod.auxiliary.clock import ClkFile
 from canvod.auxiliary.core.base import AuxFile
 from canvod.auxiliary.ephemeris import Sp3File
 from canvod.auxiliary.preprocessing import prep_aux_ds
+from canvod.readers.matching import MatchedDirs
+from canvod.readers.matching.dir_matcher import DataDirMatcher
+from canvod.utils.tools import YYYYDOY
 
 _SP3_SUBDIR = Path("01_SP3")
 _CLK_SUBDIR = Path("02_CLK")
@@ -356,10 +356,10 @@ class AuxDataPipeline:
         cls,
         matched_dirs: MatchedDirs,
         aux_file_path: Path,
-        agency: str = None,
-        product_type: str = None,
-        ftp_server: str = None,
-        user_email: str = None,
+        agency: str | None = None,
+        product_type: str | None = None,
+        ftp_server: str | None = None,
+        user_email: str | None = None,
         keep_sids: list[str] | None = None,
     ) -> "AuxDataPipeline":
         """Factory method to create a standard pipeline with ephemerides and
@@ -397,10 +397,9 @@ class AuxDataPipeline:
         >>> pipeline.load_all()
         >>> ephem_ds = pipeline.get_ephemerides()
         """
-        from canvod.utils.config import load_config
-
         from canvod.auxiliary.clock import ClkFile
         from canvod.auxiliary.ephemeris import Sp3File
+        from canvod.utils.config import load_config
 
         cfg = load_config()
         aux_cfg = cfg.processing.aux_data
@@ -644,14 +643,13 @@ The threading.Lock ensures safe concurrent access!
     pipeline2 = AuxDataPipeline(matched_dirs=md)
 
     # Manually register files for custom configuration
-    from canvod.utils.config import load_config
-
     from canvod.auxiliary.clock import ClkFile
     from canvod.auxiliary.ephemeris import Sp3File
+    from canvod.utils.config import load_config
 
     config = load_config()
     aux_cfg = config.processing.aux_data
-    site_config = list(config.sites.sites.values())[0]
+    site_config = next(iter(config.sites.sites.values()))
     root = Path(site_config.gnss_site_data_root)
     user_email = config.nasa_earthdata_acc_mail
     servers = aux_cfg.get_ftp_servers(user_email)

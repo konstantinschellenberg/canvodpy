@@ -1,17 +1,17 @@
 flowchart LR
-    subgraph ABC["Abstract Contracts"]
+    subgraph ABC[Abstract Contracts]
         R_ABC["GNSSDataReader"]
         G_ABC["BaseGridBuilder"]
         V_ABC["VODCalculator"]
     end
 
-    subgraph FACTORY["Factory Registry"]
+    subgraph FACTORY[Factory Registry]
         RF["ReaderFactory"]
         GF["GridFactory"]
         VF["VODFactory"]
     end
 
-    subgraph BUILTIN["Built-in"]
+    subgraph BUILTIN[Built-in]
         RINEX3["RINEX 3.04"]
         EA["Equal-Area"]
         HP["HEALPix"]
@@ -19,7 +19,7 @@ flowchart LR
         TO["Tau-Omega"]
     end
 
-    subgraph VALID["Validation"]
+    subgraph VALID[Validation]
         V1["ABC Check"]
         V2["Pydantic Validation"]
         V3["Type Check"]

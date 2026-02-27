@@ -8,9 +8,10 @@ from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+from natsort import natsorted
+
 from canvod.readers.gnss_specs.constants import RINEX_OBS_GLOB_PATTERNS
 from canvod.utils.tools import YYYYDOY
-from natsort import natsorted
 
 from .models import MatchedDirs, PairMatchedDirs
 

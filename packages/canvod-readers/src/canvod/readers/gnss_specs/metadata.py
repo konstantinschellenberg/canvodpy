@@ -33,6 +33,7 @@ canvod.readers.base.DatasetStructureValidator : Validates dataset structure
 from typing import Any, Final
 
 import numpy as np
+
 from canvod.readers.gnss_specs.constants import FREQ_UNIT
 
 # -------------------

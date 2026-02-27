@@ -189,7 +189,7 @@ class ProductRequest(BaseModel):
         ValueError
             If product not available in registry or format not supported.
         """
-        from canvod.auxiliary.products.registry import get_product_spec
+        from canvod.auxiliary.products.registry_config import get_product_spec
 
         try:
             spec = get_product_spec(self.agency, self.product_type)

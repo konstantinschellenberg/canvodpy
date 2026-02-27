@@ -65,7 +65,6 @@ class ProductSpec(BaseModel):
     available_formats: list[str]
     ftp_servers: list[FtpServerConfig]
     ftp_path_pattern: str
-    latency_hours: int = Field(ge=0)
     description: str = ""
 
     @field_validator("prefix")
@@ -139,7 +138,6 @@ class ProductRegistry:
                     for server in product_data.get("ftp_servers", [])
                 ],
                 ftp_path_pattern=product_data["ftp_path"],
-                latency_hours=product_data["latency_hours"],
                 description=product_data.get("description", ""),
             )
 

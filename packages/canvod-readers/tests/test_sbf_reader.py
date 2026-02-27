@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
 
 import numpy as np
@@ -33,7 +33,9 @@ SBF_FILE = _TEST_DATA_DIR / "valid/sbf/01_Rosalia/01_reference/25001/rref001a00.
 def sbf_file() -> Path:
     """Skip the test module if the test_data submodule has not been initialised."""
     if not SBF_FILE.exists():
-        pytest.skip(f"SBF test file not found (run: git submodule update --init): {SBF_FILE}")
+        pytest.skip(
+            f"SBF test file not found (run: git submodule update --init): {SBF_FILE}"
+        )
     return SBF_FILE
 
 
@@ -105,14 +107,16 @@ class TestSbfReaderABC:
 
     def test_file_hash_deterministic(self, sbf_file: Path) -> None:
         """Same file produces the same hash regardless of reader instance."""
-        assert SbfReader(fpath=sbf_file).file_hash == SbfReader(fpath=sbf_file).file_hash
+        assert (
+            SbfReader(fpath=sbf_file).file_hash == SbfReader(fpath=sbf_file).file_hash
+        )
 
     def test_start_end_time(self, reader: SbfReader) -> None:
         st = reader.start_time
         et = reader.end_time
         assert st < et
         assert st.tzinfo is not None  # tz-aware UTC
-        assert st.tzinfo == timezone.utc
+        assert st.tzinfo == UTC
 
     def test_start_time_near_midnight(self, reader: SbfReader) -> None:
         """rref001a00.25_ straddles the 2024-12-31/2025-01-01 GPS midnight.
@@ -122,8 +126,9 @@ class TestSbfReaderABC:
         2024-12-31 23:59:42 UTC.  Verify the file boundary is within
         60 seconds of 2025-01-01 00:00:00 UTC.
         """
-        from datetime import datetime, timezone
-        boundary = datetime(2025, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        from datetime import datetime
+
+        boundary = datetime(2025, 1, 1, 0, 0, 0, tzinfo=UTC)
         delta_s = abs((reader.start_time - boundary).total_seconds())
         assert delta_s < 60, (
             f"Start time {reader.start_time} is more than 60 s from "
@@ -135,13 +140,17 @@ class TestSbfReaderABC:
         systems = reader.systems
         assert isinstance(systems, list)
         assert len(systems) > 0
-        assert set(systems).issubset(valid), f"Unexpected systems: {set(systems) - valid}"
+        assert set(systems).issubset(valid), (
+            f"Unexpected systems: {set(systems) - valid}"
+        )
 
     def test_systems_sorted(self, reader: SbfReader) -> None:
         assert reader.systems == sorted(reader.systems)
 
     def test_num_epochs(self, reader: SbfReader) -> None:
-        assert reader.num_epochs == 180  # 15-minute file at 5-second sampling (180 = 15 × 60 / 5)
+        assert (
+            reader.num_epochs == 180
+        )  # 15-minute file at 5-second sampling (180 = 15 × 60 / 5)
 
     def test_num_satellites(self, reader: SbfReader) -> None:
         assert reader.num_satellites > 0
@@ -166,15 +175,25 @@ class TestSbfHeader:
         assert len(header.rx_version) > 0
 
     def test_header_string_fields_are_str(self, header: SbfHeader) -> None:
-        for field in ("marker_name", "rx_serial", "rx_name", "rx_version",
-                      "ant_type", "ant_serial", "agency", "observer"):
+        for field in (
+            "marker_name",
+            "rx_serial",
+            "rx_name",
+            "rx_version",
+            "ant_type",
+            "ant_serial",
+            "agency",
+            "observer",
+        ):
             assert isinstance(getattr(header, field), str), f"{field} must be str"
 
     def test_header_rx_version_dotted(self, header: SbfHeader) -> None:
         """Firmware version should be a dotted numeric string, e.g. '4.14.4'."""
         parts = header.rx_version.split(".")
         assert len(parts) >= 2, f"Expected dotted version, got: {header.rx_version!r}"
-        assert all(p.isdigit() for p in parts), f"Non-numeric part in: {header.rx_version!r}"
+        assert all(p.isdigit() for p in parts), (
+            f"Non-numeric part in: {header.rx_version!r}"
+        )
 
     def test_header_latitude_in_radian_range(self, header: SbfHeader) -> None:
         assert -math.pi / 2 <= header.latitude_rad <= math.pi / 2
@@ -200,8 +219,17 @@ class TestToDs:
         assert "sid" in obs_ds.dims
 
     def test_to_ds_coords(self, obs_ds: xr.Dataset) -> None:
-        required = {"epoch", "sid", "sv", "system", "band", "code",
-                    "freq_center", "freq_min", "freq_max"}
+        required = {
+            "epoch",
+            "sid",
+            "sv",
+            "system",
+            "band",
+            "code",
+            "freq_center",
+            "freq_min",
+            "freq_max",
+        }
         missing = required - set(obs_ds.coords)
         assert not missing, f"Missing coords: {missing}"
 
@@ -217,7 +245,9 @@ class TestToDs:
     def test_to_ds_ssi_always_minus_one(self, obs_ds: xr.Dataset) -> None:
         """SBF has no RINEX SSI concept — every cell must be the fill value -1."""
         ssi = obs_ds["SSI"].values
-        assert np.all(ssi == -1), f"SSI must be uniformly -1 for SBF; got unique={np.unique(ssi)}"
+        assert np.all(ssi == -1), (
+            f"SSI must be uniformly -1 for SBF; got unique={np.unique(ssi)}"
+        )
 
     def test_to_ds_global_attrs(self, obs_ds: xr.Dataset) -> None:
         for attr in ("File Hash", "Created", "Software", "Institution"):
@@ -232,7 +262,9 @@ class TestToDs:
         assert len(valid) > 0, "SNR array is all-NaN"
         assert np.any(valid > 20), "Expected some SNR values > 20 dB-Hz"
         assert np.all(valid >= 0), "SNR cannot be negative dB-Hz"
-        assert np.all(valid <= 70), f"SNR unrealistically high: max={valid.max():.1f} dB-Hz"
+        assert np.all(valid <= 70), (
+            f"SNR unrealistically high: max={valid.max():.1f} dB-Hz"
+        )
 
     def test_to_ds_pseudorange_physical(self, obs_ds: xr.Dataset) -> None:
         """Pseudorange bounds for all GNSS constellations except SBAS.
@@ -253,7 +285,9 @@ class TestToDs:
         valid = pr[~np.isnan(pr)]
         assert len(valid) > 0, "Pseudorange is all-NaN for non-SBAS signals"
         pr_km = valid / 1000.0
-        assert np.all(pr_km > 19_000), f"Pseudorange too short: min={pr_km.min():.0f} km"
+        assert np.all(pr_km > 19_000), (
+            f"Pseudorange too short: min={pr_km.min():.0f} km"
+        )
         assert np.all(pr_km < 46_000), f"Pseudorange too long: max={pr_km.max():.0f} km"
 
     def test_to_ds_phase_not_all_nan(self, obs_ds: xr.Dataset) -> None:
@@ -295,7 +329,9 @@ class TestToDs:
 
     def test_to_ds_keep_vars(self, reader: SbfReader) -> None:
         """keep_rnx_data_vars filters data variables to the requested subset."""
-        ds = reader.to_ds(keep_rnx_data_vars=["SNR"], pad_global_sid=False, strip_fillval=False)
+        ds = reader.to_ds(
+            keep_rnx_data_vars=["SNR"], pad_global_sid=False, strip_fillval=False
+        )
         assert list(ds.data_vars) == ["SNR"]
 
 
@@ -314,7 +350,9 @@ class TestToMetadataDs:
         obs_sids = set(obs_ds.sid.values)
         meta_sids = set(meta_ds.sid.values)
         missing = obs_sids - meta_sids
-        assert not missing, f"Metadata dataset missing sids from observations: {missing}"
+        assert not missing, (
+            f"Metadata dataset missing sids from observations: {missing}"
+        )
 
     def test_to_metadata_ds_theta_phi(self, meta_ds: xr.Dataset) -> None:
         theta = meta_ds["theta"].values
@@ -328,8 +366,12 @@ class TestToMetadataDs:
             assert np.all(valid_phi >= 0), "phi values must be >= 0"
             assert np.all(valid_phi < 360), "phi (azimuth) must be < 360"
         # Provenance attrs must be present
-        assert "source" in meta_ds["theta"].attrs, "theta must have 'source' provenance attr"
-        assert "source" in meta_ds["phi"].attrs, "phi must have 'source' provenance attr"
+        assert "source" in meta_ds["theta"].attrs, (
+            "theta must have 'source' provenance attr"
+        )
+        assert "source" in meta_ds["phi"].attrs, (
+            "phi must have 'source' provenance attr"
+        )
 
     def test_to_metadata_ds_theta_phi_not_all_nan(self, meta_ds: xr.Dataset) -> None:
         """At least some epochs must have SatVisibility-derived geometry."""
@@ -353,7 +395,9 @@ class TestToMetadataDs:
         valid = pdop[~np.isnan(pdop)]
         if len(valid) > 0:
             assert np.all(valid > 0), "PDOP must be positive"
-            assert np.all(valid < 50), f"PDOP unrealistically large: max={valid.max():.2f}"
+            assert np.all(valid < 50), (
+                f"PDOP unrealistically large: max={valid.max():.2f}"
+            )
 
     def test_to_metadata_ds_data_vars(self, meta_ds: xr.Dataset) -> None:
         for var in ("theta", "phi", "rise_set", "mp_correction_m"):
@@ -454,15 +498,11 @@ class TestToDsAndAuxiliary:
         obs, _ = combined_result
         np.testing.assert_array_equal(obs.epoch.values, obs_ds.epoch.values)
 
-    def test_obs_file_hash_attr(
-        self, combined_result: tuple[xr.Dataset, dict]
-    ) -> None:
+    def test_obs_file_hash_attr(self, combined_result: tuple[xr.Dataset, dict]) -> None:
         obs, _ = combined_result
         assert "File Hash" in obs.attrs
 
-    def test_meta_ds_dims(
-        self, combined_result: tuple[xr.Dataset, dict]
-    ) -> None:
+    def test_meta_ds_dims(self, combined_result: tuple[xr.Dataset, dict]) -> None:
         _, aux = combined_result
         meta = aux["sbf_obs"]
         assert set(meta.dims) == {"epoch", "sid"}

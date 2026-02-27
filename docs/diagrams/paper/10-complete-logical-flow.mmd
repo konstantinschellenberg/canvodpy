@@ -1,68 +1,55 @@
 flowchart TD
-    subgraph CFG["Configuration"]
+    subgraph CFG[Configuration]
         YAML["YAML"]
         VALID["Validate"]
         CONF["Config"]
     end
 
-    subgraph INIT["Initialization"]
+    subgraph INIT[Initialization]
         SITE["Site"]
         RX_ST["Obs Store"]
-        META_ST["Metadata Store"]
         VOD_ST["VOD Store"]
     end
 
-    subgraph DISC["Discovery"]
+    subgraph DISC[Discovery]
         MATCH["Match Dirs"]
         EXPAND["SCS Expand"]
         SCHED["Schedule"]
     end
 
-    subgraph AUX["Auxiliary Pipeline (RINEX only)"]
+    subgraph AUX[Auxiliary Pipeline]
         DL["Download SP3 + CLK"]
         INTERP["Interpolate"]
         AUX_DS["Auxiliary Dataset"]
     end
 
-    subgraph PAR_R["Parallel Processing — RINEX"]
+    subgraph PAR_R[Parallel Processing - RINEX]
         READ_R["Read RINEX"]
         FILT_R["Filter Signals"]
         SLICE["Slice Auxiliary"]
         SCS["Spherical Coords"]
     end
 
-    subgraph PAR_S["Single-Pass Decode — SBF"]
-        READ_S["Read SBF"]
-        OBS_S["Obs Dataset"]
-        GEO_S["Geometry (θ, φ)"]
-        META_S["Quality Metadata"]
-    end
-
-    subgraph STORE_OBS["Obs Storage"]
-        HASH["Hash Check"]
+    subgraph STORE_OBS[Obs Storage]
+        HASH["RINEX Hash Check"]
         WRITE["Append"]
         COMMIT["Commit"]
     end
 
-    subgraph STORE_META["Metadata Storage"]
-        WRITE_M["Write metadata/sbf_obs"]
-        COMMIT_M["Commit"]
-    end
-
-    subgraph GRID["Grid"]
-        BUILD["Build Grid"]
-        KD["KDTree"]
-        ASSIGN["Assign Cells"]
-    end
-
-    subgraph VOD["VOD"]
+    subgraph VOD[VOD]
         LOAD["Load Pairs"]
         DELTA["Delta-SNR"]
         TAU["Tau-Omega"]
         DS["VOD Dataset"]
     end
 
-    subgraph OUT["Output"]
+    subgraph GRID[Grid]
+        BUILD["Build Grid"]
+        KD["KDTree"]
+        ASSIGN["Assign Cells"]
+    end
+
+    subgraph OUT[Output]
         SAVE["Store"]
         VIS["Visualize"]
         EXP["Export"]
@@ -71,7 +58,6 @@ flowchart TD
     YAML --> VALID --> CONF
     CONF --> SITE
     SITE --> RX_ST
-    SITE --> META_ST
     SITE --> VOD_ST
 
     CONF --> MATCH --> EXPAND --> SCHED
@@ -80,19 +66,12 @@ flowchart TD
     SCHED --> READ_R --> FILT_R --> SLICE --> SCS
     AUX_DS --> SLICE
 
-    SCHED --> READ_S --> OBS_S
-    READ_S --> GEO_S
-    READ_S --> META_S
-
     SCS --> HASH --> WRITE --> COMMIT --> RX_ST
-    OBS_S --> HASH
-    GEO_S --> HASH
 
-    META_S --> WRITE_M --> COMMIT_M --> META_ST
+    RX_ST --> LOAD --> DELTA --> TAU --> DS
 
-    RX_ST --> BUILD --> KD --> ASSIGN
-    ASSIGN --> LOAD --> DELTA --> TAU --> DS
+    DS --> BUILD --> KD --> ASSIGN
 
-    DS --> SAVE --> VOD_ST
-    DS --> VIS
-    DS --> EXP
+    ASSIGN --> SAVE --> VOD_ST
+    ASSIGN --> VIS
+    ASSIGN --> EXP

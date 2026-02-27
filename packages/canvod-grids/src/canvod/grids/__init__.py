@@ -45,44 +45,44 @@ from canvod.grids.workflows import (
 __version__ = "0.1.0"
 
 __all__ = [
+    # Workflows (require canvod-store at runtime)
+    "AdaptedVODWorkflow",
     # Core
     "BaseGridBuilder",
-    "GridData",
-    "GridType",
-    "create_hemigrid",
+    # Aggregation
+    "CellAggregator",
     # Builders
     "EqualAngleBuilder",
     "EqualAreaBuilder",
     "EquirectangularBuilder",
     "FibonacciBuilder",
     "GeodesicBuilder",
+    "GridData",
+    "GridType",
     "HEALPixBuilder",
     "HTMBuilder",
+    # Version
+    "__version__",
     # Operations
     "add_cell_ids_to_ds_fast",
     "add_cell_ids_to_vod",
     "add_cell_ids_to_vod_fast",
-    "extract_grid_vertices",
-    "grid_to_dataset",
-    "load_grid",
-    "store_dataset_with_cell_ids",
-    "store_grid",
-    # Aggregation
-    "CellAggregator",
     "aggregate_data_to_grid",
     "analyze_diurnal_patterns",
     "analyze_spatial_patterns",
+    "check_processed_data_status",
     "compute_global_average",
     "compute_hemisphere_percell",
     "compute_percell_timeseries",
     "compute_regional_average",
     "compute_zenith_percell",
-    # Workflows (require canvod-store at runtime)
-    "AdaptedVODWorkflow",
+    "create_hemigrid",
+    "extract_grid_vertices",
     "get_workflow_for_store",
-    "check_processed_data_status",
-    # Version
-    "__version__",
+    "grid_to_dataset",
+    "load_grid",
+    "store_dataset_with_cell_ids",
+    "store_grid",
 ]
 
 

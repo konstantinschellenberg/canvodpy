@@ -21,8 +21,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 import xarray as xr
-from canvod.grids import create_hemigrid, load_grid, store_grid
 
+from canvod.grids import create_hemigrid, load_grid, store_grid
 from canvod.store import create_vod_store
 
 
@@ -312,7 +312,7 @@ class TestErrorHandling:
 
     def test_load_nonexistent_grid_raises(self, vod_store) -> None:
         """Loading nonexistent grid should raise error."""
-        with pytest.raises(Exception):  # KeyError or similar
+        with pytest.raises((KeyError, ValueError)):
             load_grid(vod_store, "nonexistent_grid")
 
 

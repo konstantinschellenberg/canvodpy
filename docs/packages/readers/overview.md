@@ -97,6 +97,7 @@ class GNSSDataReader(ABC):
         SbfReader overrides for one-pass binary decode.
         """
         return self.to_ds(**kwargs), {}
+
 ```
 
 [:octicons-arrow-right-24: Full architecture](architecture.md)
@@ -205,7 +206,19 @@ class GNSSDataReader(ABC):
 
 ---
 
-## Optimization
+## Performance
+
+### Single-Pass Parser
+
+`Rnxv3Obs` uses a single-pass parser that pre-computes the full Signal ID (SID) space from the RINEX header and fills pre-allocated NumPy arrays in one pass over the file. This avoids the overhead of:
+
+- **Two-pass iteration** — epoch batches are cached, SIDs are derived from header metadata
+- **Per-observation object allocation** — inline string parsing replaces Pydantic model instantiation
+- **Repeated signal ID lookups** — a pre-built lookup table maps `(SV, obs_code)` → array index directly
+
+The fast path is used by default. The original two-pass path is preserved for special features (conflict analysis, system analysis, time slicing).
+
+### Tips
 
 !!! tip "Memory"
 

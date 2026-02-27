@@ -31,8 +31,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from canvod.grids.analysis.solar import SolarPositionCalculator
 from scipy.signal import savgol_filter
+
+from canvod.grids.analysis.solar import SolarPositionCalculator
 
 if TYPE_CHECKING:
     from canvod.grids.core.grid_data import GridData

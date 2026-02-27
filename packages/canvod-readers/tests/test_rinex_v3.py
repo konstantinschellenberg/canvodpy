@@ -4,11 +4,15 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+
 from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
-RINEX_FILE = TEST_DATA_DIR / "01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+RINEX_FILE = (
+    TEST_DATA_DIR
+    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+)
 
 
 @pytest.fixture

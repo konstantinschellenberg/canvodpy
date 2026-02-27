@@ -111,6 +111,7 @@ class TestVisualizer2DOutput:
     ):
         """Test creating basic 2D plot."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")  # Non-interactive backend
@@ -134,6 +135,7 @@ class TestVisualizer2DOutput:
     ):
         """Test 2D plot with custom styling."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D, PolarPlotStyle
 
         matplotlib.use("Agg")
@@ -161,6 +163,7 @@ class TestVisualizer2DOutput:
     def test_create_2d_plot_without_data(self, mock_equal_area_grid, temp_output_dir):
         """Test 2D plot without data (uniform color)."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")
@@ -181,6 +184,7 @@ class TestVisualizer2DOutput:
     ):
         """Test high-resolution export."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D, PolarPlotStyle
 
         matplotlib.use("Agg")
@@ -284,6 +288,7 @@ class TestUnifiedVisualizerOutput:
     ):
         """Test complete publication figure workflow."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer
 
         matplotlib.use("Agg")
@@ -330,6 +335,7 @@ class TestUnifiedVisualizerOutput:
     ):
         """Test comparison plot workflow."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer
 
         matplotlib.use("Agg")
@@ -353,6 +359,7 @@ class TestUnifiedVisualizerOutput:
     ):
         """Test switching between publication and interactive styles."""
         import matplotlib
+
         from canvod.viz import (
             HemisphereVisualizer,
             create_interactive_style,
@@ -394,6 +401,7 @@ class TestDataEdgeCases:
     def test_all_nan_data(self, mock_equal_area_grid, temp_output_dir):
         """Test plotting with all NaN data."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")
@@ -411,6 +419,7 @@ class TestDataEdgeCases:
     def test_single_value_data(self, mock_equal_area_grid, temp_output_dir):
         """Test plotting with constant data."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")
@@ -428,6 +437,7 @@ class TestDataEdgeCases:
     def test_sparse_data(self, mock_equal_area_grid, temp_output_dir):
         """Test plotting with sparse data (mostly NaN)."""
         import matplotlib
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")
@@ -463,6 +473,7 @@ class TestPerformanceIntegration:
         """Test visualization with large grid (marked as slow)."""
         import matplotlib
         import polars as pl
+
         from canvod.viz import HemisphereVisualizer2D
 
         matplotlib.use("Agg")

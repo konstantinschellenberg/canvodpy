@@ -1,6 +1,7 @@
 """Test core gnss_specs modules: constants, exceptions, models, utils, metadata."""
 
 import pytest
+
 from canvod.readers.gnss_specs import constants, exceptions, models, utils
 
 

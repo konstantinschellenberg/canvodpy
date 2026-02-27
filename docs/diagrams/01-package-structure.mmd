@@ -1,20 +1,20 @@
 graph TB
-    subgraph "User Interface"
+    subgraph UI[User Interface]
         Config["🔧 Configuration<br/>YAML files"]
     end
 
-    subgraph "Umbrella Package"
+    subgraph Umbrella[Umbrella Package]
         Canvodpy["📦 canvodpy<br/>Orchestrator & API"]
     end
 
-    subgraph "Core Processing Packages"
+    subgraph CorePkg[Core Processing Packages]
         Readers["📖 canvod-readers<br/>RINEX v3.04 Parsing"]
         Aux["📡 canvod-aux<br/>SP3/CLK/Position"]
         Store["💾 canvod-store<br/>Icechunk Storage"]
         Utils["🛠️ canvod-utils<br/>Config & Tools"]
     end
 
-    subgraph "Analysis & Output Packages"
+    subgraph AnalysisPkg[Analysis and Output Packages]
         VOD["🌳 canvod-vod<br/>VOD Calculator"]
         Grids["🔲 canvod-grids<br/>Hemisphere Grids"]
         Viz["📊 canvod-viz<br/>2D/3D Visualization"]

@@ -10,6 +10,7 @@ new modular implementation.
 from typing import Any
 
 import xarray as xr
+
 from canvod.auxiliary.preprocessing import (
     add_future_datavars,
     map_aux_sv_to_sid,
@@ -35,7 +36,7 @@ class IcechunkPreprocessor:
     @staticmethod
     def map_aux_sv_to_sid(
         aux_ds: xr.Dataset,
-        fill_value: float = None,
+        fill_value: float | None = None,
         aggregate_glonass_fdma: bool = True,
     ) -> xr.Dataset:
         """
@@ -155,7 +156,7 @@ class IcechunkPreprocessor:
     @staticmethod
     def prep_aux_ds(
         aux_ds: xr.Dataset,
-        fill_value: float = None,
+        fill_value: float | None = None,
         aggregate_glonass_fdma: bool = True,
         keep_sids: list[str] | None = None,
     ) -> xr.Dataset:

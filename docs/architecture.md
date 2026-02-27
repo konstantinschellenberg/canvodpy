@@ -20,12 +20,12 @@ graph LR
     end
 
     subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSBF binary (SbfReader)\nSignal ID mapping"]
+        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSignal ID mapping"]
         AUX["canvod-auxiliary\nSP3/CLK retrieval\nHermite interpolation\nFTP download management"]
     end
 
     subgraph STORE_LAYER["Persistence Layer"]
-        STORE["canvod-store\nIcechunk versioned storage\nGeneric metadata dataset API\nSite/receiver management"]
+        STORE["canvod-store\nIcechunk versioned storage\nHash deduplication\nSite/receiver management"]
     end
 
     subgraph COMPUTE["Computation Layer"]
@@ -122,7 +122,7 @@ canvodpy/                           # Repository root
         canvod/                     # Namespace root (no __init__.py)
           readers/                  # Package code
             __init__.py
-            sbf/                    # SBF binary reader
+
       tests/
       pyproject.toml
     canvod-auxiliary/               # Same structure
@@ -171,7 +171,6 @@ flowchart TD
     subgraph INIT["Site Initialization"]
         SITE["Site(name)"]
         RINEX_STORE["RINEX Icechunk Store"]
-        META_STORE["Metadata Store\n(sbf_obs)"]
         VOD_STORE["VOD Icechunk Store"]
     end
 
@@ -190,12 +189,11 @@ flowchart TD
 
     subgraph PARALLEL["Parallel Processing"]
         READ_R["Read RINEX (Rnxv3Obs)"]
-        READ_S["Read SBF (SbfReader)\nsingle-pass decode"]
         SPHERICAL["Spherical Coords\n(ECEF → r, θ, φ)"]
     end
 
     subgraph WRITE["Icechunk Storage"]
-        HASH_CHECK["Hash Check\n(skip duplicates)"]
+        HASH_CHECK["RINEX File Hash Check\n(skip duplicates)"]
         APPEND["Append + Commit"]
     end
 
@@ -210,7 +208,7 @@ flowchart TD
     end
 
     YAML --> PYDANTIC --> CONFIG --> SITE
-    SITE --> RINEX_STORE & META_STORE & VOD_STORE
+    SITE --> RINEX_STORE & VOD_STORE
 
     CONFIG --> MATCHER --> EXPAND --> SCHEDULE
 
@@ -218,8 +216,6 @@ flowchart TD
 
     SCHEDULE --> READ_R --> SPHERICAL
     AUX_ZARR --> SPHERICAL
-    SCHEDULE --> READ_S --> SPHERICAL
-    READ_S --> META_STORE
 
     SPHERICAL --> HASH_CHECK --> APPEND --> RINEX_STORE
 

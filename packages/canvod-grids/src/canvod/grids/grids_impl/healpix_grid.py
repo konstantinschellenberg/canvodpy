@@ -2,6 +2,7 @@
 
 import numpy as np
 import polars as pl
+
 from canvod.grids.core.grid_builder import BaseGridBuilder
 from canvod.grids.core.grid_types import GridType
 
@@ -130,10 +131,10 @@ class HEALPixBuilder(BaseGridBuilder):
             import healpy as hp
 
             self.hp = hp
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "healpy is required for HEALPix grid. Install with: pip install healpy"
-            )
+            ) from e
 
         pixel_size_arcmin = self.hp.nside2resol(self.nside, arcmin=True)
         self.actual_angular_resolution = pixel_size_arcmin / 60.0

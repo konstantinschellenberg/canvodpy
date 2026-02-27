@@ -20,7 +20,7 @@ import re
 import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, Self
@@ -30,6 +30,15 @@ import numpy as np
 import pint
 import pytz
 import xarray as xr
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PrivateAttr,
+    field_validator,
+    model_validator,
+)
+
 from canvod.readers.base import GNSSDataReader, ReaderFactory
 from canvod.readers.gnss_specs.constants import (
     EPOCH_RECORD_INDICATOR,
@@ -60,14 +69,6 @@ from canvod.readers.gnss_specs.models import (
 )
 from canvod.readers.gnss_specs.signals import SignalIDMapper
 from canvod.readers.gnss_specs.utils import get_version_from_pyproject
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    Field,
-    PrivateAttr,
-    field_validator,
-    model_validator,
-)
 
 GLONASS_COD_PHS_MIN_COMPONENTS = 6
 PGM_RUNBY_MIN_COMPONENTS = 4
@@ -80,6 +81,60 @@ OBS_SLICE_MAX_LEN = 16
 OBS_SLICE_DECIMAL_POS = -6
 LLI_SSI_PAIR_LEN = 2
 MIN_EPOCHS_FOR_INTERVAL = 2
+
+# --- Fast-path constants ---
+_EPOCH_RE = re.compile(
+    r"^>\s*(\d{4})\s+(\d{2})\s+(\d{2})\s+(\d{2})\s+(\d{2})\s+(\d+\.\d+)\s+(\d+)\s+(\d+)"
+)
+
+_CONSTELLATION_SVS: dict[str, list[str]] = {
+    "G": [f"G{i:02d}" for i in range(1, 33)],
+    "E": [f"E{i:02d}" for i in range(1, 37)],
+    "R": [f"R{i:02d}" for i in range(1, 25)],
+    "C": [f"C{i:02d}" for i in range(1, 64)],
+    "J": [f"J{i:02d}" for i in range(1, 11)],
+    "S": [f"S{i:02d}" for i in range(1, 37)],
+    "I": [f"I{i:02d}" for i in range(1, 15)],
+}
+
+_OBS_VAL_END = 14
+
+
+def _get_constellation_svs(system: str) -> list[str]:
+    """Return static list of SV identifiers for a GNSS system."""
+    return _CONSTELLATION_SVS.get(system, [])
+
+
+def _parse_obs_fast(slice_text: str) -> tuple[float | None, int | None, int | None]:
+    """Parse RINEX observation slice using direct string indexing.
+
+    Standard RINEX v3 format: 14 chars value + 1 char LLI + 1 char SSI = 16 chars.
+    """
+    if len(slice_text) < OBS_SLICE_MIN_LEN:
+        return None, None, None
+
+    try:
+        val_end = min(_OBS_VAL_END, len(slice_text))
+        val_str = slice_text[:val_end].strip()
+        if not val_str:
+            return None, None, None
+
+        value = float(val_str)
+
+        obs_lli = None
+        obs_ssi = None
+        if len(slice_text) > _OBS_VAL_END:
+            c = slice_text[_OBS_VAL_END]
+            if c.isdigit():
+                obs_lli = int(c)
+        if len(slice_text) > _OBS_VAL_END + 1:
+            c = slice_text[_OBS_VAL_END + 1]
+            if c.isdigit():
+                obs_ssi = int(c)
+
+        return value, obs_lli, obs_ssi
+    except ValueError:
+        return None, None, None
 
 
 class Rnxv3Header(BaseModel):
@@ -209,7 +264,7 @@ class Rnxv3Header(BaseModel):
                 {
                     "pgm": "",
                     "run_by": "",
-                    "date": datetime.now(timezone.utc),  # Default to current time
+                    "date": datetime.now(UTC),  # Default to current time
                 }
             )
 
@@ -290,7 +345,7 @@ class Rnxv3Header(BaseModel):
         if "TIME OF FIRST OBS" in header:
             data["t0"] = Rnxv3Header._get_time_of_first_obs(header)
         else:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             data["t0"] = {
                 "UTC": now.replace(tzinfo=pytz.UTC) if now.tzinfo is None else now,
                 "GPS": now,
@@ -346,7 +401,7 @@ class Rnxv3Header(BaseModel):
         components = header_value.split()
 
         if not components:
-            return "", "", datetime.now(timezone.utc)
+            return "", "", datetime.now(UTC)
 
         pgm = components[0]
         run_by = components[1] if len(components) > PGM_RUNBY_MIN_COMPONENTS else ""
@@ -370,9 +425,9 @@ class Rnxv3Header(BaseModel):
                 return pgm, run_by, localized_date
             except (ValueError, TypeError) as e:
                 print(f"Warning: Could not parse date components {date}: {e}")
-                return pgm, run_by, datetime.now(timezone.utc)
+                return pgm, run_by, datetime.now(UTC)
         else:
-            return pgm, run_by, datetime.now(timezone.utc)
+            return pgm, run_by, datetime.now(UTC)
 
     @staticmethod
     def _get_observer_agency(header_dict: dict[str, Any]) -> tuple[str, str]:
@@ -469,7 +524,7 @@ class Rnxv3Header(BaseModel):
         components = header_value.split()
 
         if len(components) < TIME_OF_FIRST_OBS_MIN_COMPONENTS:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return {"UTC": now, "GPS": now}
 
         try:
@@ -485,7 +540,7 @@ class Rnxv3Header(BaseModel):
                 minute,
                 int(second),
                 int((second - int(second)) * 1e6),
-                tzinfo=timezone.utc,
+                tzinfo=UTC,
             )
 
             gps_utc_offset = timedelta(seconds=18)
@@ -495,7 +550,7 @@ class Rnxv3Header(BaseModel):
             return {"UTC": tz.localize(dt_utc), "GPS": dt_gps}
 
         except (ValueError, TypeError, IndexError):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return {"UTC": now, "GPS": now}
 
     @staticmethod
@@ -711,6 +766,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
     _lines: list[str] = PrivateAttr()
     _file_hash: str = PrivateAttr()
+    _cached_epoch_batches: list[tuple[int, int]] | None = PrivateAttr(default=None)
 
     model_config = ConfigDict(
         frozen=True,
@@ -887,17 +943,20 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             List of (start_line, end_line) pairs for each epoch.
 
         """
+        if self._cached_epoch_batches is not None:
+            return self._cached_epoch_batches
+
+        lines = self._load_file()
         starts = [
-            i
-            for i, line in enumerate(self._load_file())
-            if line.startswith(epoch_record_indicator)
+            i for i, line in enumerate(lines) if line.startswith(epoch_record_indicator)
         ]
-        starts.append(len(self._load_file()))  # Add EOF
-        return [
+        starts.append(len(lines))  # Add EOF
+        self._cached_epoch_batches = [
             (start, starts[i + 1])
             for i, start in enumerate(starts)
             if i + 1 < len(starts)
         ]
+        return self._cached_epoch_batches
 
     def parse_observation_slice(
         self,
@@ -1144,7 +1203,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             hour=int(epoch_record_info.hour),
             minute=int(epoch_record_info.minute),
             second=int(epoch_record_info.seconds),
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         )
 
     @staticmethod
@@ -1171,7 +1230,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             hour=int(epch.info.hour),
             minute=int(epch.info.minute),
             second=int(epch.info.seconds),
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         )
         # np.datetime64 doesn't support timezone info, but datetime is already UTC
         # Convert to naive datetime (UTC) to avoid warning
@@ -1194,7 +1253,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
                     hour=int(info.hour),
                     minute=int(info.minute),
                     second=int(info.seconds),
-                    tzinfo=timezone.utc,
+                    tzinfo=UTC,
                 )
             )
         return dts
@@ -1363,6 +1422,296 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
                 keep.append(sid)
         return ds.sel(sid=keep)
 
+    def _precompute_sids_from_header(
+        self,
+    ) -> tuple[list[str], dict[str, dict[str, object]]]:
+        """Build sorted SID list and properties from header info alone.
+
+        Uses the header's obs_codes_per_system and static constellation
+        SV lists to pre-compute the full theoretical SID set, eliminating
+        the discovery pass.
+
+        Returns
+        -------
+        sorted_sids : list[str]
+            Sorted list of signal IDs (excluding X1 auxiliary).
+        sid_properties : dict[str, dict[str, object]]
+            Mapping of SID to its properties (sv, system, band, code,
+            freq_center, freq_min, freq_max, bandwidth, overlapping_group).
+
+        """
+        mapper = self._signal_mapper
+        signal_ids: set[str] = set()
+        sid_properties: dict[str, dict[str, object]] = {}
+
+        # Pre-compute pint arithmetic once per unique band
+        band_freq_cache: dict[str, tuple[float, float, float, float]] = {}
+
+        for system, obs_codes in self.header.obs_codes_per_system.items():
+            svs = _get_constellation_svs(system)
+
+            for obs_code in obs_codes:
+                if len(obs_code) < 3:
+                    continue
+                band_num = obs_code[1]
+                code_char = obs_code[2]
+
+                band_name = mapper.SYSTEM_BANDS.get(system, {}).get(
+                    band_num, f"UnknownBand{band_num}"
+                )
+
+                # Skip X1 auxiliary observations
+                if band_name == "X1":
+                    continue
+
+                # Cache frequency arithmetic per band
+                if band_name not in band_freq_cache:
+                    center_frequency = mapper.get_band_frequency(band_name)
+                    bandwidth = mapper.get_band_bandwidth(band_name)
+
+                    if center_frequency is not None and bandwidth is not None:
+                        bw = bandwidth[0] if isinstance(bandwidth, list) else bandwidth
+                        freq_min = center_frequency - (bw / 2.0)
+                        freq_max = center_frequency + (bw / 2.0)
+                        band_freq_cache[band_name] = (
+                            float(center_frequency),
+                            float(freq_min),
+                            float(freq_max),
+                            float(bw),
+                        )
+                    else:
+                        band_freq_cache[band_name] = (
+                            np.nan,
+                            np.nan,
+                            np.nan,
+                            np.nan,
+                        )
+
+                freq_center, freq_min, freq_max, bw = band_freq_cache[band_name]
+                overlapping_group = mapper.get_overlapping_group(band_name)
+
+                sid_suffix = "|" + band_name + "|" + code_char
+
+                for sv in svs:
+                    sid = sv + sid_suffix
+                    if sid not in signal_ids:
+                        signal_ids.add(sid)
+                        sid_properties[sid] = {
+                            "sv": sv,
+                            "system": system,
+                            "band": band_name,
+                            "code": code_char,
+                            "freq_center": freq_center,
+                            "freq_min": freq_min,
+                            "freq_max": freq_max,
+                            "bandwidth": bw,
+                            "overlapping_group": overlapping_group,
+                        }
+
+        sorted_sids = sorted(signal_ids)
+        return sorted_sids, {s: sid_properties[s] for s in sorted_sids}
+
+    def _create_dataset_single_pass(self) -> xr.Dataset:
+        """Create xarray Dataset in a single pass over the file.
+
+        Pre-allocates arrays using header-derived SID set and epoch count,
+        then fills them by parsing observations inline without Pydantic
+        models or function-call overhead.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with dimensions (epoch, sid) and standard variables.
+
+        """
+        lines = self._load_file()
+        epoch_batches = self.get_epoch_record_batches()
+        n_epochs = len(epoch_batches)
+
+        sorted_sids, sid_properties = self._precompute_sids_from_header()
+        n_sids = len(sorted_sids)
+        sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
+
+        # Pre-allocate arrays
+        timestamps = np.empty(n_epochs, dtype="datetime64[ns]")
+        snr = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["SNR"])
+        pseudo = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Pseudorange"])
+        phase = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Phase"])
+        doppler = np.full((n_epochs, n_sids), np.nan, dtype=DTYPES["Doppler"])
+        lli = np.full((n_epochs, n_sids), -1, dtype=DTYPES["LLI"])
+        ssi = np.full((n_epochs, n_sids), -1, dtype=DTYPES["SSI"])
+
+        # Build obs_code → (obs_type, sid_suffix) lookup per system
+        mapper = self._signal_mapper
+        system_obs_lut: dict[str, list[tuple[str, str]]] = {}
+        for system, obs_codes in self.header.obs_codes_per_system.items():
+            lut: list[tuple[str, str]] = []
+            for obs_code in obs_codes:
+                if len(obs_code) < 3:
+                    lut.append(("", ""))
+                    continue
+                band_num = obs_code[1]
+                code_char = obs_code[2]
+                band_name = mapper.SYSTEM_BANDS.get(system, {}).get(
+                    band_num, f"UnknownBand{band_num}"
+                )
+                obs_type = obs_code[0]
+                lut.append((obs_type, "|" + band_name + "|" + code_char))
+            system_obs_lut[system] = lut
+
+        # Single pass over all epochs
+        for t_idx, (start, end) in enumerate(epoch_batches):
+            epoch_line = lines[start]
+
+            # Inline epoch parsing (no Pydantic model)
+            m = _EPOCH_RE.match(epoch_line)
+            if m is None:
+                timestamps[t_idx] = np.datetime64("NaT", "ns")
+                continue
+
+            year, month, day = int(m[1]), int(m[2]), int(m[3])
+            hour, minute = int(m[4]), int(m[5])
+            seconds = float(m[6])
+            sec_int = int(seconds)
+            usec = int((seconds - sec_int) * 1_000_000)
+            ts = np.datetime64(
+                f"{year:04d}-{month:02d}-{day:02d}"
+                f"T{hour:02d}:{minute:02d}:{sec_int:02d}",
+                "ns",
+            )
+            ts += np.timedelta64(usec, "us")
+            timestamps[t_idx] = ts
+
+            # Parse satellite data lines inline
+            for line_idx in range(start + 1, end):
+                sat_line = lines[line_idx]
+                if len(sat_line) < 3:
+                    continue
+                sv = sat_line[:3].strip()
+                if not sv:
+                    continue
+                system = sv[0]
+                lut_list = system_obs_lut.get(system)
+                if lut_list is None:
+                    continue
+
+                data_part = sat_line[3:]
+                data_part_len = len(data_part)
+
+                for i, (obs_type, sid_suffix) in enumerate(lut_list):
+                    if not obs_type:
+                        continue
+
+                    col_start = i * 16
+                    if col_start >= data_part_len:
+                        break
+
+                    sid_key = sv + sid_suffix
+                    s_idx = sid_to_idx.get(sid_key)
+                    if s_idx is None:
+                        continue
+
+                    col_end = col_start + 16
+                    slice_text = data_part[col_start:col_end]
+
+                    value, obs_lli, obs_ssi = _parse_obs_fast(slice_text)
+                    if value is None:
+                        continue
+
+                    if obs_type == "S":
+                        if value != 0:
+                            snr[t_idx, s_idx] = value
+                    elif obs_type == "C":
+                        pseudo[t_idx, s_idx] = value
+                    elif obs_type == "L":
+                        phase[t_idx, s_idx] = value
+                    elif obs_type == "D":
+                        doppler[t_idx, s_idx] = value
+
+                    if obs_lli is not None:
+                        lli[t_idx, s_idx] = obs_lli
+                    if obs_ssi is not None:
+                        ssi[t_idx, s_idx] = obs_ssi
+
+        # Build coordinate arrays from pre-computed properties
+        sv_list = [sid_properties[sid]["sv"] for sid in sorted_sids]
+        constellation_list = [sid_properties[sid]["system"] for sid in sorted_sids]
+        band_list = [sid_properties[sid]["band"] for sid in sorted_sids]
+        code_list = [sid_properties[sid]["code"] for sid in sorted_sids]
+        freq_center_list = [sid_properties[sid]["freq_center"] for sid in sorted_sids]
+        freq_min_list = [sid_properties[sid]["freq_min"] for sid in sorted_sids]
+        freq_max_list = [sid_properties[sid]["freq_max"] for sid in sorted_sids]
+
+        signal_id_coord = xr.DataArray(
+            sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+        )
+        coords = {
+            "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
+            "sid": signal_id_coord,
+            "sv": ("sid", sv_list, COORDS_METADATA["sv"]),
+            "system": ("sid", constellation_list, COORDS_METADATA["system"]),
+            "band": ("sid", band_list, COORDS_METADATA["band"]),
+            "code": ("sid", code_list, COORDS_METADATA["code"]),
+            "freq_center": (
+                "sid",
+                np.asarray(freq_center_list, dtype=DTYPES["freq_center"]),
+                COORDS_METADATA["freq_center"],
+            ),
+            "freq_min": (
+                "sid",
+                np.asarray(freq_min_list, dtype=DTYPES["freq_min"]),
+                COORDS_METADATA["freq_min"],
+            ),
+            "freq_max": (
+                "sid",
+                np.asarray(freq_max_list, dtype=DTYPES["freq_max"]),
+                COORDS_METADATA["freq_max"],
+            ),
+        }
+
+        if self.header.signal_strength_unit == UREG.dBHz:
+            snr_meta = CN0_METADATA
+        else:
+            snr_meta = SNR_METADATA
+
+        ds = xr.Dataset(
+            data_vars={
+                "SNR": (["epoch", "sid"], snr, snr_meta),
+                "Pseudorange": (
+                    ["epoch", "sid"],
+                    pseudo,
+                    OBSERVABLES_METADATA["Pseudorange"],
+                ),
+                "Phase": (
+                    ["epoch", "sid"],
+                    phase,
+                    OBSERVABLES_METADATA["Phase"],
+                ),
+                "Doppler": (
+                    ["epoch", "sid"],
+                    doppler,
+                    OBSERVABLES_METADATA["Doppler"],
+                ),
+                "LLI": (
+                    ["epoch", "sid"],
+                    lli,
+                    OBSERVABLES_METADATA["LLI"],
+                ),
+                "SSI": (
+                    ["epoch", "sid"],
+                    ssi,
+                    OBSERVABLES_METADATA["SSI"],
+                ),
+            },
+            coords=coords,
+            attrs={**self._create_basic_attrs()},
+        )
+
+        if self.apply_overlap_filter:
+            ds = self.filter_by_overlapping_groups(ds, self.overlap_preferences)
+
+        return ds
+
     def create_rinex_netcdf_with_signal_id(
         self,
         analyze_conflicts: bool = False,
@@ -1375,6 +1724,10 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
         Can optionally restrict to epochs within a datetime range.
 
         """
+        # Use fast single-pass path when no special features are requested
+        if not (analyze_conflicts or analyze_systems or start or end):
+            return self._create_dataset_single_pass()
+
         if analyze_conflicts:
             print("\nNote: Conflict analysis will be adapted for sid structure.")
         if analyze_systems:
@@ -1772,7 +2125,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
     def _create_basic_attrs(self) -> dict[str, object]:
         attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs["Created"] = datetime.now(UTC).isoformat()
         attrs["Software"] = (
             f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
         )

@@ -69,7 +69,7 @@ The `canvod-vod` package implements vegetation optical depth (VOD) estimation fr
 
     Both datasets must contain an `SNR` data variable.
     Both should be augmented with spherical coordinates (θ, φ) from `canvod-auxiliary`
-    or embedded SBF geometry, and assigned to grid cells by `canvod-grids`.
+    and assigned to grid cells by `canvod-grids`.
 
 ---
 

@@ -15,9 +15,9 @@ from canvod.store.store import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "GnssResearchSite",
+    "IcechunkDataReader",
     "MyIcechunkStore",
     "create_rinex_store",
     "create_vod_store",
-    "GnssResearchSite",
-    "IcechunkDataReader",
 ]

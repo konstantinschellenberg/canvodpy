@@ -7,7 +7,6 @@ system (canvod.utils.config).
 Removed and moved to config:
 - KEEP_RNX_VARS → processing.keep_rnx_vars
 - COMPRESSION → compression.{zlib, complevel}
-- TIME_AGGR → processing.time_aggregation_seconds
 - AGGREGATE_GLONASS_FDMA → processing.aggregate_glonass_fdma
 - AUTHOR, EMAIL, etc. → metadata.{author, email, ...}
 - SOFTWARE → canvod.utils._meta.SOFTWARE_ATTRS
@@ -30,8 +29,8 @@ if "dBHz" not in UREG:
 # Used by PairDataDirMatcher to detect which date directories contain data.
 RINEX_OBS_GLOB_PATTERNS: tuple[str, ...] = (
     "*.[0-9][0-9]o",  # RINEX v2/v3 short-name: .24o, .25o, etc.
-    "*.O",            # Uppercase generic RINEX obs suffix
-    "*.rnx",          # RINEX v3 long-name format
+    "*.O",  # Uppercase generic RINEX obs suffix
+    "*.rnx",  # RINEX v3 long-name format
     "*.[0-9][0-9]_",  # Septentrio SBF binary: .25_, .24_, etc.
 )
 

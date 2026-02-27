@@ -8,7 +8,7 @@ description: Implementation of Python implicit namespace packages in canVODpy
 canVODpy uses Python 3.3+ **implicit namespace packages** to let seven independent packages share the `canvod.*` import prefix — a unified API backed by separately installable wheels.
 
 ```python
-from canvod.readers   import Rnxv3Obs, SbfReader
+from canvod.readers   import Rnxv3Obs
 from canvod.auxiliary import Sp3File
 from canvod.grids     import EqualAreaBuilder
 from canvod.store     import MyIcechunkStore
@@ -28,8 +28,6 @@ A namespace package is created by **omitting `__init__.py`** from the shared par
         readers/
           __init__.py          ← regular package starts here
           base.py
-          sbf/
-            reader.py
 
     canvod-auxiliary/src/
       canvod/                  ← same namespace, different package
@@ -96,8 +94,6 @@ canvod_readers-0.1.0-py3-none-any.whl
     readers/                 ← package starts here (has __init__.py)
       __init__.py
       base.py
-      sbf/
-        reader.py
   canvod_readers-0.1.0.dist-info/
     METADATA
     WHEEL

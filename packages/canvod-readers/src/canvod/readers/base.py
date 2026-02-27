@@ -155,7 +155,9 @@ class DatasetStructureValidator(BaseModel):
         # Accept canonical "File Hash" or legacy "RINEX File Hash"
         hash_keys = {"File Hash", "RINEX File Hash"}
         if not hash_keys.intersection(attrs_keys):
-            msg = "Missing required attribute: 'File Hash' (or legacy 'RINEX File Hash')"
+            msg = (
+                "Missing required attribute: 'File Hash' (or legacy 'RINEX File Hash')"
+            )
             raise ValueError(msg)
 
         required_attrs = {"Created", "Software", "Institution"}

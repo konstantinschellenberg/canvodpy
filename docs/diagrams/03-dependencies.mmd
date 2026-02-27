@@ -1,27 +1,27 @@
 graph LR
-    subgraph Foundation["🔧 Foundation Layer"]
+    subgraph Foundation[🔧 Foundation Layer]
         Utils["canvod-utils<br/>━━━━━━━━<br/>• Config<br/>• YYYYDOY<br/>• Tools"]
     end
 
-    subgraph DataIO["📥 Data I/O Layer"]
+    subgraph DataIO[📥 Data IO Layer]
         Readers["canvod-readers<br/>━━━━━━━━<br/>• Rnxv3Obs<br/>• SignalID<br/>• DataDir"]
         Aux["canvod-aux<br/>━━━━━━━━<br/>• SP3<br/>• CLK<br/>• Interpolator"]
     end
 
-    subgraph Storage["💾 Storage Layer"]
+    subgraph Storage[💾 Storage Layer]
         Store["canvod-store<br/>━━━━━━━━<br/>• Icechunk<br/>• ResearchSite<br/>• Reader"]
     end
 
-    subgraph Computation["🧮 Computation Layer"]
+    subgraph Computation[🧮 Computation Layer]
         VOD["canvod-vod<br/>━━━━━━━━<br/>• VODCalculator<br/>• TauOmega"]
         Grids["canvod-grids<br/>━━━━━━━━<br/>• HEALPix<br/>• Geodesic<br/>• Fibonacci"]
     end
 
-    subgraph Presentation["📊 Presentation Layer"]
+    subgraph Presentation[📊 Presentation Layer]
         Viz["canvod-viz<br/>━━━━━━━━<br/>• 2D Plots<br/>• 3D Surface<br/>• Styles"]
     end
 
-    subgraph Orchestration["🎯 Orchestration Layer"]
+    subgraph Orchestration[🎯 Orchestration Layer]
         Canvodpy["canvodpy<br/>━━━━━━━━<br/>• Pipeline<br/>• Processor<br/>• API"]
     end
 

@@ -251,7 +251,7 @@ class SolarPositionCalculator:
     @staticmethod
     def _datetime_to_julian_day(times: pd.DatetimeIndex) -> np.ndarray:
         """Convert datetime to Julian Day Number."""
-        dt = pd.to_datetime(times if not isinstance(times, pd.DatetimeIndex) else times)
+        dt = pd.to_datetime(times)
         year = dt.year
         month = dt.month
         day = dt.day

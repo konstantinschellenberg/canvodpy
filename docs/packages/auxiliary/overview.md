@@ -4,12 +4,6 @@
 
 The `canvod-auxiliary` package provides auxiliary data management for GNSS Transmissometry (GNSS-T) analysis. It handles downloading, parsing, preprocessing, and interpolating SP3 ephemerides and CLK clock corrections to augment RINEX observation data with precise satellite positions and timing information.
 
-!!! info "SBF users: skip this"
-
-    If your receiver is a Septentrio device producing SBF binary files,
-    `canvod-auxiliary` is **not required**. Satellite geometry (θ, φ) is embedded
-    in the SBF stream itself. This package is only needed for RINEX-based workflows.
-
 ---
 
 ## The Dimension Alignment Problem

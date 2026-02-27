@@ -102,6 +102,7 @@
             "titleBar.inactiveBackground": "#21573299",
             "titleBar.inactiveForeground": "#e7e7e799"
         },
+        "liveServer.settings.multiRootWorkspaceName": "🏠 Root",
     },
     "extensions": {
         "recommendations": [

@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 import structlog
 import xarray as xr
+
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
     GALILEO,

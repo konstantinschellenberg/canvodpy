@@ -1,25 +1,25 @@
 flowchart TD
-    subgraph FIELD["Field"]
+    subgraph FIELD[Field]
         C1["Canopy 1"]
         C2["Canopy 2"]
         R1["Reference"]
     end
 
-    subgraph SCS["SCS Expansion"]
+    subgraph SCS[SCS Expansion]
         C1P["C1 position"]
         C2P["C2 position"]
         R1C1["Ref @ C1"]
         R1C2["Ref @ C2"]
     end
 
-    subgraph GROUPS["Store Groups"]
+    subgraph GROUPS[Store Groups]
         G1["canopy_01"]
         G2["canopy_02"]
         G3["ref_01_canopy_01"]
         G4["ref_01_canopy_02"]
     end
 
-    subgraph PAIRS["VOD Pairs"]
+    subgraph PAIRS[VOD Pairs]
         P1["C1 vs Ref@C1"]
         P2["C2 vs Ref@C2"]
     end

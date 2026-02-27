@@ -195,27 +195,6 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 
 ---
 
-## Optional: `to_ds_and_auxiliary()`
-
-If your format carries metadata alongside observations (geometry, receiver health, etc.), override `to_ds_and_auxiliary()` for a **single-pass scan**:
-
-```python
-def to_ds_and_auxiliary(
-    self, **kwargs
-) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
-    """Single pass — return obs + auxiliary datasets together."""
-    obs_ds   = ...   # build from one file scan
-    meta_ds  = ...   # build from same scan
-    return obs_ds, {"my_metadata": meta_ds}
-```
-
-The base class default calls `to_ds()` and returns `{}` — no changes needed if you have no auxiliary data.
-
-!!! tip "Store integration"
-    Auxiliary datasets are stored at `{receiver}/metadata/{name}` via
-    `site.rinex_store.write_metadata_dataset(meta_ds, receiver, name)`.
-    The pipeline is completely reader-agnostic.
-
 ---
 
 ## Validation Requirements

@@ -50,13 +50,14 @@ from canvod.readers.gnss_specs.constellations import (
 # Source: RefGuide-4.14.0, Table 4.1.9, p. 255
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class _SvidRange:
     """One contiguous range of Septentrio internal SVID values."""
 
     lo: int
     hi: int
-    system: str      # RINEX single-letter system code
+    system: str  # RINEX single-letter system code
     prn_offset: int  # PRN = SVID - prn_offset
     description: str
 
@@ -64,20 +65,20 @@ class _SvidRange:
 # Ordered table; first matching range wins.
 # Source: RefGuide-4.14.0, Table 4.1.9, p. 255
 _SVID_RANGES: tuple[_SvidRange, ...] = (
-    _SvidRange(1,   37,  "G",   0,  "GPS G01-G37"),
-    _SvidRange(38,  61,  "R",  37,  "GLONASS R01-R24 (slot number)"),
-    _SvidRange(62,  62,  "R",  62,  "GLONASS R00 — slot number unknown"),
-    _SvidRange(63,  68,  "R",  38,  "GLONASS R25-R30"),
-    _SvidRange(71, 106,  "E",  70,  "Galileo E01-E36"),
-    _SvidRange(107, 119, "L",   0,  "L-Band MSS (see LBandBeams block)"),
-    _SvidRange(120, 140, "S",   0,  "SBAS S120-S140 (PRN = SVID)"),
-    _SvidRange(141, 180, "C", 140,  "BeiDou C01-C40"),
-    _SvidRange(181, 187, "J", 180,  "QZSS J01-J07"),
+    _SvidRange(1, 37, "G", 0, "GPS G01-G37"),
+    _SvidRange(38, 61, "R", 37, "GLONASS R01-R24 (slot number)"),
+    _SvidRange(62, 62, "R", 62, "GLONASS R00 — slot number unknown"),
+    _SvidRange(63, 68, "R", 38, "GLONASS R25-R30"),
+    _SvidRange(71, 106, "E", 70, "Galileo E01-E36"),
+    _SvidRange(107, 119, "L", 0, "L-Band MSS (see LBandBeams block)"),
+    _SvidRange(120, 140, "S", 0, "SBAS S120-S140 (PRN = SVID)"),
+    _SvidRange(141, 180, "C", 140, "BeiDou C01-C40"),
+    _SvidRange(181, 187, "J", 180, "QZSS J01-J07"),
     # NOTE: v4.15.1 extends QZSS to 181-190 (J01-J10).  Only 181-187 in v4.14.x.
-    _SvidRange(191, 197, "I", 190,  "NavIC/IRNSS I01-I07"),
-    _SvidRange(198, 215, "S",  57,  "SBAS S141-S158  (RINEX: Snn, nn = SVID - 57)"),
-    _SvidRange(216, 222, "I", 208,  "NavIC I08-I14"),
-    _SvidRange(223, 245, "C", 182,  "BeiDou C41-C63"),
+    _SvidRange(191, 197, "I", 190, "NavIC/IRNSS I01-I07"),
+    _SvidRange(198, 215, "S", 57, "SBAS S141-S158  (RINEX: Snn, nn = SVID - 57)"),
+    _SvidRange(216, 222, "I", 208, "NavIC I08-I14"),
+    _SvidRange(223, 245, "C", 182, "BeiDou C41-C63"),
 )
 
 
@@ -135,16 +136,16 @@ _SBAS_BP: Any = SBAS.BAND_PROPERTIES
 
 _BAND_FREQ: dict[tuple[str, str], Any] = {
     # GPS
-    ("G", "L1"):  _GPS_BP["L1"]["freq"],
-    ("G", "L2"):  _GPS_BP["L2"]["freq"],
-    ("G", "L5"):  _GPS_BP["L5"]["freq"],
+    ("G", "L1"): _GPS_BP["L1"]["freq"],
+    ("G", "L2"): _GPS_BP["L2"]["freq"],
+    ("G", "L5"): _GPS_BP["L5"]["freq"],
     # QZSS
-    ("J", "L1"):  _QZSS_BP["L1"]["freq"],
-    ("J", "L2"):  _QZSS_BP["L2"]["freq"],
-    ("J", "L5"):  _QZSS_BP["L5"]["freq"],
-    ("J", "L6"):  _QZSS_BP["L6"]["freq"],
+    ("J", "L1"): _QZSS_BP["L1"]["freq"],
+    ("J", "L2"): _QZSS_BP["L2"]["freq"],
+    ("J", "L5"): _QZSS_BP["L5"]["freq"],
+    ("J", "L6"): _QZSS_BP["L6"]["freq"],
     # GLONASS — G3 CDMA only; FDMA (G1, G2) resolved via glonass_freq_hz()
-    ("R", "G3"):  _GLONASS_BP["G3"]["freq"],
+    ("R", "G3"): _GLONASS_BP["G3"]["freq"],
     # BeiDou
     ("C", "B1C"): _BEIDOU_BP["B1C"]["freq"],
     ("C", "B2a"): _BEIDOU_BP["B2a"]["freq"],
@@ -153,16 +154,16 @@ _BAND_FREQ: dict[tuple[str, str], Any] = {
     ("C", "B2I"): _BEIDOU_BP["B2b"]["freq"],  # B2I shares 1207.14 MHz with B2b
     ("C", "B3I"): _BEIDOU_BP["B3I"]["freq"],
     # NavIC / IRNSS
-    ("I", "L5"):  _IRNSS_BP["L5"]["freq"],
+    ("I", "L5"): _IRNSS_BP["L5"]["freq"],
     # Galileo
-    ("E", "E1"):  _GALILEO_BP["E1"]["freq"],
+    ("E", "E1"): _GALILEO_BP["E1"]["freq"],
     ("E", "E5a"): _GALILEO_BP["E5a"]["freq"],
     ("E", "E5b"): _GALILEO_BP["E5b"]["freq"],
-    ("E", "E6"):  _GALILEO_BP["E6"]["freq"],
-    ("E", "E5"):  _GALILEO_BP["E5"]["freq"],
+    ("E", "E6"): _GALILEO_BP["E6"]["freq"],
+    ("E", "E5"): _GALILEO_BP["E5"]["freq"],
     # SBAS
-    ("S", "L1"):  _SBAS_BP["L1"]["freq"],
-    ("S", "L5"):  _SBAS_BP["L5"]["freq"],
+    ("S", "L1"): _SBAS_BP["L1"]["freq"],
+    ("S", "L5"): _SBAS_BP["L5"]["freq"],
 }
 
 
@@ -170,6 +171,7 @@ _BAND_FREQ: dict[tuple[str, str], Any] = {
 # Signal type table
 # Source: RefGuide-4.14.0, Table 4.1.10, p. 256
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class SignalDef:  # pylint: disable=too-many-instance-attributes

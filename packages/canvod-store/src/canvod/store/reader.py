@@ -9,15 +9,15 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from canvod.auxiliary.preprocessing import prep_aux_ds
-from canvod.readers import MatchedDirs, Rnxv3Obs
-from canvod.utils.config import load_config
-from canvod.utils.tools import get_version_from_pyproject
 from canvodpy.logging import get_logger
 from natsort import natsorted
 from tqdm import tqdm
 
+from canvod.auxiliary.preprocessing import prep_aux_ds
+from canvod.readers import MatchedDirs, Rnxv3Obs
 from canvod.store.manager import GnssResearchSite
+from canvod.utils.config import load_config
+from canvod.utils.tools import get_version_from_pyproject
 
 
 # Module-level function for ProcessPoolExecutor (must be pickleable).
@@ -153,7 +153,8 @@ class IcechunkDataReader:
         if site_name is None:
             site_name = next(iter(config.sites.sites))
         if n_max_workers is None:
-            n_max_workers = config.processing.processing.n_max_threads
+            resources = config.processing.processing.resolve_resources()
+            n_max_workers = resources["n_workers"]
 
         self.matched_dirs = matched_dirs
         self.site_name = site_name
@@ -314,7 +315,9 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
+                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get(
+                        "RINEX File Hash"
+                    )
                     if not rinex_hash:
                         log.warning("Dataset missing hash → skipping")
                         continue
@@ -503,7 +506,9 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
+                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get(
+                        "RINEX File Hash"
+                    )
                     if not rinex_hash:
                         log.warning(
                             f"No RINEX hash found in dataset from {fname}. "

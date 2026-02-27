@@ -7,17 +7,17 @@ description: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrie
 
 # canVODpy
 
-**GNSS Transmissometry · Canopy VOD Retrievals · Open Science**
+**An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals**
 
-From raw receiver binary to calibrated vegetation optical depth —
-a full Python ecosystem built for reproducibility and scale.
+canVODpy aims to be the central community-driven software suite for deriving
+and analyzing canopy Vegetation Optical Depth (VOD) from GNSS
+signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
-[Read the paper :fontawesome-regular-file-lines:](#publications){ .md-button }
 
 </div>
 
@@ -27,21 +27,12 @@ a full Python ecosystem built for reproducibility and scale.
 
 <div class="grid cards" markdown>
 
--   :fontawesome-solid-satellite-dish: &nbsp; **No ephemeris needed for SBF**
-
-    ---
-
-    Septentrio SBF files embed satellite azimuth and zenith angles directly.
-    Quick-look VOD in one file read, no SP3/CLK download.
-
-    [:octicons-arrow-right-24: SBF Reader](packages/readers/sbf.md)
-
 -   :fontawesome-solid-layer-group: &nbsp; **Single unified dataset format**
 
     ---
 
-    Both RINEX v3.04 and SBF binary produce identical `(epoch × sid)` xarray Datasets.
-    Downstream code is reader-agnostic.
+    Every reader produces an identical `(epoch × sid)` xarray Dataset
+    that passes structural validation. Downstream code is reader-agnostic.
 
     [:octicons-arrow-right-24: Reader Architecture](packages/readers/architecture.md)
 
@@ -96,13 +87,6 @@ a full Python ecosystem built for reproducibility and scale.
 
     **Reader:** `Rnxv3Obs` — all GNSS constellations, all bands
 
-!!! info "Septentrio Binary Format (SBF)"
-
-    High-rate binary telemetry from AsteRx SB3, mosaic-X5, PolaRx.
-    Satellite geometry, PVT quality, DOP and receiver health embedded.
-
-    **Reader:** `SbfReader` — produces obs dataset + metadata dataset in one pass
-
 </div>
 
 ---
@@ -152,65 +136,18 @@ pip install canvodpy
     vod = wf.calculate_vod("canopy_01", "reference_01", "2025001")
     ```
 
-=== "Level 4 — SBF quick-look"
-
-    Binary file, embedded geometry, no downloads:
-
-    ```python
-    from canvodpy import Site
-
-    site     = Site("Rosalia")
-    pipeline = site.pipeline(reader="sbf")
-
-    for date, datasets in pipeline.process_range("2025001", "2025007"):
-        print(f"{date}: {list(datasets.keys())}")
-    ```
-
 ---
 
 ## Processing Pipeline
 
 ```mermaid
 flowchart LR
-    subgraph ACQ["Acquisition"]
-        RINEX["RINEX 3.04"]
-        SBF["SBF Binary"]
-        SP3["SP3 / CLK"]
-    end
-
-    subgraph PREP_R["Preprocessing — RINEX"]
-        PARSE["Parse & Hermite interpolation"]
-        SCS_R["ECEF → Spherical (θ, φ)"]
-    end
-
-    subgraph PREP_S["Preprocessing — SBF (no download)"]
-        SCS_S["Embedded geometry (θ, φ)"]
-        META["Quality metadata (DOP · PVT · rx_error)"]
-    end
-
-    subgraph STORE["Icechunk"]
-        ICE["Observations (epoch × sid)"]
-        META_S["Metadata store"]
-    end
-
-    subgraph GRID["Grid"]
-        HGRID["Hemispheric grid"]
-        KD["KDTree assignment"]
-    end
-
-    subgraph VOD["VOD"]
-        PAIR["Canopy / Reference pairing"]
-        TAU["Tau-Omega inversion\nVOD = −ln(T)·cos(θ)"]
-    end
-
-    OUT["VOD Dataset"]
-
-    RINEX --> PARSE --> SCS_R --> ICE
-    SP3 --> PARSE
-    SBF --> SCS_S --> ICE
-    SBF --> META --> META_S
-
-    ICE --> HGRID --> KD --> PAIR --> TAU --> OUT
+    RINEX["RINEX 3.04"] --> PARSE["Parse & Hermite interpolation"]
+    SP3["SP3 / CLK"] --> PARSE
+    PARSE --> STORE["Icechunk store"]
+    STORE --> VOD["Tau-Omega VOD retrieval"]
+    VOD --> GRID["Hemispheric grid assignment"]
+    GRID --> VIZ["Visualisation"]
 ```
 
 ---
@@ -223,7 +160,7 @@ flowchart LR
 
     ---
 
-    RINEX v3.04 and SBF binary parsing.
+    RINEX v3.04 parsing with signal ID mapping.
     Unified `(epoch × sid)` output with full validation.
 
 -   :fontawesome-solid-cloud-arrow-down: &nbsp; **canvod-auxiliary**
@@ -251,8 +188,8 @@ flowchart LR
 
     ---
 
-    Icechunk versioned storage with generic metadata dataset API.
-    Per-file hash deduplication, S3-compatible backends.
+    Icechunk versioned storage with per-file hash deduplication.
+    S3-compatible backends, ACID commits.
 
 -   :fontawesome-solid-chart-line: &nbsp; **canvod-viz**
 
@@ -297,13 +234,6 @@ flowchart LR
     `Zensical` · `beautiful-mermaid` · `marimo` notebooks
 
 </div>
-
----
-
-## Publications
-
-Bader, N. F. (2026). *canVODpy: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals* (v0.1.0-beta.2).
-Zenodo. [https://doi.org/10.5281/zenodo.18636775](https://doi.org/10.5281/zenodo.18636775)
 
 ---
 

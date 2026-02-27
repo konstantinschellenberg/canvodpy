@@ -1,19 +1,19 @@
 flowchart TD
-    subgraph ABCS["Abstract Base Classes"]
+    subgraph ABCS[Abstract Base Classes]
         READER_ABC["GNSSDataReader (read, to_ds, validate_output)"]
         GRID_ABC["BaseGridBuilder (_build_grid, build)"]
         VOD_ABC["VODCalculator (calculate_vod)"]
         AUG_ABC["AugmentationStep (apply)"]
     end
 
-    subgraph FACTORIES["Factory Registry"]
+    subgraph FACTORIES[Factory Registry]
         RF["ReaderFactory"]
         GF["GridFactory"]
         VF["VODFactory"]
         AF["AugmentationFactory"]
     end
 
-    subgraph BUILTIN["Built-in Implementations"]
+    subgraph BUILTIN[Built-in Implementations]
         RINEX3["Rnxv3Obs (RINEX v3.04)"]
         EA["EqualAreaBuilder"]
         HP["HEALPixBuilder"]
@@ -22,13 +22,13 @@ flowchart TD
         TO["TauOmegaZerothOrder"]
     end
 
-    subgraph CUSTOM["User Extension"]
+    subgraph CUSTOM[User Extension]
         IMPL["Custom Implementation (inherits ABC)"]
         REG["Factory.register( name, class)"]
         USE["Factory.create( name, **params)"]
     end
 
-    subgraph VALIDATION["Validation Chain"]
+    subgraph VALIDATION[Validation Chain]
         V1["1. ABC compliance check (issubclass)"]
         V2["2. Pydantic model validation (at creation)"]
         V3["3. Runtime type checking (Generic T)"]

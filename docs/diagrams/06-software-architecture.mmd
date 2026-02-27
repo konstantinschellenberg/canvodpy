@@ -1,27 +1,27 @@
 graph LR
-    subgraph FOUNDATION["Foundation Layer"]
+    subgraph FOUNDATION[Foundation Layer]
         UTILS["canvod-utils  Configuration (Pydantic) Date utilities (YYYYDOY) Shared tooling"]
     end
 
-    subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers  RINEX v3.04 parser (Rnxv3Obs) SBF binary parser (SbfReader) Signal ID mapping (sv|band|code) to_ds_and_auxiliary() API"]
+    subgraph DATAIO[Data IO Layer]
+        READERS["canvod-readers  RINEX v3.04 parser (Rnxv3Obs) Signal ID mapping (sv|band|code)"]
         AUX["canvod-auxiliary  SP3/CLK retrieval Hermite interpolation FTP download management"]
     end
 
-    subgraph STORE_LAYER["Persistence Layer"]
-        STORE["canvod-store  Icechunk versioned storage Site/receiver management Generic metadata dataset API Metadata tracking"]
+    subgraph STORE_LAYER[Persistence Layer]
+        STORE["canvod-store  Icechunk versioned storage Site/receiver management Hash deduplication"]
     end
 
-    subgraph COMPUTE["Computation Layer"]
+    subgraph COMPUTE[Computation Layer]
         VOD["canvod-vod  VOD calculator (ABC) Tau-Omega inversion Extensible algorithms"]
-        GRIDS["canvod-grids  Hemispheric grids (7 types) KDTree cell assignment Grid I/O operations"]
+        GRIDS["canvod-grids  Hemispheric grids (7 types) KDTree cell assignment Grid IO operations"]
     end
 
-    subgraph PRESENT["Presentation Layer"]
+    subgraph PRESENT[Presentation Layer]
         VIZ["canvod-viz  2D polar projections 3D interactive surfaces Time-series plots"]
     end
 
-    subgraph ORCHESTRATION["Orchestration Layer"]
+    subgraph ORCHESTRATION[Orchestration Layer]
         CANVODPY["canvodpy  Pipeline orchestrator Factory system Public API (3 levels)"]
     end
 

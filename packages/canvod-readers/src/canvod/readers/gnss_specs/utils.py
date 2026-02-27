@@ -1,13 +1,8 @@
 """Utility functions for RINEX readers."""
 
 import hashlib
-import sys
+import tomllib
 from pathlib import Path
-
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
 
 
 def get_version_from_pyproject(pyproject_path: Path | None = None) -> str:

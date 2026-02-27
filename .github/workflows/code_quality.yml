@@ -21,9 +21,6 @@ jobs:
             - uses: ./.github/actions/setup-just
             - name: Lint with ruff
               run: just check-lint-only
-              # Allow failure for now - we have 512 known issues
-              # Will address systematically during type hints/docstrings phase
-              continue-on-error: true
 
     formatting:
         runs-on: ubuntu-latest
