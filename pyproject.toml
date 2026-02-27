@@ -17,6 +17,7 @@ dev = [
     "marimo>=0.19.5",
     "mkdocstrings-python>=2.0.1",
     "mystmd>=1.6.6",
+    "pre-commit>=4.5.1",
     "pydeps>=3.0.2",
     "pytest>=9.0.1",
     "pytest-benchmark>=5.2.3",
