@@ -336,11 +336,11 @@ class HemisphereVisualizer2D:
         """Extract patches from HEALPix grid via ``healpy.boundaries``."""
         try:
             import healpy as hp
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "healpy is required for HEALPix 2D visualization. "
                 "Install with: pip install healpy"
-            )
+            ) from e
 
         patches = []
         cell_indices = []

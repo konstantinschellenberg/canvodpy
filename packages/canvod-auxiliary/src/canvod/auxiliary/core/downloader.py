@@ -188,7 +188,7 @@ class FtpDownloader(FileDownloader):
                     f"  - Temporary server issue\n"
                     f"\nTip: Set nasa_earthdata_acc_mail in config/processing.yaml "
                     f"to enable NASA CDDIS fallback"
-                )
+                ) from e
 
             for alt_server in self.alt_servers:
                 try:
@@ -229,7 +229,7 @@ class FtpDownloader(FileDownloader):
 
             raise RuntimeError(
                 "Failed to download from all servers. Errors:\n" + "\n".join(all_errors)
-            )
+            ) from e
 
     def _try_download_url(self, url: str, destination: Path) -> Path:
         """Attempt to download from a specific URL."""
@@ -282,7 +282,9 @@ class FtpDownloader(FileDownloader):
                 try:
                     ftps.cwd(subdir)
                 except error_perm as e:
-                    raise RuntimeError(f"Failed to change to directory {subdir}: {e!s}")
+                    raise RuntimeError(
+                        f"Failed to change to directory {subdir}: {e!s}"
+                    ) from e
 
         if filename not in ftps.nlst():
             raise RuntimeError(f"File {filename} not found in directory {directory}")

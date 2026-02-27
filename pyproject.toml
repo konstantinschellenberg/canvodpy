@@ -85,7 +85,7 @@ unfixable = []
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["E402", "F401"]           # re-exports and lazy imports
 "**/{tests}/*" = ["S101", "PLR2004"]       # assert and magic values OK in tests
-"**/demo/**" = ["F811", "F401", "E402"]    # demo notebooks are exploratory
+"**/demo/**" = ["F811", "F821", "F401", "E402"]  # marimo notebooks: cross-cell refs, re-exports
 
 [tool.ruff.format]
 quote-style = "double"

@@ -117,23 +117,30 @@ class TestKDTreeBuild:
 class TestAddCellIdsToDsFast:
     """Test Dask variant for xarray Datasets."""
 
-    @pytest.mark.skip(reason="Dask variant requires specific dimension structure")
     def test_add_cell_ids_to_ds_fast(self, sample_grid) -> None:
-        """Test Dask variant with simple dataset."""
+        """Test Dask variant with (epoch, sid) dask-backed dataset."""
+        import dask.array as da
+
         np.random.seed(42)
-        n_points = 50
+        n_epochs = 5
+        n_sids = 10
+
+        phi = np.random.uniform(0, 2 * np.pi, (n_epochs, n_sids))
+        theta = np.random.uniform(0, np.pi / 2, (n_epochs, n_sids))
+        vod = np.random.uniform(0, 1, (n_epochs, n_sids))
 
         ds = xr.Dataset(
             {
-                "vod": (["obs"], np.random.uniform(0, 1, n_points)),
+                "vod": (["epoch", "sid"], da.from_array(vod, chunks=(5, 10))),
             },
             coords={
-                "phi": (["obs"], np.random.uniform(0, 2 * np.pi, n_points)),
-                "theta": (["obs"], np.random.uniform(0, np.pi / 2, n_points)),
+                "phi": (["epoch", "sid"], da.from_array(phi, chunks=(5, 10))),
+                "theta": (["epoch", "sid"], da.from_array(theta, chunks=(5, 10))),
+                "epoch": np.arange(n_epochs),
+                "sid": np.arange(n_sids),
             },
         )
 
-        # Assign cells - needs grid_name parameter
         result = add_cell_ids_to_ds_fast(ds, sample_grid, "test_grid", data_var="vod")
 
         # Should have cell_id variable
@@ -143,6 +150,13 @@ class TestAddCellIdsToDsFast:
         assert "vod" in result.variables
         assert "phi" in result.coords
         assert "theta" in result.coords
+
+        # Cell IDs should be computable and valid
+        cell_ids = result["cell_id_test_grid"].values
+        assert cell_ids.shape == (n_epochs, n_sids)
+        valid = cell_ids[np.isfinite(cell_ids)]
+        assert np.all(valid >= 0)
+        assert np.all(valid < sample_grid.ncells)
 
 
 class TestEdgeCaseCoordinates:

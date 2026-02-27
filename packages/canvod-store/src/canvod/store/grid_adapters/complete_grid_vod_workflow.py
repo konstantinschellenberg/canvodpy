@@ -12,6 +12,7 @@ import polars as pl
 import zarr
 
 if TYPE_CHECKING:
+    import xarray as xr
     from canvod.store.store import MyIcechunkStore
 try:
     from gnssvodpy.hemigrid.storage.grid_storage import (

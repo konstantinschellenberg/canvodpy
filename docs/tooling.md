@@ -97,15 +97,20 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
     ruff format .         # Format
     ```
 
-    Configuration:
+    Configuration (workspace root `pyproject.toml` — inherited by all packages):
 
     ```toml
     [tool.ruff]
     line-length = 88
+    target-version = "py313"
 
     [tool.ruff.lint]
-    select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "C4", "RUF", "PIE", "PT"]
+    select = ["E", "F", "W", "I", "UP", "B", "RUF"]
     ```
+
+    Philosophy: catch real bugs, enforce consistent formatting, don't fight
+    scientists over naming or style. Dropped stylistic rules (N, SIM, C4, PIE, PT)
+    that add noise without catching bugs.
 
 === "ty — Type Checker"
 
@@ -165,11 +170,17 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
         hooks:
           - id: ruff-check
             args: [--fix]
+            stages: [pre-commit]
           - id: ruff-format
+            stages: [pre-commit]
+      - repo: https://github.com/commitizen-tools/commitizen
+        hooks:
+          - id: commitizen
+            stages: [commit-msg]
     ```
 
-    Hooks run on every `git commit` — failures block the commit and
-    auto-fix what they can.
+    Hooks run on every `git commit` — ruff checks run at the `pre-commit` stage,
+    commitizen validates the commit message at `commit-msg`. Failures block the commit.
 
 ---
 

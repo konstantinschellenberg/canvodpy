@@ -142,7 +142,7 @@ class ClkFile(AuxFile):
         except Exception as e:
             raise RuntimeError(
                 f"Failed to download CLK file from all available servers: {e!s}"
-            )
+            ) from e
 
     def read_file(self) -> xr.Dataset:
         """Read and parse CLK file into xarray Dataset.

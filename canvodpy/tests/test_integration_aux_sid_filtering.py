@@ -1,93 +1,111 @@
-"""Test that aux data filtering matches RINEX SID filtering.
+"""Integration test: aux data filtering matches RINEX SID filtering.
 
-NOTE: This is an old integration test that needs updating.
-It's currently disabled because it uses outdated config structure.
+Verifies that the preprocessing pipeline correctly applies SID filtering
+and adds spherical coordinates (phi, theta, r) to the output dataset.
+
+Requires:
+- config/sites.yaml with a "rosalia" site
+- RINEX files in the site's parsed directory
+- Pre-built aux Hermite Zarr store
 """
 
 import pytest
-
-pytest.skip(
-    "Integration test needs updating for new config structure", allow_module_level=True
-)
-
-from canvod.auxiliary.position import ECEFPosition
 from canvod.utils.config import load_config
-from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
 
-# Load config
-config = load_config()
-rosalia = config.sites.sites["rosalia"]
-
-# Get first reference receiver
-ref_receiver = rosalia.receivers["reference_01"]
-receiver_pos = ECEFPosition(
-    x=ref_receiver.position.x,
-    y=ref_receiver.position.y,
-    z=ref_receiver.position.z,
-)
-
-# Get test RINEX file
-rinex_dir = rosalia.base_dir / "02_Parsed_RINEX" / "reference_01"
-rinex_files = sorted(rinex_dir.glob("*.rnx"))
-if not rinex_files:
-    print(f"❌ No RINEX files found in {rinex_dir}")
-    exit(1)
-
-test_file = rinex_files[0]
-print(f"Testing with: {test_file.name}")
-
-# Get aux zarr path
-aux_zarr = rosalia.base_dir / "aux_data_hermite.zarr"
-if not aux_zarr.exists():
-    print(f"❌ Aux data not found at {aux_zarr}")
-    exit(1)
-
-# Define keep_vars
-keep_vars = ["L1", "L2", "C1", "P1", "P2"]
-
-# Get configured SIDs
-keep_sids = config.sids.get_sids()
-print(f"Configured SIDs: {len(keep_sids)}")
+# ---------------------------------------------------------------------------
+# Skip conditions
+# ---------------------------------------------------------------------------
 
 try:
-    # Process file
-    fname, ds = preprocess_with_hermite_aux(
-        rnx_file=test_file,
-        keep_vars=keep_vars,
+    config = load_config()
+    rosalia = config.sites.sites.get("rosalia")
+except Exception:
+    config = None
+    rosalia = None
+
+
+def _has_rinex_files():
+    """Check if RINEX files are available for the test."""
+    if rosalia is None:
+        return False
+    parsed_dir = rosalia.get_base_path() / "02_Parsed_RINEX" / "reference_01"
+    return parsed_dir.exists() and any(parsed_dir.glob("*.rnx"))
+
+
+def _has_aux_data():
+    """Check if aux Hermite Zarr is available."""
+    if rosalia is None:
+        return False
+    return (rosalia.get_base_path() / "aux_data_hermite.zarr").exists()
+
+
+pytestmark = pytest.mark.integration
+
+SKIP_NO_CONFIG = pytest.mark.skipif(rosalia is None, reason="No rosalia site in config")
+SKIP_NO_DATA = pytest.mark.skipif(
+    not _has_rinex_files() or not _has_aux_data(),
+    reason="Requires RINEX files and aux Hermite Zarr on disk",
+)
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
+@SKIP_NO_CONFIG
+@SKIP_NO_DATA
+def test_preprocess_adds_spherical_coords():
+    """Preprocessing should add phi, theta, r to the output dataset."""
+    from canvod.auxiliary.position import ECEFPosition
+    from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
+
+    ref_cfg = rosalia.receivers["reference_01"]
+    parsed_dir = rosalia.get_base_path() / "02_Parsed_RINEX" / "reference_01"
+    rnx_file = sorted(parsed_dir.glob("*.rnx"))[0]
+    aux_zarr = rosalia.get_base_path() / "aux_data_hermite.zarr"
+
+    # ECEFPosition must be provided externally (not on ReceiverConfig)
+    # Use a dummy position for structural validation
+    receiver_pos = ECEFPosition(x=-1224452.587, y=-2689216.073, z=5633638.285)
+
+    _, ds = preprocess_with_hermite_aux(
+        rnx_file=rnx_file,
+        keep_vars=["SNR"],
+        aux_zarr_path=aux_zarr,
+        receiver_position=receiver_pos,
+        receiver_type="reference",
+    )
+
+    assert "phi" in ds.data_vars
+    assert "theta" in ds.data_vars
+    assert "r" in ds.data_vars
+    assert ds.sizes["epoch"] > 0
+    assert ds.sizes["sid"] > 0
+
+
+@SKIP_NO_CONFIG
+@SKIP_NO_DATA
+def test_sid_filtering_reduces_dataset():
+    """Passing keep_sids should reduce the SID dimension."""
+    from canvod.auxiliary.position import ECEFPosition
+    from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
+
+    parsed_dir = rosalia.get_base_path() / "02_Parsed_RINEX" / "reference_01"
+    rnx_file = sorted(parsed_dir.glob("*.rnx"))[0]
+    aux_zarr = rosalia.get_base_path() / "aux_data_hermite.zarr"
+    receiver_pos = ECEFPosition(x=-1224452.587, y=-2689216.073, z=5633638.285)
+
+    # Process with a small SID subset
+    keep_sids = ["G01|L1|C", "G02|L1|C", "E01|E1|C"]
+
+    _, ds = preprocess_with_hermite_aux(
+        rnx_file=rnx_file,
+        keep_vars=["SNR"],
         aux_zarr_path=aux_zarr,
         receiver_position=receiver_pos,
         receiver_type="reference",
         keep_sids=keep_sids,
     )
 
-    print("\n✅ Processing successful!")
-    print(f"Dataset SIDs: {ds.sizes['sid']}")
-    print(f"Dataset epochs: {ds.sizes['epoch']}")
-
-    # Verify spherical coords exist
-    if "phi" in ds.data_vars and "theta" in ds.data_vars and "r" in ds.data_vars:
-        print("✅ Spherical coordinates added")
-        print(f"   phi shape: {ds.phi.shape}")
-        print(f"   theta shape: {ds.theta.shape}")
-        print(f"   r shape: {ds.r.shape}")
-    else:
-        print("❌ Missing spherical coordinates")
-
-    # Verify SID count matches config
-    if ds.sizes["sid"] == len(keep_sids):
-        print(f"✅ SID count matches config ({len(keep_sids)})")
-    else:
-        print(
-            f"❌ SID count mismatch: dataset has {ds.sizes['sid']}, config has {len(keep_sids)}"
-        )
-
-except Exception as e:
-    print(f"\n❌ Processing failed: {e}")
-    import traceback
-
-    traceback.print_exc()
-    exit(1)
-
-print("\n" + "=" * 60)
-print("✅ Test passed!")
-print("=" * 60)
+    assert ds.sizes["sid"] <= len(keep_sids)

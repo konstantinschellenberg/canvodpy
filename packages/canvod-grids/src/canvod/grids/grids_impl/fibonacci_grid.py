@@ -193,10 +193,10 @@ class FibonacciBuilder(BaseGridBuilder):
             sv = SphericalVoronoi(points_xyz, radius=1, threshold=1e-10)
             sv.sort_vertices_of_regions()
 
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "scipy required for Fibonacci grid. Install: pip install scipy"
-            )
+            ) from e
 
         # Create cells
         cells = []

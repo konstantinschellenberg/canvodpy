@@ -311,7 +311,7 @@ class TestErrorHandling:
 
     def test_load_nonexistent_grid_raises(self, vod_store) -> None:
         """Loading nonexistent grid should raise error."""
-        with pytest.raises(Exception):  # KeyError or similar
+        with pytest.raises((KeyError, ValueError)):
             load_grid(vod_store, "nonexistent_grid")
 
 

@@ -90,7 +90,7 @@ class TestDaskSerialization:
 
         with (
             distributed.LocalCluster(
-                n_workers=1, threads_per_worker=1, memory_limit="256MiB"
+                n_workers=1, threads_per_worker=1, memory_limit="1GiB"
             ) as cluster,
             distributed.Client(cluster) as client,
         ):

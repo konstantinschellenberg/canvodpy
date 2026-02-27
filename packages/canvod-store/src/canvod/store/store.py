@@ -842,7 +842,9 @@ class MyIcechunkStore:
             self._logger.error(
                 f"Failed to restore metadata table for group '{group_name}': {e}"
             )
-            raise RuntimeError(f"Critical error: could not restore metadata table: {e}")
+            raise RuntimeError(
+                f"Critical error: could not restore metadata table: {e}"
+            ) from e
 
     def overwrite_file_in_group(
         self,

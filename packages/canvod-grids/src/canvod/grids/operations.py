@@ -443,8 +443,8 @@ def _extract_healpix_vertices(
     """Extract vertices from HEALPix grid via healpy boundaries."""
     try:
         import healpy as hp
-    except ImportError:
-        raise ImportError("healpy required for HEALPix vertex extraction")
+    except ImportError as e:
+        raise ImportError("healpy required for HEALPix vertex extraction") from e
 
     nside = int(grid.grid["healpix_nside"][0])
     all_x, all_y, all_z = [], [], []

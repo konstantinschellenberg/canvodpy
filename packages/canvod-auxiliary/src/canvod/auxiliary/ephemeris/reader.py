@@ -125,7 +125,7 @@ class Sp3File(AuxFile):
         except Exception as e:
             raise RuntimeError(
                 f"Failed to download SP3 file from all available servers: {e!s}"
-            )
+            ) from e
 
     def read_file(self) -> xr.Dataset:
         """Read and validate SP3 file.
