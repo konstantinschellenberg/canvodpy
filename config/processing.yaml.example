@@ -115,8 +115,14 @@ compression:
 icechunk:
   compression_level: 5
   compression_algorithm: zstd  # zstd, lz4, gzip
-  inline_threshold: 512
-  get_concurrency: 1
+  inline_threshold: 512        # Bytes; chunks ≤ this are inlined into the manifest
+  get_concurrency: 1           # Concurrent partial-value reads (increase for S3/GCS)
+
+  # Manifest preloading — loads coordinate manifests into memory at session open.
+  # Worth enabling once stores grow beyond a few hundred commits.
+  # manifest_preload_enabled: false
+  # manifest_preload_max_refs: 100000000   # Cap on chunk refs preloaded
+  # manifest_preload_pattern: "epoch|sid"  # Regex for arrays to preload
 
   chunk_strategies:
     rinex_store:
