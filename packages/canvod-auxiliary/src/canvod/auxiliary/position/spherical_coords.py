@@ -12,7 +12,6 @@ Migrated from gnssvodpy.position.spherical_coords
 import numpy as np
 import pymap3d as pm
 import xarray as xr
-
 from canvod.auxiliary.position.position import ECEFPosition
 
 

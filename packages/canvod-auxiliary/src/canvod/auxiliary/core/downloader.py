@@ -10,6 +10,7 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request
 
+from canvod.auxiliary._internal import get_logger
 from rich.progress import (
     BarColumn,
     DownloadColumn,
@@ -18,8 +19,6 @@ from rich.progress import (
     TimeRemainingColumn,
     TransferSpeedColumn,
 )
-
-from canvod.auxiliary._internal import get_logger
 
 log = get_logger(__name__)
 
@@ -162,7 +161,7 @@ class FtpDownloader(FileDownloader):
                     "   Please check your network and try again."
                 ) from e
 
-            print(f"Primary download failed: {str(e)}")
+            print(f"Primary download failed: {e!s}")
             log.warning(
                 "primary_download_failed",
                 url=url,
@@ -170,7 +169,7 @@ class FtpDownloader(FileDownloader):
                 exception=type(e).__name__,
             )
 
-            all_errors = [f"Primary server error: {str(e)}"]
+            all_errors = [f"Primary server error: {e!s}"]
 
             if not self.alt_servers:
                 print("ℹ No fallback servers available")
@@ -182,7 +181,7 @@ class FtpDownloader(FileDownloader):
                 raise RuntimeError(
                     f"Failed to download file from primary server.\n"
                     f"\nPrimary URL: {url}\n"
-                    f"Error: {str(e)}\n"
+                    f"Error: {e!s}\n"
                     f"\nPossible causes:\n"
                     f"  - File not yet available (product may not be published yet)\n"
                     f"  - Incorrect FTP path for server\n"
@@ -224,7 +223,7 @@ class FtpDownloader(FileDownloader):
                             "   Please check your network and try again."
                         ) from alt_e
 
-                    error_msg = f"Alternate server {alt_server} error: {str(alt_e)}"
+                    error_msg = f"Alternate server {alt_server} error: {alt_e!s}"
                     print(error_msg)
                     all_errors.append(error_msg)
 
@@ -283,9 +282,7 @@ class FtpDownloader(FileDownloader):
                 try:
                     ftps.cwd(subdir)
                 except error_perm as e:
-                    raise RuntimeError(
-                        f"Failed to change to directory {subdir}: {str(e)}"
-                    )
+                    raise RuntimeError(f"Failed to change to directory {subdir}: {e!s}")
 
         if filename not in ftps.nlst():
             raise RuntimeError(f"File {filename} not found in directory {directory}")

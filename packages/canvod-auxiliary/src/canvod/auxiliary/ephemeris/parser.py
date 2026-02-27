@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 import xarray as xr
-
 from canvod.auxiliary._internal import UREG
 
 

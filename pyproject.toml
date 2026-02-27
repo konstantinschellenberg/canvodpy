@@ -28,56 +28,69 @@ dev = [
 ]
 
 # ============================================================================
-# Ruff Configuration (Workspace-wide - TUW-GEO Standard)
+# Ruff Configuration (Workspace-wide)
 # ============================================================================
+# Philosophy: catch real bugs, enforce consistent formatting, don't fight
+# scientists over naming or style. This is a research codebase.
 
 [tool.ruff]
 line-length = 88
 indent-width = 4
+target-version = "py313"
 
 [tool.ruff.lint]
-# Phase 1: Focus on errors, bugs, and basic style
 select = [
     "E",     # pycodestyle errors
-    "F",     # pyflakes
+    "F",     # pyflakes (undefined names, unused imports, etc.)
     "W",     # pycodestyle warnings
     "I",     # isort (import sorting)
-    "N",     # pep8-naming
-    "UP",    # pyupgrade (modern Python)
-    "B",     # flake8-bugbear (likely bugs)
-    "SIM",   # flake8-simplify
-    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade (use modern Python syntax)
+    "B",     # flake8-bugbear (catches likely bugs)
     "RUF",   # ruff-specific rules
-    "PIE",   # flake8-pie (misc lints)
-    "PT",    # flake8-pytest-style
 ]
+# Dropped (stylistic, not bugs):
+#   N   — naming (scientists use N, K, theta, phi, SNR, VOD ...)
+#   SIM — simplify (opinionated if-else and ternary preferences)
+#   C4  — comprehensions (dict() vs {} is not a bug)
+#   PIE — misc lints (noise)
+#   PT  — pytest style (4 violations, all opinionated)
 
 ignore = [
-    "COM812",  # missing-trailing-comma (may conflict with ruff formatter)
-    "D203",    # incorrect-blank-line-before-class (conflicts with D211)
-    "D213",    # multi-line-summary-second-line (conflicts with D212)
-    "T201",    # print statements allowed during active development
-    "E501",    # line-too-long (prefer 88, but allow some scientific formulas)
-    "N803",    # invalid-argument-name (allow mathematical notation: theta, phi)
-    "N806",    # non-lowercase-variable-in-function (allow scientific: N, K, etc.)
-    "W293",    # blank-line-with-whitespace (formatter handles this)
-    "PLC0415", # import-outside-toplevel (sometimes needed for optional deps)
+    # --- Formatter handles these ---
+    "E501",    # line-too-long: ruff format enforces 88 chars for code;
+               # E501 fires on long strings/URLs the formatter can't break
+    "W291",    # trailing-whitespace (formatter)
+    "W293",    # blank-line-with-whitespace (formatter)
+    "COM812",  # missing-trailing-comma (conflicts with ruff formatter)
+
+    # --- Scientific code ---
+    "F841",    # unused-variable (intermediate results, exploratory analysis)
+    "RUF001",  # ambiguous-unicode-character-string (degree symbols, mu, etc.)
+    "RUF002",  # ambiguous-unicode-character-docstring (GNSS notation)
+    "RUF003",  # ambiguous-unicode-character-comment
+
+    # --- Marimo notebooks ---
+    "B018",    # useless-expression (marimo cells display via bare expressions)
+
+    # --- Pragmatic ---
+    "B905",    # zip-without-explicit-strict (not a real bug)
+    "B007",    # unused-loop-control-variable (common in scientific iteration)
+    "RUF059",  # unused-unpacked-variable (destructuring for clarity)
 ]
 
 fixable = ["ALL"]
 unfixable = []
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["E402", "F401"]
-"**/{tests}/*" = ["E402", "ANN201", "D", "INP001", "S101", "PLR2004"]
+"__init__.py" = ["E402", "F401"]           # re-exports and lazy imports
+"**/{tests}/*" = ["S101", "PLR2004"]       # assert and magic values OK in tests
+"**/demo/**" = ["F811", "F401", "E402"]    # demo notebooks are exploratory
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
 line-ending = "auto"
-docstring-code-format = false
-docstring-code-line-length = "dynamic"
 
 # ============================================================================
 # Pytest Configuration (Workspace-wide)

@@ -16,10 +16,10 @@ from canvod.auxiliary.clock.validator import (
 )
 
 __all__ = [
+    "ClkFile",
+    "check_clk_data_quality",
+    "parse_clk_data",
     "parse_clk_file",
     "parse_clk_header",
-    "parse_clk_data",
     "validate_clk_dataset",
-    "check_clk_data_quality",
-    "ClkFile",
 ]

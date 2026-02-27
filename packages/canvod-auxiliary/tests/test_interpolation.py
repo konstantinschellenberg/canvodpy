@@ -2,7 +2,6 @@
 
 import numpy as np
 import xarray as xr
-
 from canvod.auxiliary.interpolation import (
     ClockConfig,
     ClockInterpolationStrategy,

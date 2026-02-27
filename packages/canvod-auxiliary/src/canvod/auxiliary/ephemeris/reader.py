@@ -4,9 +4,6 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from pydantic import ConfigDict
-from pydantic.dataclasses import dataclass
-
 from canvod.auxiliary._internal import UREG, get_gps_week_from_filename
 from canvod.auxiliary.core.base import AuxFile
 from canvod.auxiliary.ephemeris.parser import Sp3Parser
@@ -17,6 +14,8 @@ from canvod.auxiliary.interpolation import (
     Sp3InterpolationStrategy,
 )
 from canvod.auxiliary.products.registry_config import ProductSpec, get_product_spec
+from pydantic import ConfigDict
+from pydantic.dataclasses import dataclass
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -125,7 +124,7 @@ class Sp3File(AuxFile):
             print(f"Downloaded orbit file for {self.agency} on date {self.date}")
         except Exception as e:
             raise RuntimeError(
-                f"Failed to download SP3 file from all available servers: {str(e)}"
+                f"Failed to download SP3 file from all available servers: {e!s}"
             )
 
     def read_file(self) -> xr.Dataset:

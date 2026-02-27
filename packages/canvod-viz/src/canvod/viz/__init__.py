@@ -61,13 +61,13 @@ __all__ = [
     "HemisphereVisualizer",
     "HemisphereVisualizer2D",
     "HemisphereVisualizer3D",
+    "PlotStyle",
+    # Styling
+    "PolarPlotStyle",
+    "add_tissot_indicatrix",
+    "create_interactive_style",
+    "create_publication_style",
     # Convenience functions
     "visualize_grid",
     "visualize_grid_3d",
-    "add_tissot_indicatrix",
-    # Styling
-    "PolarPlotStyle",
-    "PlotStyle",
-    "create_publication_style",
-    "create_interactive_style",
 ]

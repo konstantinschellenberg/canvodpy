@@ -16,7 +16,7 @@ except ImportError:
     _HAS_DISTRIBUTED = False
     Client = None  # type: ignore[assignment,misc]
     dask_as_completed = None  # type: ignore[assignment]
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from datetime import time as dt_time
 from pathlib import Path
 
@@ -2815,7 +2815,7 @@ class RinexDataProcessor:
         receiver_configs: list[tuple[str, str, Path]]
         | list[tuple[str, str, Path, Path | None]]
         | None = None,
-    ) -> Generator[tuple[str, xr.Dataset, float], None, None]:
+    ) -> Generator[tuple[str, xr.Dataset, float]]:
         """Generate datasets from RINEX files and append to Icechunk stores.
 
         Pipeline:
@@ -3488,7 +3488,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                             "end": end_epoch,
                             "action": "skip" if exists else "write",
                             "commit_msg": f"{'skip' if exists else 'write'}: {rel_path}",
-                            "written_at": datetime.now(timezone.utc).isoformat(),
+                            "written_at": datetime.now(UTC).isoformat(),
                             "attrs": json.dumps(ds.attrs),
                             "snapshot_id": None,
                             "write_strategy": "skip" if exists else "append",
@@ -3795,7 +3795,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         self,
         keep_vars: list[str] | None = None,
         receiver_types: list[str] | None = None,
-    ) -> Generator[xr.Dataset, None, None]:
+    ) -> Generator[xr.Dataset]:
         """Generate datasets from RINEX files and append to Icechunk stores.
 
         Pipeline:
@@ -3935,7 +3935,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
 
 if __name__ == "__main__":
-    print(f"stared main block at {datetime.now(timezone.utc)}")
+    print(f"stared main block at {datetime.now(UTC)}")
 
     matcher = DataDirMatcher(
         sky_dir_pattern=Path("01_reference/01_GNSS/01_raw"),
@@ -3953,10 +3953,7 @@ if __name__ == "__main__":
             continue
 
         try:
-            print(
-                f"instantiating processor for {yyyydoy_str}: "
-                f"{datetime.now(timezone.utc)}"
-            )
+            print(f"instantiating processor for {yyyydoy_str}: {datetime.now(UTC)}")
             # Create processor first to check completeness
             processor = RinexDataProcessor(
                 matched_data_dirs=md, site=site, n_max_workers=12
@@ -3989,12 +3986,12 @@ if __name__ == "__main__":
             # Process data
             print(
                 f"about to call parsed_rinex_data_gen for {yyyydoy_str}: "
-                f"{datetime.now(timezone.utc)}"
+                f"{datetime.now(UTC)}"
             )
             data_generator = processor.parsed_rinex_data_gen()
-            print(f"calling next for canopy: {datetime.now(timezone.utc)}")
+            print(f"calling next for canopy: {datetime.now(UTC)}")
             canopy_ds = next(data_generator)
-            print(f"calling next for reference: {datetime.now(timezone.utc)}")
+            print(f"calling next for reference: {datetime.now(UTC)}")
             reference_ds = next(data_generator)
 
             stats["processed"] += 1

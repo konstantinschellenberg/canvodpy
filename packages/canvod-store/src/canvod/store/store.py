@@ -13,13 +13,12 @@ import numpy as np
 import polars as pl
 import xarray as xr
 import zarr
+from canvod.store.viewer import add_rich_display_to_store
 from canvod.utils.config import load_config
 from canvod.utils.tools import get_version_from_pyproject
 from canvodpy.logging import get_logger
 from icechunk.xarray import to_icechunk
 from zarr.dtype import VariableLengthUTF8
-
-from canvod.store.viewer import add_rich_display_to_store
 
 if TYPE_CHECKING:
     from plotly.graph_objects import Figure
@@ -258,8 +257,8 @@ class MyIcechunkStore:
 
             return list(repo.list_branches())
         except Exception as e:
-            self._logger.warning(f"Failed to list branches in {repr(self)}: {e}")
-            warnings.warn(f"Failed to list branches in {repr(self)}: {e}")
+            self._logger.warning(f"Failed to list branches in {self!r}: {e}")
+            warnings.warn(f"Failed to list branches in {self!r}: {e}", stacklevel=2)
             return []
 
     def get_group_names(self, branch: str | None = None) -> dict[str, list[str]]:
@@ -298,7 +297,7 @@ class MyIcechunkStore:
             return group_dict
 
         except Exception as e:
-            self._logger.warning(f"Failed to list groups in {repr(self)}: {e}")
+            self._logger.warning(f"Failed to list groups in {self!r}: {e}")
             return {}
 
     def list_groups(self, branch: str = "main") -> list[str]:
@@ -362,7 +361,7 @@ class MyIcechunkStore:
                 self._build_tree(root, branch_indent, max_depth, current_depth=1)
 
         except Exception as e:
-            self._logger.warning(f"Failed to generate tree for {repr(self)}: {e}")
+            self._logger.warning(f"Failed to generate tree for {self!r}: {e}")
             sys.stdout.write(f"Error generating tree: {e}\n")
 
     def _build_tree(

@@ -17,7 +17,6 @@ import numpy as np
 import pytest
 import xarray as xr
 import zarr
-
 from canvod.store import create_vod_store
 
 

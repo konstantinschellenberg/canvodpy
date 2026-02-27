@@ -1,4 +1,4 @@
-# ruff: noqa: N999, F821, F841
+# ruff: noqa: F821
 """Airflow compatibility analysis for canvodpy orchestration layer.
 
 This document analyzes the canvodpy orchestrator for Apache Airflow integration.

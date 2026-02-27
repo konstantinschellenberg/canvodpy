@@ -8,6 +8,6 @@ from canvod.vod.calculator import TauOmegaZerothOrder, VODCalculator
 __version__ = "0.1.0"
 
 __all__ = [
-    "VODCalculator",
     "TauOmegaZerothOrder",
+    "VODCalculator",
 ]

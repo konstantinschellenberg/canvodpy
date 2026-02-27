@@ -9,7 +9,6 @@ Migrated from gnssvodpy.processor.matcher
 import warnings
 
 import xarray as xr
-
 from canvod.auxiliary.interpolation import create_interpolator_from_attrs
 
 
@@ -174,6 +173,7 @@ class DatasetMatcher:
                 f"Dataset '{name}' missing interpolation configuration. "
                 "Will use nearest-neighbor interpolation.",
                 UserWarning,
+                stacklevel=2,
             )
 
     def _get_temporal_interval(self, ds: xr.Dataset) -> float:

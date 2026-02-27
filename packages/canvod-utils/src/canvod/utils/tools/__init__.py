@@ -33,12 +33,12 @@ from .version import get_version_from_pyproject
 gpsweekday = YYYYDOY.gpsweekday
 
 __all__ = [
-    # Version
-    "get_version_from_pyproject",
+    "YYDOY",
     # Date/time
     "YYYYDOY",
-    "YYDOY",
     "get_gps_week_from_filename",
+    # Version
+    "get_version_from_pyproject",
     "gpsweekday",
     # Validation
     "isfloat",

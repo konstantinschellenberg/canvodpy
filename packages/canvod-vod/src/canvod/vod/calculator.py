@@ -7,9 +7,8 @@ from typing import Any
 
 import numpy as np
 import xarray as xr
-from pydantic import BaseModel, ConfigDict, field_validator
-
 from canvod.vod._internal import get_logger
+from pydantic import BaseModel, ConfigDict, field_validator
 
 log = get_logger(__name__)
 

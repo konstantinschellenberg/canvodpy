@@ -18,18 +18,18 @@ from canvod.auxiliary.products.registry_config import (
 )
 
 __all__ = [
+    "ClkHeader",
+    "FileValidationResult",
     # Registry
     "FtpServerConfig",
     "ProductRegistry",
+    "ProductRequest",
     "ProductSpec",
-    "get_product_spec",
-    "get_registry",
-    "list_products",
-    "list_agencies",
-    "get_products_for_agency",
     # Models
     "Sp3Header",
-    "ClkHeader",
-    "ProductRequest",
-    "FileValidationResult",
+    "get_product_spec",
+    "get_products_for_agency",
+    "get_registry",
+    "list_agencies",
+    "list_products",
 ]

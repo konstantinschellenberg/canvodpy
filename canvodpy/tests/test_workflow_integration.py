@@ -131,10 +131,13 @@ class TestWorkflowErrorHandling:
         """Should fail gracefully with invalid site name."""
         # VODWorkflow passes the string to Site(), which calls GnssResearchSite()
         # which raises KeyError for unknown sites. Mock Site to simulate this.
-        with patch(
-            "canvodpy.workflow.Site",
-            side_effect=KeyError("NonexistentSite123"),
-        ), pytest.raises(KeyError, match="NonexistentSite123"):
+        with (
+            patch(
+                "canvodpy.workflow.Site",
+                side_effect=KeyError("NonexistentSite123"),
+            ),
+            pytest.raises(KeyError, match="NonexistentSite123"),
+        ):
             VODWorkflow(site="NonexistentSite123")
 
     def test_workflow_invalid_grid_type_fails(self):

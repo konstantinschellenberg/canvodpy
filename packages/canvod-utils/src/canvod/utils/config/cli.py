@@ -36,7 +36,7 @@ def find_monorepo_root() -> Path:
     current = Path.cwd().resolve()
 
     # Walk up directory tree looking for .git
-    for parent in [current] + list(current.parents):
+    for parent in [current, *list(current.parents)]:
         if (parent / ".git").exists():
             return parent
 

@@ -2117,7 +2117,7 @@ def validate_grid_integrity(loaded_grid: LoadedGrid) -> dict[str, Any]:
 
     except Exception as e:
         results["valid"] = False
-        results["errors"].append(f"Validation failed: {str(e)}")
+        results["errors"].append(f"Validation failed: {e!s}")
         logger.error(f"Grid validation error: {e}")
 
     return results

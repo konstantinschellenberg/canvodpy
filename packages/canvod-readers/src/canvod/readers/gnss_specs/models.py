@@ -60,7 +60,7 @@ class Observation:
     frequency: pint.Quantity | None = None
 
     @field_validator("observation_freq_tag")
-    def validate_observation_code(cls, v: str) -> str:  # noqa: N805
+    def validate_observation_code(cls, v: str) -> str:
         """Validate RINEX v3 observation code format.
 
         Parameters
@@ -137,7 +137,7 @@ class Observation:
         return v
 
     @field_validator("lli", "ssi")
-    def validate_indicators(cls, v: int | None) -> int | None:  # noqa: N805
+    def validate_indicators(cls, v: int | None) -> int | None:
         """Validate LLI and SSI values.
 
         Parameters
@@ -181,7 +181,7 @@ class Satellite:
     observations: list[Observation] = Field(default_factory=list)
 
     @field_validator("sv")
-    def validate_sv(cls, v: str) -> str:  # noqa: N805
+    def validate_sv(cls, v: str) -> str:
         """Validate satellite vehicle identifier format.
 
         Parameters
@@ -390,7 +390,7 @@ class RnxObsFileModel(BaseModel):
     fpath: Path
 
     @field_validator("fpath")
-    def file_must_exist(cls, v: Path) -> Path:  # noqa: N805
+    def file_must_exist(cls, v: Path) -> Path:
         """Validate that file exists.
 
         Parameters
@@ -415,7 +415,7 @@ class RnxObsFileModel(BaseModel):
         return v
 
     @field_validator("fpath")
-    def file_must_have_correct_suffix(cls, v: Path) -> Path:  # noqa: N805
+    def file_must_have_correct_suffix(cls, v: Path) -> Path:
         """Validate RINEX observation file suffix.
 
         Parameters
@@ -455,7 +455,7 @@ class RnxVersion3Model(BaseModel):
     version: float
 
     @field_validator("version")
-    def version_must_be_3(cls, v: float) -> float:  # noqa: N805
+    def version_must_be_3(cls, v: float) -> float:
         """Validate RINEX version is 3.0x.
 
         Parameters
@@ -631,7 +631,7 @@ class Rnxv3ObsEpochRecordLineModel(BaseModel):
     receiver_clock_offset: float | None = None
 
     @model_validator(mode="before")
-    def parse_epoch(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: N805
+    def parse_epoch(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Parse RINEX v3 epoch record line.
 
         Parameters
@@ -767,7 +767,7 @@ class VodDataValidator(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("vod_data", mode="before")
-    def validate_vod_data(cls, value: xr.Dataset) -> xr.Dataset:  # noqa: N805
+    def validate_vod_data(cls, value: xr.Dataset) -> xr.Dataset:
         """Validate the VOD data structure.
 
         Parameters

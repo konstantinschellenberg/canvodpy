@@ -20,7 +20,7 @@ import re
 import warnings
 from collections import Counter, defaultdict
 from collections.abc import Iterable
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal, Self
@@ -263,7 +263,7 @@ class Rnxv3Header(BaseModel):
                 {
                     "pgm": "",
                     "run_by": "",
-                    "date": datetime.now(timezone.utc),  # Default to current time
+                    "date": datetime.now(UTC),  # Default to current time
                 }
             )
 
@@ -344,7 +344,7 @@ class Rnxv3Header(BaseModel):
         if "TIME OF FIRST OBS" in header:
             data["t0"] = Rnxv3Header._get_time_of_first_obs(header)
         else:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             data["t0"] = {
                 "UTC": now.replace(tzinfo=pytz.UTC) if now.tzinfo is None else now,
                 "GPS": now,
@@ -400,7 +400,7 @@ class Rnxv3Header(BaseModel):
         components = header_value.split()
 
         if not components:
-            return "", "", datetime.now(timezone.utc)
+            return "", "", datetime.now(UTC)
 
         pgm = components[0]
         run_by = components[1] if len(components) > PGM_RUNBY_MIN_COMPONENTS else ""
@@ -424,9 +424,9 @@ class Rnxv3Header(BaseModel):
                 return pgm, run_by, localized_date
             except (ValueError, TypeError) as e:
                 print(f"Warning: Could not parse date components {date}: {e}")
-                return pgm, run_by, datetime.now(timezone.utc)
+                return pgm, run_by, datetime.now(UTC)
         else:
-            return pgm, run_by, datetime.now(timezone.utc)
+            return pgm, run_by, datetime.now(UTC)
 
     @staticmethod
     def _get_observer_agency(header_dict: dict[str, Any]) -> tuple[str, str]:
@@ -523,7 +523,7 @@ class Rnxv3Header(BaseModel):
         components = header_value.split()
 
         if len(components) < TIME_OF_FIRST_OBS_MIN_COMPONENTS:
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return {"UTC": now, "GPS": now}
 
         try:
@@ -539,7 +539,7 @@ class Rnxv3Header(BaseModel):
                 minute,
                 int(second),
                 int((second - int(second)) * 1e6),
-                tzinfo=timezone.utc,
+                tzinfo=UTC,
             )
 
             gps_utc_offset = timedelta(seconds=18)
@@ -549,7 +549,7 @@ class Rnxv3Header(BaseModel):
             return {"UTC": tz.localize(dt_utc), "GPS": dt_gps}
 
         except (ValueError, TypeError, IndexError):
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             return {"UTC": now, "GPS": now}
 
     @staticmethod
@@ -1202,7 +1202,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             hour=int(epoch_record_info.hour),
             minute=int(epoch_record_info.minute),
             second=int(epoch_record_info.seconds),
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         )
 
     @staticmethod
@@ -1229,7 +1229,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             hour=int(epch.info.hour),
             minute=int(epch.info.minute),
             second=int(epch.info.seconds),
-            tzinfo=timezone.utc,
+            tzinfo=UTC,
         )
         # np.datetime64 doesn't support timezone info, but datetime is already UTC
         # Convert to naive datetime (UTC) to avoid warning
@@ -1252,7 +1252,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
                     hour=int(info.hour),
                     minute=int(info.minute),
                     second=int(info.seconds),
-                    tzinfo=timezone.utc,
+                    tzinfo=UTC,
                 )
             )
         return dts
@@ -2124,7 +2124,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
     def _create_basic_attrs(self) -> dict[str, object]:
         attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(timezone.utc).isoformat()
+        attrs["Created"] = datetime.now(UTC).isoformat()
         attrs["Software"] = (
             f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
         )

@@ -2,7 +2,6 @@
 
 import numpy as np
 import xarray as xr
-
 from canvod.auxiliary.preprocessing import (
     add_future_datavars,
     create_sv_to_sid_mapping,
@@ -180,7 +179,7 @@ class TestPadToGlobalSid:
         new_sids = set(result.sid.values) - original_sids
 
         if new_sids:
-            new_sid = list(new_sids)[0]
+            new_sid = next(iter(new_sids))
             first_epoch = result["X"].sel(sid=new_sid).epoch.values[0]
             assert np.isnan(result["X"].sel(sid=new_sid, epoch=first_epoch).values)
 

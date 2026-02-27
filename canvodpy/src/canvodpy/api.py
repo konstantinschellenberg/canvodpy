@@ -396,7 +396,7 @@ class Pipeline:
         self,
         start: str,
         end: str,
-    ) -> Generator[tuple[str, dict[str, xr.Dataset]], None, None]:
+    ) -> Generator[tuple[str, dict[str, xr.Dataset]]]:
         """Process RINEX data for a date range.
 
         Parameters

@@ -512,7 +512,7 @@ class HemiGridStorageAdapter:
         elif grid_type == "fibonacci":
             grid_data = getattr(self._grid, "_grid_data", None)
             if grid_data and getattr(grid_data, "points_xyz", None) is not None:
-                metadata["n_points"] = int(len(grid_data.points_xyz))
+                metadata["n_points"] = len(grid_data.points_xyz)
 
         return metadata
 

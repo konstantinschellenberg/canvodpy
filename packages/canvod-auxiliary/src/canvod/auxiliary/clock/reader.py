@@ -8,10 +8,6 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
-from canvod.utils.tools import get_gps_week_from_filename
-from pydantic import ConfigDict
-from pydantic.dataclasses import dataclass
-
 from canvod.auxiliary._internal.units import UREG
 from canvod.auxiliary.clock.parser import parse_clk_file
 from canvod.auxiliary.clock.validator import validate_clk_dataset
@@ -22,6 +18,9 @@ from canvod.auxiliary.interpolation import (
     Interpolator,
 )
 from canvod.auxiliary.products.registry_config import get_product_spec
+from canvod.utils.tools import get_gps_week_from_filename
+from pydantic import ConfigDict
+from pydantic.dataclasses import dataclass
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -142,7 +141,7 @@ class ClkFile(AuxFile):
             print(f"Downloaded clock file for {self.agency} on date {self.date}")
         except Exception as e:
             raise RuntimeError(
-                f"Failed to download CLK file from all available servers: {str(e)}"
+                f"Failed to download CLK file from all available servers: {e!s}"
             )
 
     def read_file(self) -> xr.Dataset:

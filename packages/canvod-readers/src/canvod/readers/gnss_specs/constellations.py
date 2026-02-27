@@ -7,7 +7,7 @@ import re
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 
@@ -103,7 +103,7 @@ class WikipediaCache:
             self.cache_file,
             detect_types=sqlite3.PARSE_DECLTYPES,
         )
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.cache_hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=self.cache_hours)
         cursor = conn.execute(
             "SELECT svs_data FROM satellite_cache WHERE constellation = ? "
             "AND fetched_at > ?",
@@ -234,7 +234,7 @@ class WikipediaCache:
                         constellation,
                         json.dumps(sorted(set(clean_list))),
                         df.to_json(),
-                        datetime.now(timezone.utc).isoformat(),
+                        datetime.now(UTC).isoformat(),
                         url,
                     ),
                 )
@@ -808,7 +808,7 @@ class GLONASS(ConstellationBase):
                 },
             }
 
-    def get_channel_used_by_SV(self, sv: str) -> int:  # noqa: N802
+    def get_channel_used_by_SV(self, sv: str) -> int:
         """Return the GLONASS channel number for a satellite.
 
         Parameters
@@ -850,19 +850,19 @@ class GLONASS(ConstellationBase):
                             slot_channel_dict[int(slot.strip())] = int(channel.strip())
         return slot_channel_dict
 
-    def band_G1_equation(self, sv: str) -> pint.Quantity:  # noqa: N802
+    def band_G1_equation(self, sv: str) -> pint.Quantity:
         """Compute L1 frequency for a given SV."""
         return ((1602 + self.get_channel_used_by_SV(sv) * 9 / 16) * UREG.MHz).to(
             FREQ_UNIT
         )
 
-    def band_G2_equation(self, sv: str) -> pint.Quantity:  # noqa: N802
+    def band_G2_equation(self, sv: str) -> pint.Quantity:
         """Compute L2 frequency for a given SV."""
         return ((1246 + self.get_channel_used_by_SV(sv) * 7 / 16) * UREG.MHz).to(
             FREQ_UNIT
         )
 
-    def freqs_G1_G2_lut(self) -> dict[str, pint.Quantity]:  # noqa: N802
+    def freqs_G1_G2_lut(self) -> dict[str, pint.Quantity]:
         """Build the FDMA-dependent L1/L2 frequency LUT.
 
         Returns

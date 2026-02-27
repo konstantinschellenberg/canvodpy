@@ -6,10 +6,9 @@ transformations using Hypothesis.
 
 import numpy as np
 import pytest
+from canvod.auxiliary.position import ECEFPosition, GeodeticPosition
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
-
-from canvod.auxiliary.position import ECEFPosition, GeodeticPosition
 
 # ============================================================================
 # Hypothesis Strategies

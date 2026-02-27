@@ -3,9 +3,8 @@
 import numpy as np
 import pytest
 import xarray as xr
-from pydantic import ValidationError
-
 from canvod.vod import TauOmegaZerothOrder
+from pydantic import ValidationError
 
 
 class TestVODCalculatorValidation:

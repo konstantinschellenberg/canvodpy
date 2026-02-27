@@ -1,7 +1,6 @@
 """Tests for position and coordinate transformations."""
 
 import numpy as np
-
 from canvod.auxiliary.position import (
     ECEFPosition,
     GeodeticPosition,

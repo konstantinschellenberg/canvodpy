@@ -351,7 +351,7 @@ class TestConstellations:
         assert len(freqs_lut) > 0
 
         # Check format: SV|*ObsCode
-        sample_key = list(freqs_lut.keys())[0]
+        sample_key = next(iter(freqs_lut.keys()))
         assert "|" in sample_key
         assert sample_key.startswith("G")
 

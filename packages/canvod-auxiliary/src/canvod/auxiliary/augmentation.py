@@ -18,7 +18,6 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import xarray as xr
-
 from canvod.auxiliary._internal import get_logger
 from canvod.auxiliary.matching import DatasetMatcher
 from canvod.auxiliary.position import (
@@ -751,10 +750,9 @@ if __name__ == "__main__":
     from pathlib import Path
 
     import xarray as xr
+    from canvod.auxiliary.pipeline import AuxDataPipeline
     from canvod.readers import MatchedDirs
     from canvod.utils.tools import YYYYDOY
-
-    from canvod.auxiliary.pipeline import AuxDataPipeline
 
     print("\n" + "=" * 60)
     print("AUGMENTATION FRAMEWORK EXAMPLES")

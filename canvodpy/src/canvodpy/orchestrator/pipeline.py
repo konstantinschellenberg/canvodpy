@@ -584,7 +584,7 @@ class PipelineOrchestrator:
         self,
         filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None]]]],
         keep_vars: list[str] | None,
-    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]], None, None]:
+    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]]]:
         """Process dates in multi-day batches (batch_hours >= 24).
 
         When ``days_per_batch > 1`` and a Dask cluster is available, RINEX
@@ -975,7 +975,7 @@ class PipelineOrchestrator:
         self,
         filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None]]]],
         keep_vars: list[str] | None,
-    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]], None, None]:
+    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]]]:
         """Process dates with sub-day file batching (batch_hours < 24).
 
         Splits RINEX files within each day into smaller chunks based on
@@ -1042,7 +1042,7 @@ class PipelineOrchestrator:
         keep_vars: list[str] | None = None,
         start_from: str | None = None,
         end_at: str | None = None,
-    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]], None, None]:
+    ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]]]:
         """Process all receivers grouped by date.
 
         Each unique receiver is processed once per day with its actual name

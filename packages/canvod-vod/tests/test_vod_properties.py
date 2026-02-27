@@ -7,11 +7,10 @@ that must hold for all valid inputs.
 import numpy as np
 import pytest
 import xarray as xr
+from canvod.vod import TauOmegaZerothOrder
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
-
-from canvod.vod import TauOmegaZerothOrder
 
 # ============================================================================
 # Hypothesis Strategies for VOD Testing

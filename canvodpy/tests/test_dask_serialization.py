@@ -88,9 +88,12 @@ class TestDaskSerialization:
         def echo(*args):
             return args
 
-        with distributed.LocalCluster(
-            n_workers=1, threads_per_worker=1, memory_limit="256MiB"
-        ) as cluster, distributed.Client(cluster) as client:
+        with (
+            distributed.LocalCluster(
+                n_workers=1, threads_per_worker=1, memory_limit="256MiB"
+            ) as cluster,
+            distributed.Client(cluster) as client,
+        ):
             fut = client.submit(echo, *sample_task_args, pure=False)
             result = fut.result(timeout=30)
 
@@ -128,7 +131,5 @@ class TestSamplingIntervalFromFilename:
         assert self._parse("readme.txt") is None
 
     def test_full_path(self):
-        result = self._parse(
-            "/data/rinex/ROSA01TUW_R_20250020000_01D_05S_AA.rnx"
-        )
+        result = self._parse("/data/rinex/ROSA01TUW_R_20250020000_01D_05S_AA.rnx")
         assert result == 5.0

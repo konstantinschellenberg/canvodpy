@@ -19,12 +19,11 @@ import xarray as xr
 if TYPE_CHECKING:
     from canvod.vod import VODCalculator
 
-from canvodpy.logging import get_logger
-
 from canvod.store.store import (
     create_rinex_store,
     create_vod_store,
 )
+from canvodpy.logging import get_logger
 
 
 class GnssResearchSite:

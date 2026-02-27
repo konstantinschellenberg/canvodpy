@@ -22,7 +22,6 @@ import numpy as np
 import pytest
 import xarray as xr
 from canvod.grids import create_hemigrid, load_grid, store_grid
-
 from canvod.store import create_vod_store
 
 
