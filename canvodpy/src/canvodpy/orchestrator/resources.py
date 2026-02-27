@@ -157,6 +157,8 @@ class DaskClusterManager:
         CPU core IDs to pin workers to.
     nice_priority : int
         Process nice value for workers.
+    threads_per_worker : int | None
+        Threads per Dask worker process. ``None`` defaults to 1.
 
     """
 
@@ -166,6 +168,7 @@ class DaskClusterManager:
         memory_limit_per_worker: str | float = "auto",
         cpu_affinity: list[int] | None = None,
         nice_priority: int = 0,
+        threads_per_worker: int | None = None,
     ) -> None:
         if not _HAS_DISTRIBUTED:
             msg = (
@@ -175,7 +178,9 @@ class DaskClusterManager:
             raise ImportError(msg)
 
         cluster_kwargs: dict = {
-            "threads_per_worker": 1,
+            "threads_per_worker": threads_per_worker
+            if threads_per_worker is not None
+            else 1,
             "memory_limit": memory_limit_per_worker,
         }
         if n_workers is not None:

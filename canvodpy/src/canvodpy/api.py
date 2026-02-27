@@ -122,6 +122,7 @@ class Site:
         max_memory_gb: float | None = None,
         cpu_affinity: list[int] | None = None,
         nice_priority: int | None = None,
+        threads_per_worker: int | None = None,
     ) -> Pipeline:
         """Create a processing pipeline for this site.
 
@@ -150,6 +151,8 @@ class Site:
             Default: from config.
         nice_priority : int, optional
             Process nice value (0=normal, 19=lowest). Default: from config.
+        threads_per_worker : int, optional
+            Threads per Dask worker process. Default: from config.
 
         Returns
         -------
@@ -173,6 +176,7 @@ class Site:
             max_memory_gb=max_memory_gb,
             cpu_affinity=cpu_affinity,
             nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
 
     def __repr__(self) -> str:
@@ -214,6 +218,8 @@ class Pipeline:
         Pin workers to specific CPU core IDs. Default: from config.
     nice_priority : int, optional
         Process nice value (0=normal, 19=lowest). Default: from config.
+    threads_per_worker : int, optional
+        Threads per Dask worker process. Default: from config.
 
     Examples
     --------
@@ -244,6 +250,7 @@ class Pipeline:
         max_memory_gb: float | None = None,
         cpu_affinity: list[int] | None = None,
         nice_priority: int | None = None,
+        threads_per_worker: int | None = None,
     ) -> None:
         # Handle both Site object and string
         if isinstance(site, str):
@@ -274,6 +281,8 @@ class Pipeline:
                 cpu_affinity = proc.cpu_affinity
             if nice_priority is None:
                 nice_priority = proc.nice_priority
+            if threads_per_worker is None:
+                threads_per_worker = proc.threads_per_worker
         else:
             # No explicit n_workers → use resource_mode from config
             resources = proc.resolve_resources()
@@ -284,6 +293,8 @@ class Pipeline:
                 cpu_affinity = resources["cpu_affinity"]
             if nice_priority is None:
                 nice_priority = resources["nice_priority"]
+            if threads_per_worker is None:
+                threads_per_worker = resources["threads_per_worker"]
 
         self.keep_vars = keep_vars
         self.aux_agency = aux_agency
@@ -311,6 +322,7 @@ class Pipeline:
             max_memory_gb=max_memory_gb,
             cpu_affinity=cpu_affinity,
             nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
 
         self.log.info(
@@ -322,6 +334,7 @@ class Pipeline:
             batch_hours=batch_hours,
             max_memory_gb=max_memory_gb,
             nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
 
     def close(self) -> None:
