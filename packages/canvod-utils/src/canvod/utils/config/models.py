@@ -178,6 +178,17 @@ class ProcessingParams(BaseModel):
         le=19,
         description="Process nice value (0=normal, 10=low, 19=lowest)",
     )
+    threads_per_worker: int | None = Field(
+        None,
+        ge=1,
+        le=8,
+        description=(
+            "Threads per Dask worker process. None lets Dask decide (usually 1). "
+            "Values >1 help with numpy/xarray ops and I/O (GIL-releasing) but not "
+            "pure-Python RINEX text parsing. Fewer workers x more threads = less "
+            "memory overhead + shared aux data within a worker."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_resource_mode(self) -> "ProcessingParams":
@@ -221,6 +232,7 @@ class ProcessingParams(BaseModel):
                 "max_memory_gb": None,
                 "cpu_affinity": None,
                 "nice_priority": 0,
+                "threads_per_worker": self.threads_per_worker,
             }
         # manual mode
         return {
@@ -228,6 +240,7 @@ class ProcessingParams(BaseModel):
             "max_memory_gb": self.max_memory_gb,
             "cpu_affinity": self.cpu_affinity,
             "nice_priority": self.nice_priority,
+            "threads_per_worker": self.threads_per_worker,
         }
 
 

@@ -228,11 +228,11 @@ def diagnose_processing_new_api(
 
 if __name__ == "__main__":
     # Process everything
-    # diagnose_processing_new_api()
+    diagnose_processing_new_api()
 
     # Start from a specific date
-    diagnose_processing_new_api(start_from="2025001",
-                                end_at="2025003")  # July 1, 2024
+    # diagnose_processing_new_api(start_from="2025001",
+    #                             end_at="2025003")  # July 1, 2024
 
     # Process a specific range
     # diagnose_processing_new_api(start_from="2025278", end_at="2025280")

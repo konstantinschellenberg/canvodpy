@@ -59,7 +59,7 @@ processing:
     # - Pseudorange
     # - Phase
     # - Doppler
-  aggregate_glonass_fdma: true    # Treat all GLONASS FDMA bands as one band
+  aggregate_glonass_fdma: true    # If true, GLONASS FDMA signals are aggregated into effective bands G1* and G2*, with center frequencies being the mean of the respective FDMA sub-bands and bandwidth stretching across all sub-bands incl. their respective bandwidhts
 
   # --- Batch strategy -----------------------------------------------------
   # >= 24: multi-day strategy (accumulates calendar days)
@@ -96,6 +96,7 @@ processing:
   # max_memory_gb: 16          # Total RAM budget (null = no limit)
   # cpu_affinity: [0, 1, 2, 3] # Pin to CPU core IDs, Linux only
   # nice_priority: 10          # OS priority (0 = normal, 19 = lowest)
+  # threads_per_worker: 1      # Threads per worker (1 for 24h files, 2-4 for 15-min files)
 
   # Dask dashboard: http://localhost:8787/status
 
