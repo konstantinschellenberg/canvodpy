@@ -11,8 +11,6 @@ Old API: GnssResearchSite → PipelineOrchestrator → process_by_date()
 """
 
 import csv
-import gc
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -218,12 +216,12 @@ def diagnose_processing_new_api(
                 garbage_collect += 1
 
             # Garbage collection every 5 days
-            if garbage_collect % 5 == 0:
-                print("\n💤 Pausing for 60s before garbage collection...")
-                time.sleep(60)
-                print("\n🗑️  Running garbage collection...")
-                gc.collect()
-                print("✓ Garbage collection done")
+            # if garbage_collect % 5 == 0:
+            #     print("\n💤 Pausing for 60s before garbage collection...")
+            #     time.sleep(60)
+            #     print("\n🗑️  Running garbage collection...")
+            #     gc.collect()
+            #     print("✓ Garbage collection done")
 
     print(f"\n{'=' * 80}")
     print(f"End time: {datetime.now()}")
@@ -235,7 +233,7 @@ if __name__ == "__main__":
     diagnose_processing_new_api()
 
     # Start from a specific date
-    diagnose_processing_new_api(start_from="2025224", end_at="2025224")
+    # diagnose_processing_new_api(start_from="2025224", end_at="2025224")
 
     # Process a specific range
     # diagnose_processing_new_api(start_from="2025278", end_at="2025280")

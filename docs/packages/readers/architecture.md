@@ -112,8 +112,8 @@ graph TB
 
     subgraph "Implementation Layer"
         D[Rnxv3Obs]
+        D2[SbfReader]
         E[Future: Rnxv2Obs]
-        F[Future: Rnxv4Obs]
     end
 
     subgraph "Support Layer"
@@ -128,14 +128,18 @@ graph TB
 
     A --> B
     D -.implements.-> B
+    D2 -.implements.-> B
     E -.implements.-> B
-    F -.implements.-> B
 
     D --> J
     D --> G
     D --> H
     D --> I
     D --> C
+
+    D2 --> G
+    D2 --> H
+    D2 --> C
 
 ```
 
@@ -145,7 +149,7 @@ graph TB
 
 **Interface Layer (ABC)** -- Defines required methods, enforces contracts, and validates output structure.
 
-**Implementation Layer (Concrete Readers)** -- Parses specific formats, implements abstract methods, and handles format-specific details. `Rnxv3Obs` reads RINEX v3.04 text.
+**Implementation Layer (Concrete Readers)** -- Parses specific formats, implements abstract methods, and handles format-specific details. `Rnxv3Obs` reads RINEX v3.04 text; `SbfReader` reads Septentrio Binary Format with embedded satellite geometry.
 
 **Support Layer** -- Provides constellation specifications (GPS, Galileo, etc.), Signal ID mapping, and metadata templates.
 
@@ -459,11 +463,11 @@ Usage:
 ```python
 # Register readers
 ReaderFactory.register('rinex_v3', Rnxv3Obs)
-ReaderFactory.register('rinex_v2', Rnxv2Obs)  # When implemented
+ReaderFactory.register('sbf', SbfReader)
 
 # Automatic detection
 reader = ReaderFactory.create("unknown_file.rnx")
-# Returns Rnxv3Obs or Rnxv2Obs based on content
+# Returns Rnxv3Obs or SbfReader based on content
 ```
 
 ## Summary

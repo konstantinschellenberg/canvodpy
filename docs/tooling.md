@@ -173,14 +173,25 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
             stages: [pre-commit]
           - id: ruff-format
             stages: [pre-commit]
+      - repo: https://github.com/astral-sh/uv-pre-commit
+        hooks:
+          - id: uv-lock
+            stages: [pre-commit]
+      - repo: https://github.com/pre-commit/pre-commit-hooks
+        hooks:
+          - id: trailing-whitespace
+          - id: check-added-large-files
+          - id: detect-private-key
+          - id: end-of-file-fixer
       - repo: https://github.com/commitizen-tools/commitizen
         hooks:
           - id: commitizen
             stages: [commit-msg]
     ```
 
-    Hooks run on every `git commit` — ruff checks run at the `pre-commit` stage,
-    commitizen validates the commit message at `commit-msg`. Failures block the commit.
+    Hooks run on every `git commit` — ruff, uv-lock, and file hygiene checks run at
+    the `pre-commit` stage; commitizen validates the commit message at `commit-msg`.
+    Failures block the commit.
 
 ---
 

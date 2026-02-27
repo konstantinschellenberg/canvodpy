@@ -20,7 +20,7 @@ graph LR
     end
 
     subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSignal ID mapping"]
+        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSBF binary (SbfReader)\nReaderFactory auto-detect"]
         AUX["canvod-auxiliary\nSP3/CLK retrieval\nHermite interpolation\nFTP download management"]
     end
 
@@ -38,7 +38,7 @@ graph LR
     end
 
     subgraph ORCHESTRATION["Orchestration Layer"]
-        CANVODPY["canvodpy\nPipeline orchestrator\nFactory system\n4-level public API"]
+        CANVODPY["canvodpy\nPipeline orchestrator\nDask batch processing\nResource management\n4-level public API"]
     end
 
     READERS -.-> UTILS
@@ -73,6 +73,7 @@ graph LR
 
     ```python
     from canvod.readers import Rnxv3Obs
+    from canvod.readers.sbf import SbfReader
     from canvod.grids import EqualAreaBuilder
     from canvod.vod import TauOmegaZerothOrder
     ```
@@ -187,9 +188,9 @@ flowchart TD
         AUX_ZARR["Auxiliary Zarr Cache"]
     end
 
-    subgraph PARALLEL["Parallel Processing"]
-        READ_R["Read RINEX (Rnxv3Obs)"]
-        SPHERICAL["Spherical Coords\n(ECEF → r, θ, φ)"]
+    subgraph PARALLEL["Parallel Processing (Dask / ProcessPool)"]
+        READ_R["Read GNSS file\n(ReaderFactory)"]
+        SPHERICAL["Spherical Coords\n(ECEF → r, θ, φ)\nor SBF embedded geometry"]
     end
 
     subgraph WRITE["Icechunk Storage"]

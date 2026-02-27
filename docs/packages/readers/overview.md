@@ -142,6 +142,19 @@ class GNSSDataReader(ABC):
         print(f"{system}: {mean_snr:.2f} dB")
     ```
 
+=== "ReaderFactory — auto-detect format"
+
+    ```python
+    from canvodpy.factories import ReaderFactory
+
+    # Selects Rnxv3Obs or SbfReader based on reader_name
+    reader = ReaderFactory.create("rinex3", fpath="station.25o")
+    reader = ReaderFactory.create("sbf", fpath="station.25_")
+
+    # Both return identical (epoch × sid) datasets
+    ds = reader.to_ds(keep_rnx_data_vars=["SNR"])
+    ```
+
 === "Time-series concat"
 
     ```python
