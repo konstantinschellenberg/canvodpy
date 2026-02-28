@@ -3,6 +3,7 @@
 <!-- Build & Quality -->
 [![Platform Tests](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![Code Coverage](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml)
+[![Coverage Status](https://coveralls.io/repos/github/nfb2021/canvodpy/badge.svg?branch=main)](https://coveralls.io/github/nfb2021/canvodpy?branch=main)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 <!-- Python & Platforms -->
