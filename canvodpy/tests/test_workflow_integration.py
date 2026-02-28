@@ -120,8 +120,11 @@ class TestWorkflowFactoryIntegration:
 
     def test_workflow_respects_factory_registration(self):
         """Should use registered factories."""
-        # If we register a custom component, workflow should find it
-        # This is tested implicitly in factory tests
+        workflow = _make_workflow()
+        # The workflow's grid_name and reader_name must exist in their
+        # respective factory registries
+        assert workflow.grid_name in GridFactory.list_available()
+        assert workflow.reader_name in ReaderFactory.list_available()
 
 
 class TestWorkflowErrorHandling:

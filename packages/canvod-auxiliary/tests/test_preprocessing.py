@@ -189,8 +189,9 @@ class TestPadToGlobalSid:
         keep = ["G01|L1|C", "G02|L2|W", "E01|E1|C"]
         result = pad_to_global_sid(sample_preprocessed_sp3, keep_sids=keep)
 
-        # Should only have sids in keep list
-        assert all(sid in keep for sid in result.sid.values if sid in keep)
+        # Result should contain ONLY sids from the keep list
+        result_sids = set(result.sid.values)
+        assert result_sids.issubset(set(keep))
 
 
 class TestNormalizeSidDtype:

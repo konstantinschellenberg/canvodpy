@@ -1,5 +1,7 @@
 """Comprehensive tests for VOD calculation."""
 
+import unittest.mock
+
 import numpy as np
 import pytest
 import xarray as xr
@@ -204,8 +206,79 @@ class TestTauOmegaZerothOrder:
 
     def test_calculate_vod_negative_transmissivity_warning(self, capsys):
         """Test warning when transmissivity <= 0."""
-        # This test is placeholder - actual negative transmissivity is rare
-        pass
+        n_epoch, n_sid = 5, 3
+        canopy_ds = xr.Dataset(
+            {
+                "SNR": (["epoch", "sid"], np.full((n_epoch, n_sid), 10.0)),
+                "phi": (["epoch", "sid"], np.zeros((n_epoch, n_sid))),
+                "theta": (["epoch", "sid"], np.full((n_epoch, n_sid), np.pi / 4)),
+            }
+        )
+        sky_ds = xr.Dataset(
+            {
+                "SNR": (["epoch", "sid"], np.full((n_epoch, n_sid), 20.0)),
+                "phi": (["epoch", "sid"], np.zeros((n_epoch, n_sid))),
+                "theta": (["epoch", "sid"], np.full((n_epoch, n_sid), np.pi / 4)),
+            }
+        )
+
+        original_d2l = TauOmegaZerothOrder.decibel2linear
+
+        def mock_d2l(self_arg, delta_snr_db):
+            result = original_d2l(self_arg, delta_snr_db)
+            # Inject some non-positive values
+            result.values[0, 0] = 0.0
+            result.values[0, 1] = -0.5
+            return result
+
+        with unittest.mock.patch.object(
+            TauOmegaZerothOrder, "decibel2linear", mock_d2l
+        ):
+            calculator = TauOmegaZerothOrder(canopy_ds=canopy_ds, sky_ds=sky_ds)
+            calculator.calculate_vod()
+
+        captured = capsys.readouterr()
+        assert "Warning" in captured.out
+        assert "transmissivity values <= 0" in captured.out
+
+    def test_calculate_vod_zero_delta_snr(self):
+        """Test VOD is exactly 0 when canopy_SNR == sky_SNR (delta_snr = 0)."""
+        n_epoch, n_sid = 5, 3
+        canopy_ds = xr.Dataset(
+            {
+                "SNR": (["epoch", "sid"], np.full((n_epoch, n_sid), 15.0)),
+                "phi": (["epoch", "sid"], np.zeros((n_epoch, n_sid))),
+                "theta": (["epoch", "sid"], np.full((n_epoch, n_sid), np.pi / 4)),
+            }
+        )
+        sky_ds = xr.Dataset(
+            {
+                "SNR": (["epoch", "sid"], np.full((n_epoch, n_sid), 15.0)),
+                "phi": (["epoch", "sid"], np.zeros((n_epoch, n_sid))),
+                "theta": (["epoch", "sid"], np.full((n_epoch, n_sid), np.pi / 4)),
+            }
+        )
+
+        calculator = TauOmegaZerothOrder(canopy_ds=canopy_ds, sky_ds=sky_ds)
+        vod_ds = calculator.calculate_vod()
+
+        # delta_snr = 0, transmissivity = 10^0 = 1, VOD = -ln(1) * cos(theta) = 0
+        assert np.allclose(vod_ds["VOD"].values, 0.0, atol=1e-15)
+
+    def test_from_icechunkstore_import_error(self):
+        """Test ImportError with helpful message when canvod-store not installed."""
+        canopy_ds = xr.Dataset(
+            {
+                "SNR": (["epoch", "sid"], np.full((5, 3), 10.0)),
+                "phi": (["epoch", "sid"], np.zeros((5, 3))),
+                "theta": (["epoch", "sid"], np.full((5, 3), np.pi / 4)),
+            }
+        )
+        sky_ds = canopy_ds.copy()
+
+        with unittest.mock.patch.dict("sys.modules", {"canvod.store": None}):
+            with pytest.raises(ImportError, match="canvod-store"):
+                TauOmegaZerothOrder.from_icechunkstore("/fake/path")
 
 
 class TestFromDatasets:

@@ -198,6 +198,24 @@ class TestClockInterpolationStrategy:
         # Should handle discontinuity without crashing
         assert result.sizes["epoch"] == 60
 
+        # The jump occurs between source epoch 9 (t=45min) and 10 (t=50min).
+        # Target epochs near the boundary should either be NaN (interpolator
+        # avoids interpolating across the jump) or should NOT smoothly
+        # bridge the two segments.
+        clock_vals = result["clock_bias"].sel(sid="G01|L1|C").values
+
+        # Before the jump (target epochs at t<45min): should be ~0
+        pre_jump = clock_vals[:22]  # 0..44min
+        valid_pre = pre_jump[~np.isnan(pre_jump)]
+        if len(valid_pre) > 0:
+            assert np.allclose(valid_pre, 0.0, atol=1e-8)
+
+        # After the jump (target epochs at t>50min): should be ~1e-6
+        post_jump = clock_vals[26:]  # 52..118min
+        valid_post = post_jump[~np.isnan(post_jump)]
+        if len(valid_post) > 0:
+            assert np.allclose(valid_post, 1e-6, atol=1e-8)
+
     def test_interpolated_values_bounded(self):
         """Test interpolated clock values stay within reasonable bounds."""
         base_time = np.datetime64("2024-01-01T00:00:00")

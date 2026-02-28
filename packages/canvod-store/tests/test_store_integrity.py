@@ -118,6 +118,70 @@ class TestDatatypePreservation:
             assert loaded_ds["double_var"].dtype == np.float64
 
 
+class TestDatetime64NsPreservation:
+    """Test that datetime64[ns] (RINEX reader dtype) is preserved."""
+
+    def test_datetime64_ns_preserved(self, vod_store) -> None:
+        """Verify datetime64[ns] precision round-trips correctly."""
+        time_vals = np.arange(
+            "2024-01-01T00:00:00",
+            "2024-01-01T01:00:00",
+            np.timedelta64(30, "s"),
+            dtype="datetime64[ns]",
+        )
+        ds = xr.Dataset(
+            {"data": (["time"], np.random.rand(len(time_vals)))},
+            coords={"time": time_vals},
+        )
+
+        # Store
+        with vod_store.writable_session() as session:
+            root = zarr.open(session.store, mode="w")
+            ds.to_zarr(root.store, group="test_ns_time", mode="w")
+            session.commit("Test datetime64[ns]")
+
+        # Load and verify
+        with vod_store.readonly_session() as session:
+            loaded_ds = xr.open_zarr(
+                session.store, group="test_ns_time", consolidated=False
+            )
+            assert np.issubdtype(loaded_ds.coords["time"].dtype, np.datetime64)
+            # Values should match exactly at nanosecond precision
+            np.testing.assert_array_equal(loaded_ds.coords["time"].values, time_vals)
+
+
+class TestObjectDtypeSidPreservation:
+    """Test that object-dtype string coordinates survive store/load."""
+
+    def test_object_dtype_sid_preserved(self, vod_store) -> None:
+        """Verify object-dtype SID strings round-trip correctly."""
+        sids = np.array(["G01|L1|C", "G02|L2|W", "E01|E1|C", "R01|G1|P"], dtype=object)
+        ds = xr.Dataset(
+            {"SNR": (["epoch", "sid"], np.random.rand(10, len(sids)))},
+            coords={
+                "epoch": np.arange(10),
+                "sid": sids,
+            },
+        )
+
+        # Store
+        with vod_store.writable_session() as session:
+            root = zarr.open(session.store, mode="w")
+            ds.to_zarr(root.store, group="test_obj_sid", mode="w")
+            session.commit("Test object dtype SID")
+
+        # Load and verify
+        with vod_store.readonly_session() as session:
+            loaded_ds = xr.open_zarr(
+                session.store, group="test_obj_sid", consolidated=False
+            )
+            loaded_sids = loaded_ds.coords["sid"].values
+            # All SID values should match
+            np.testing.assert_array_equal(loaded_sids, sids)
+            # Values should be strings
+            assert all(isinstance(s, str) for s in loaded_sids)
+
+
 class TestCoordinatePreservation:
     """Test that dimension coordinates remain intact."""
 

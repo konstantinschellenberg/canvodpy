@@ -4,6 +4,8 @@ Backward compatibility tests.
 Ensures legacy API still works after redesign.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 
@@ -20,32 +22,37 @@ class TestLegacySiteAPI:
         """Should create Site with name."""
         from canvodpy import Site
 
-        try:
+        mock_gnss_site = MagicMock()
+        mock_gnss_site.receivers = {"canopy_01": {}}
+        mock_gnss_site.active_receivers = {"canopy_01": {}}
+        mock_gnss_site.active_vod_analyses = {}
+
+        with patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site):
             site = Site("Rosalia")
             assert site.name == "Rosalia"
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
     def test_site_has_receivers(self):
         """Site should have receivers property."""
         from canvodpy import Site
 
-        try:
+        mock_gnss_site = MagicMock()
+        mock_gnss_site.receivers = {"canopy_01": {"active": True}}
+
+        with patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site):
             site = Site("Rosalia")
             assert hasattr(site, "receivers")
             assert isinstance(site.receivers, dict)
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
     def test_site_has_active_receivers(self):
         """Site should have active_receivers property."""
         from canvodpy import Site
 
-        try:
+        mock_gnss_site = MagicMock()
+        mock_gnss_site.active_receivers = {"canopy_01": {"active": True}}
+
+        with patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site):
             site = Site("Rosalia")
             assert hasattr(site, "active_receivers")
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
 
 class TestLegacyPipelineAPI:
@@ -61,33 +68,88 @@ class TestLegacyPipelineAPI:
         """Should create Pipeline from Site."""
         from canvodpy import Pipeline, Site
 
-        try:
+        mock_gnss_site = MagicMock()
+        mock_gnss_site.receivers = {"canopy_01": {}}
+        mock_gnss_site.active_receivers = {"canopy_01": {}}
+        mock_gnss_site.active_vod_analyses = {}
+
+        with (
+            patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site),
+            patch("canvod.utils.config.load_config") as mock_config,
+            patch("canvodpy.orchestrator.PipelineOrchestrator"),
+        ):
+            # Set up config mock
+            mock_proc = MagicMock()
+            mock_proc.keep_rnx_vars = ["SNR"]
+            mock_proc.batch_hours = 24
+            mock_proc.resolve_resources.return_value = {
+                "n_workers": 2,
+                "max_memory_gb": 8.0,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": 1,
+            }
+            mock_config.return_value.processing.processing = mock_proc
+            mock_config.return_value.processing.aux_data.agency = "COD"
+
             site = Site("Rosalia")
             pipeline = Pipeline(site)
             assert pipeline.site.name == "Rosalia"
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
     def test_pipeline_creation_from_string(self):
         """Should create Pipeline from site name."""
         from canvodpy import Pipeline
 
-        try:
+        mock_gnss_site = MagicMock()
+
+        with (
+            patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site),
+            patch("canvod.utils.config.load_config") as mock_config,
+            patch("canvodpy.orchestrator.PipelineOrchestrator"),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.keep_rnx_vars = ["SNR"]
+            mock_proc.batch_hours = 24
+            mock_proc.resolve_resources.return_value = {
+                "n_workers": 2,
+                "max_memory_gb": 8.0,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": 1,
+            }
+            mock_config.return_value.processing.processing = mock_proc
+            mock_config.return_value.processing.aux_data.agency = "COD"
+
             pipeline = Pipeline("Rosalia")
             assert pipeline.site.name == "Rosalia"
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
     def test_pipeline_has_process_date(self):
         """Pipeline should have process_date method."""
         from canvodpy import Pipeline
 
-        try:
+        mock_gnss_site = MagicMock()
+
+        with (
+            patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site),
+            patch("canvod.utils.config.load_config") as mock_config,
+            patch("canvodpy.orchestrator.PipelineOrchestrator"),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.keep_rnx_vars = ["SNR"]
+            mock_proc.batch_hours = 24
+            mock_proc.resolve_resources.return_value = {
+                "n_workers": 2,
+                "max_memory_gb": 8.0,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": 1,
+            }
+            mock_config.return_value.processing.processing = mock_proc
+            mock_config.return_value.processing.aux_data.agency = "COD"
+
             pipeline = Pipeline("Rosalia")
             assert hasattr(pipeline, "process_date")
             assert callable(pipeline.process_date)
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
 
 class TestLegacyConvenienceFunctions:
@@ -129,29 +191,42 @@ class TestNewAPICoexistence:
         """Should use both APIs in same code."""
         from canvodpy import Site, VODWorkflow
 
-        try:
-            # Old API
+        mock_gnss_site = MagicMock()
+        mock_gnss_site.receivers = {"canopy_01": {}}
+        mock_gnss_site.active_receivers = {"canopy_01": {}}
+        mock_gnss_site.active_vod_analyses = {}
+
+        with patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site):
             site = Site("Rosalia")
-
-            # New API with same site object
-            workflow = VODWorkflow(site=site)
-
+            workflow = VODWorkflow(site=site, keep_vars=["SNR"])
             assert site.name == workflow.site.name
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
     def test_old_api_uses_new_components(self):
         """Legacy API should benefit from new factories."""
-        # Pipeline internally might use factories in future
-        # For now, just verify it still works
         from canvodpy import Pipeline
 
-        try:
+        mock_gnss_site = MagicMock()
+
+        with (
+            patch("canvod.store.GnssResearchSite", return_value=mock_gnss_site),
+            patch("canvod.utils.config.load_config") as mock_config,
+            patch("canvodpy.orchestrator.PipelineOrchestrator"),
+        ):
+            mock_proc = MagicMock()
+            mock_proc.keep_rnx_vars = ["SNR"]
+            mock_proc.batch_hours = 24
+            mock_proc.resolve_resources.return_value = {
+                "n_workers": 2,
+                "max_memory_gb": 8.0,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": 1,
+            }
+            mock_config.return_value.processing.processing = mock_proc
+            mock_config.return_value.processing.aux_data.agency = "COD"
+
             pipeline = Pipeline("Rosalia")
-            # If it initializes, old API works
             assert pipeline is not None
-        except Exception as e:
-            pytest.skip(f"Site not configured: {e}")
 
 
 class TestAPIExports:
