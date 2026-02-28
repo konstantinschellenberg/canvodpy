@@ -32,6 +32,11 @@ jobs:
             - name: Run Tests with Coverage
               run: just test-coverage
 
+            - name: Upload to Coveralls
+              uses: coverallsapp/github-action@v2
+              with:
+                  file: coverage.lcov
+
             - name: Coverage comment
               id: coverage_comment
               uses: py-cov-action/python-coverage-comment-action@v3
