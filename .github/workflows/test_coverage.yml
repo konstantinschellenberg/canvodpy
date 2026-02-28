@@ -24,7 +24,7 @@ jobs:
               run: uv python install
 
             - name: Install just
-              uses: ./.github/actions/setup-just
+              uses: extractions/setup-just@v2
 
             - name: Install the Project
               run: uv sync --locked --dev

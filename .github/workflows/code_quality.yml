@@ -8,7 +8,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: ./.github/actions/setup
-            - uses: ./.github/actions/setup-just
+            - uses: extractions/setup-just@v2
             - name: Check uv.lock is up to date
               run: just check-lock
 
@@ -18,7 +18,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: ./.github/actions/setup
-            - uses: ./.github/actions/setup-just
+            - uses: extractions/setup-just@v2
             - name: Lint with ruff
               run: just check-lint-only
 
@@ -28,7 +28,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: ./.github/actions/setup
-            - uses: ./.github/actions/setup-just
+            - uses: extractions/setup-just@v2
             - name: Check formatting
               run: just check-format-only
 
@@ -38,7 +38,7 @@ jobs:
         steps:
             - uses: actions/checkout@v4
             - uses: ./.github/actions/setup
-            - uses: ./.github/actions/setup-just
+            - uses: extractions/setup-just@v2
             - run: uv sync --locked --dev
             - name: Type check with ty
               run: just check-types
