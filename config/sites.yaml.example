@@ -27,9 +27,10 @@ sites:
           receiver_number: 1
           source_pattern: auto
           directory_layout: yyddd_subdirs
-          metadata:
-            site_url: https://forschung.boku.ac.at/rosalia
-            antenna_height: 2.0
+        # Freeform metadata written to dataset global attrs
+        metadata:
+          site_url: https://forschung.boku.ac.at/rosalia
+          antenna_height: 2.0
 
       canopy_01:
         type: canopy
@@ -39,10 +40,10 @@ sites:
           receiver_number: 1
           source_pattern: auto
           directory_layout: yyddd_subdirs
-          metadata:
-            site_url: https://forschung.boku.ac.at/rosalia
-            antenna_height: 1.5
-            species: Fagus sylvatica
+        metadata:
+          site_url: https://forschung.boku.ac.at/rosalia
+          antenna_height: 1.5
+          species: Fagus sylvatica
 
       canopy_02:
         type: canopy
@@ -52,10 +53,10 @@ sites:
           receiver_number: 2
           source_pattern: auto
           directory_layout: yyddd_subdirs
-          metadata:
-            site_url: https://forschung.boku.ac.at/rosalia
-            antenna_height: 1.5
-            species: Picea abies
+        metadata:
+          site_url: https://forschung.boku.ac.at/rosalia
+          antenna_height: 1.5
+          species: Picea abies
 
     # VOD analysis pairs
     vod_analyses:

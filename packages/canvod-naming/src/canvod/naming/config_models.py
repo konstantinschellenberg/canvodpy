@@ -42,10 +42,3 @@ class ReceiverNamingConfig(BaseModel):
     sampling: Duration | None = None
     period: Duration | None = None
     content: ContentCode | None = None
-    metadata: dict[str, str | int | float | bool] | None = Field(
-        None,
-        description=(
-            "Freeform receiver metadata propagated to the catalog and "
-            "dataset attrs. Example keys: site_url, antenna_height, species."
-        ),
-    )

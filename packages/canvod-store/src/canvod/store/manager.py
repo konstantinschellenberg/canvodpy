@@ -137,6 +137,29 @@ class GnssResearchSite:
             if config.get("active", True)
         }
 
+    def get_receiver_metadata(
+        self, receiver_name: str
+    ) -> dict[str, str | int | float | bool] | None:
+        """Get freeform metadata for a receiver.
+
+        Returns the ``metadata`` dict from ``ReceiverConfig`` in
+        ``sites.yaml``, or ``None`` if not configured.
+
+        Parameters
+        ----------
+        receiver_name : str
+            Name of the receiver.
+
+        Returns
+        -------
+        dict or None
+            Receiver metadata dict, or None.
+        """
+        cfg = self._site_config.receivers.get(receiver_name)
+        if cfg is None:
+            return None
+        return cfg.metadata
+
     @classmethod
     def from_rinex_store_path(
         cls,
@@ -280,7 +303,7 @@ class GnssResearchSite:
         """
         return self.vod_store.list_groups()
 
-    def ingest_rinex_data(
+    def ingest_receiver_data(
         self, dataset: xr.Dataset, receiver_name: str, commit_message: str | None = None
     ) -> None:
         """
@@ -306,6 +329,20 @@ class GnssResearchSite:
                 f"Receiver '{receiver_name}' not configured. "
                 f"Available: {available_receivers}"
             )
+
+        # Merge receiver metadata into dataset attrs (never overwrite existing)
+        receiver_meta = self.get_receiver_metadata(receiver_name)
+        if receiver_meta:
+            skipped = {k for k in receiver_meta if k in dataset.attrs}
+            if skipped:
+                self._logger.warning(
+                    f"Receiver metadata keys {skipped} already exist in "
+                    f"dataset attrs — skipping (existing attrs take precedence)"
+                )
+            new_attrs = {
+                k: v for k, v in receiver_meta.items() if k not in dataset.attrs
+            }
+            dataset.attrs.update(new_attrs)
 
         self._logger.info(f"Ingesting RINEX data for receiver '{receiver_name}'")
 

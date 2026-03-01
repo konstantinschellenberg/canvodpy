@@ -31,7 +31,6 @@ class VirtualFile:
 
     physical_path: Path
     conventional_name: CanVODFilename
-    receiver_metadata: dict[str, str | int | float | bool] | None = None
 
     @property
     def canonical_str(self) -> str:
@@ -274,11 +273,7 @@ class FilenameMapper:
             compression=compression,
         )
 
-        return VirtualFile(
-            physical_path=file_path,
-            conventional_name=conventional,
-            receiver_metadata=self.receiver_naming.metadata,
-        )
+        return VirtualFile(physical_path=file_path, conventional_name=conventional)
 
     # -- Private helpers ------------------------------------------------------
 

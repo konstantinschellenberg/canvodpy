@@ -155,57 +155,6 @@ class TestFilenameCatalog:
             assert cn is not None
 
 
-class TestFilenameCatalogMetadata:
-    def test_record_with_metadata(self, db_path, tmp_path):
-        p = tmp_path / "rosl001a.25o"
-        p.write_bytes(b"test data")
-        cn = CanVODFilename(
-            site="ROS",
-            receiver_type=ReceiverType.REFERENCE,
-            receiver_number=1,
-            agency="TUW",
-            year=2025,
-            doy=1,
-        )
-        meta = {"species": "Fagus sylvatica", "antenna_height": 1.5}
-        vf = VirtualFile(physical_path=p, conventional_name=cn, receiver_metadata=meta)
-
-        with FilenameCatalog(db_path) as cat:
-            cat.record(vf)
-            # Query back and verify metadata round-trips
-            vfs = cat.query_date_range(2025, 1, 2025, 1)
-            assert len(vfs) == 1
-            assert vfs[0].receiver_metadata == meta
-
-    def test_record_without_metadata(self, db_path, sample_file):
-        with FilenameCatalog(db_path) as cat:
-            cat.record(sample_file)
-            vfs = cat.query_date_range(2025, 1, 2025, 1)
-            assert len(vfs) == 1
-            assert vfs[0].receiver_metadata is None
-
-    def test_metadata_persists_across_sessions(self, db_path, tmp_path):
-        p = tmp_path / "rosl001a.25o"
-        p.write_bytes(b"test data")
-        cn = CanVODFilename(
-            site="ROS",
-            receiver_type=ReceiverType.REFERENCE,
-            receiver_number=1,
-            agency="TUW",
-            year=2025,
-            doy=1,
-        )
-        meta = {"site_url": "https://example.com", "is_permanent": True}
-        vf = VirtualFile(physical_path=p, conventional_name=cn, receiver_metadata=meta)
-
-        with FilenameCatalog(db_path) as cat:
-            cat.record(vf)
-
-        with FilenameCatalog(db_path) as cat2:
-            vfs = cat2.query_date_range(2025, 1, 2025, 1)
-            assert vfs[0].receiver_metadata == meta
-
-
 class TestFilenameCatalogPolars:
     def test_to_polars(self, db_path, sample_file, sample_file_2):
         pytest.importorskip("polars")

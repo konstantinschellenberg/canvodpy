@@ -524,6 +524,13 @@ class ReceiverConfig(BaseModel):
         None,
         description="Naming configuration (validated by canvod-naming package)",
     )
+    metadata: dict[str, str | int | float | bool] | None = Field(
+        None,
+        description=(
+            "Freeform receiver metadata written to dataset global attrs. "
+            "Example keys: site_url, antenna_height, species."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_scs_from(self) -> "ReceiverConfig":

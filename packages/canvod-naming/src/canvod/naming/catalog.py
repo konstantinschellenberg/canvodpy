@@ -10,7 +10,6 @@ Catalog location: ``{gnss_site_data_root}/.canvod/filename_catalog.duckdb``
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -45,9 +44,7 @@ CREATE TABLE IF NOT EXISTS file_mapping (
     -- Tracking
     file_hash          TEXT,
     first_seen_at      TIMESTAMP NOT NULL,
-    last_verified_at   TIMESTAMP NOT NULL,
-    -- Receiver metadata (freeform JSON from config)
-    receiver_metadata  TEXT
+    last_verified_at   TIMESTAMP NOT NULL
 );
 """
 
@@ -102,7 +99,6 @@ class FilenameCatalog:
         size, mtime = _file_stat(vf.physical_path)
         file_hash = _compute_file_hash(vf.physical_path)
         phys_str = str(vf.physical_path)
-        meta_json = json.dumps(vf.receiver_metadata) if vf.receiver_metadata else None
 
         existing = self._conn.execute(
             "SELECT id FROM file_mapping WHERE physical_path = ?", [phys_str]
@@ -117,7 +113,7 @@ class FilenameCatalog:
                     receiver_number = ?, agency = ?, year = ?, doy = ?,
                     hour = ?, minute = ?, period = ?, sampling = ?,
                     content = ?, file_type = ?, compression = ?,
-                    file_hash = ?, last_verified_at = ?, receiver_metadata = ?
+                    file_hash = ?, last_verified_at = ?
                 WHERE id = ?""",
                 [
                     vf.physical_path.name,
@@ -139,7 +135,6 @@ class FilenameCatalog:
                     cn.compression,
                     file_hash,
                     now,
-                    meta_json,
                     existing[0],
                 ],
             )
@@ -151,14 +146,14 @@ class FilenameCatalog:
                     conventional_name, site_id, receiver_type, receiver_number,
                     agency, year, doy, hour, minute, period, sampling,
                     content, file_type, compression,
-                    file_hash, first_seen_at, last_verified_at, receiver_metadata
+                    file_hash, first_seen_at, last_verified_at
                 ) VALUES (
                     nextval('file_mapping_id_seq'),
                     ?, ?, ?, ?,
                     ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?,
-                    ?, ?, ?, ?
+                    ?, ?, ?
                 )""",
                 [
                     phys_str,
@@ -182,7 +177,6 @@ class FilenameCatalog:
                     file_hash,
                     now,
                     now,
-                    meta_json,
                 ],
             )
 
@@ -236,7 +230,7 @@ class FilenameCatalog:
             Optional filter: ``"R"`` or ``"A"``.
         """
         sql = """\
-            SELECT physical_path, conventional_name, receiver_metadata
+            SELECT physical_path, conventional_name
             FROM file_mapping
             WHERE (year * 1000 + doy) BETWEEN ? AND ?
         """
@@ -253,15 +247,10 @@ class FilenameCatalog:
 
         rows = self._conn.execute(sql, params).fetchall()
         results = []
-        for phys_str, conv_name, meta_json in rows:
+        for phys_str, conv_name in rows:
             cn = CanVODFilename.from_filename(conv_name)
-            meta = json.loads(meta_json) if meta_json else None
             results.append(
-                VirtualFile(
-                    physical_path=Path(phys_str),
-                    conventional_name=cn,
-                    receiver_metadata=meta,
-                )
+                VirtualFile(physical_path=Path(phys_str), conventional_name=cn)
             )
         return results
 

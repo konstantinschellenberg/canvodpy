@@ -663,7 +663,7 @@ class IcechunkDataReader:
             )
 
             # Use site's ingestion method
-            self._site.ingest_rinex_data(dataset, receiver_name, commit_message)
+            self._site.ingest_receiver_data(dataset, receiver_name, commit_message)
 
             self._logger.info(
                 f"Successfully appended {receiver_type} data to store as "
