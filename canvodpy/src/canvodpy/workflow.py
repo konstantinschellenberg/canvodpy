@@ -312,7 +312,9 @@ class VODWorkflow:
         log.info(
             "calculate_vod_complete",
             cells=vod_ds.sizes.get("cell", 0) if "cell" in vod_ds.sizes else 0,
-            vod_mean=float(vod_ds.VOD.mean().item()) if "VOD" in vod_ds else None,
+            vod_mean=float(vod_ds.VOD.mean().compute().item())
+            if "VOD" in vod_ds
+            else None,
         )
         return vod_ds
 
@@ -422,7 +424,7 @@ class VODWorkflow:
         # Use grid operations
         from canvod.grids import add_cell_ids_to_ds_fast
 
-        ds_with_cells = add_cell_ids_to_ds_fast(ds, self.grid)
+        ds_with_cells = add_cell_ids_to_ds_fast(ds, self.grid, self.grid_name)
 
         log.debug(
             "assign_grid_cells_complete",

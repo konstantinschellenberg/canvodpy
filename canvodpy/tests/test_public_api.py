@@ -1,19 +1,21 @@
 """
-Backward compatibility tests.
+Public API tests — validates the three-tier API surface.
 
-Ensures legacy API still works after redesign.
+Tests the Site, Pipeline, and process_date public API along with
+convenience functions, exports, configuration, and subpackage access.
 """
 
 from unittest.mock import MagicMock, patch
 
+import canvodpy.orchestrator.processor  # noqa: F401  # Force-import so module-level load_config binds before patches
 import pytest
 
 
-class TestLegacySiteAPI:
-    """Test legacy Site class still works."""
+class TestSiteAPI:
+    """Test Site class."""
 
     def test_site_import(self):
-        """Should still be able to import Site."""
+        """Should be able to import Site."""
         from canvodpy import Site
 
         assert Site is not None
@@ -55,11 +57,11 @@ class TestLegacySiteAPI:
             assert hasattr(site, "active_receivers")
 
 
-class TestLegacyPipelineAPI:
-    """Test legacy Pipeline class still works."""
+class TestPipelineAPI:
+    """Test Pipeline class."""
 
     def test_pipeline_import(self):
-        """Should still be able to import Pipeline."""
+        """Should be able to import Pipeline."""
         from canvodpy import Pipeline
 
         assert Pipeline is not None
@@ -152,8 +154,8 @@ class TestLegacyPipelineAPI:
             assert callable(pipeline.process_date)
 
 
-class TestLegacyConvenienceFunctions:
-    """Test legacy convenience functions still work."""
+class TestConvenienceFunctions:
+    """Test convenience functions."""
 
     def test_process_date_import(self):
         """Should import process_date function."""
@@ -177,8 +179,8 @@ class TestLegacyConvenienceFunctions:
         assert callable(preview_processing)
 
 
-class TestNewAPICoexistence:
-    """Test that new and old APIs can coexist."""
+class TestAPICoexistence:
+    """Test that all API tiers can coexist."""
 
     def test_both_site_and_workflow_importable(self):
         """Should import both Site and VODWorkflow."""
@@ -201,8 +203,8 @@ class TestNewAPICoexistence:
             workflow = VODWorkflow(site=site, keep_vars=["SNR"])
             assert site.name == workflow.site.name
 
-    def test_old_api_uses_new_components(self):
-        """Legacy API should benefit from new factories."""
+    def test_pipeline_uses_factories(self):
+        """Pipeline should use factory components."""
         from canvodpy import Pipeline
 
         mock_gnss_site = MagicMock()
@@ -230,10 +232,10 @@ class TestNewAPICoexistence:
 
 
 class TestAPIExports:
-    """Test __all__ exports include both old and new."""
+    """Test __all__ exports include all public API."""
 
-    def test_all_contains_legacy_api(self):
-        """__all__ should export legacy classes."""
+    def test_all_contains_core_api(self):
+        """__all__ should export core classes."""
         import canvodpy
 
         assert "Site" in canvodpy.__all__
@@ -241,8 +243,8 @@ class TestAPIExports:
         assert "process_date" in canvodpy.__all__
         assert "calculate_vod" in canvodpy.__all__
 
-    def test_all_contains_new_api(self):
-        """__all__ should export new classes."""
+    def test_all_contains_factory_api(self):
+        """__all__ should export factory classes."""
         import canvodpy
 
         assert "VODWorkflow" in canvodpy.__all__
@@ -260,7 +262,7 @@ class TestAPIExports:
 
 
 class TestConfigurationCompatibility:
-    """Test configuration still works with new API."""
+    """Test configuration access via public API."""
 
     def test_keep_rnx_vars_available_via_config(self):
         """KEEP_RNX_VARS should be available via load_config()."""

@@ -67,6 +67,13 @@ canvod-utils = { workspace = true }
 canvod-viz = { workspace = true }
 canvod-vod = { workspace = true }
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short", "--disable-warnings"]
+
 [tool.ty]
 extend-exclude = [
     "**/docs/*.ipynb",

@@ -51,6 +51,13 @@ dev = [
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = ["-v", "--tb=short", "--disable-warnings"]
+
 [tool.ty]
 extend-exclude = [
     "**/docs/*.ipynb",
