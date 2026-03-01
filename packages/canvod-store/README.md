@@ -45,4 +45,4 @@ site = GnssResearchSite(site_name="Rosalia")
 
 ## License
 
-Apache License 2.0 - see LICENSE file
+MIT License - see LICENSE file

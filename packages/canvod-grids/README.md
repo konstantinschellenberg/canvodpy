@@ -26,7 +26,7 @@ See the [main repository README](../../README.md) for workspace development setu
 
 ## License
 
-Apache License 2.0
+MIT License
 
 ## Author & Affiliation
 

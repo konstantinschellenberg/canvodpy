@@ -31,7 +31,7 @@
     "hemispheric grids",
     "canopy"
   ],
-  "license": "https://spdx.org/licenses/Apache-2.0",
+  "license": "https://spdx.org/licenses/MIT",
   "name": "canVODpy: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals",
   "url": "https://github.com/nfb2021/canvodpy",
   "version": "0.1.0"

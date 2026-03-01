@@ -66,7 +66,7 @@ The authoritative standard is **FAIR4RS Principles v1.0** (RDA, 2022; [doi:10.10
 ### In place
 
 - [x] Public GitHub repository with version control
-- [x] Apache-2.0 LICENSE
+- [x] MIT LICENSE
 - [x] `CITATION.cff` with DOI and ORCID
 - [x] Zenodo DOI (10.5281/zenodo.18636775)
 - [x] `CHANGELOG.md`, `CONTRIBUTING.md`

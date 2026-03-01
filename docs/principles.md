@@ -1,6 +1,6 @@
 ---
 title: Community-Agreed Best Practices and Principles
-description: Community-agreed best practices and principles guiding canVODpy development
+description: Community-agreed best practices and principles for deriving Vegetation Optical Depth from GNSS Transmissometry
 ---
 
 # Community-Agreed Best Practices and Principles
@@ -8,19 +8,22 @@ description: Community-agreed best practices and principles guiding canVODpy dev
 !!! warning "Coming soon"
 
     This section is under active development. It will document the
-    community-agreed principles and scientific software best practices
-    that guide every design decision in canVODpy.
+    community-agreed best practices and principles for deriving
+    Vegetation Optical Depth (VOD) from GNSS Transmissometry (GNSS-T).
 
 ---
 
 ## Why this matters
 
-canVODpy is built to be a **community-driven reference implementation** for
-GNSS-Transmissometry VOD retrievals. For the community to trust, adopt, and
-extend the software, every contributor must share a common understanding of
-*how* and *why* decisions are made — not just *what* the code does.
+GNSS-Transmissometry is a young technique with growing adoption across
+research groups worldwide. As the community expands, a shared set of
+agreed-upon practices — covering raw data preprocessing, signal selection,
+nomenclature, quality control, and retrieval methodology — is essential
+for producing comparable, reproducible, and trustworthy VOD products.
 
-This page will serve as that shared foundation.
+canVODpy implements these community-agreed practices as its default
+processing pipeline, so that results are consistent across sites,
+receivers, and research groups.
 
 ---
 
@@ -28,38 +31,38 @@ This page will serve as that shared foundation.
 
 <div class="grid cards" markdown>
 
--   :fontawesome-solid-flask: &nbsp; **Scientific Rigour**
+-   :fontawesome-solid-satellite-dish: &nbsp; **Raw Data Preprocessing**
 
     ---
 
-    Reproducibility, provenance, and traceability as first-class
-    requirements — not afterthoughts.
+    Agreed procedures for SNR extraction, signal filtering,
+    elevation masking, and quality flagging of GNSS observations.
 
--   :fontawesome-solid-puzzle-piece: &nbsp; **Extensibility by Design**
-
-    ---
-
-    ABC + Factory patterns, contract-based validation, and the
-    Sollbruchstellen principle: every component is replaceable.
-
--   :fontawesome-solid-people-group: &nbsp; **Community Standards**
+-   :fontawesome-solid-book: &nbsp; **Nomenclature**
 
     ---
 
-    Alignment with established scientific Python packaging guidelines
-    (SPEC, pyOpenSci, FAIR) and geodetic community conventions.
+    Standardised naming conventions for signals, bands, observation
+    types, and derived quantities across the GNSS-T community.
 
--   :fontawesome-solid-shield-halved: &nbsp; **Correctness over Convenience**
+-   :fontawesome-solid-flask: &nbsp; **Retrieval Methodology**
 
     ---
 
-    Type-safe boundaries, structural validation on every output Dataset,
-    and fail-fast error reporting with clear messages.
+    Reference procedures for the tau-omega inversion, canopy vs.
+    reference pairing, and hemispheric gridding strategies.
+
+-   :fontawesome-solid-scale-balanced: &nbsp; **Comparability & Reproducibility**
+
+    ---
+
+    Guidelines ensuring that VOD products from different sites,
+    receivers, and software implementations can be meaningfully compared.
 
 </div>
 
 ---
 
-*Full content will be published soon. If you want to contribute to shaping these
-principles, open a discussion on
+*Full content will be published soon. If you want to contribute to shaping
+these practices, open a discussion on
 [GitHub](https://github.com/nfb2021/canvodpy/discussions).*

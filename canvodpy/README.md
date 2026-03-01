@@ -107,4 +107,4 @@ See the [main repository README](../README.md) for workspace development setup.
 
 ## License
 
-Apache License 2.0
+MIT License

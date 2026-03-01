@@ -15,7 +15,7 @@ signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 
@@ -25,9 +25,9 @@ signal-to-noise ratio observations.
 
 !!! tip "Community-Agreed Best Practices and Principles — coming soon"
 
-    canVODpy follows community-agreed best practices and principles for
-    scientific software. A dedicated section covering reproducibility,
-    extensibility, FAIR alignment, and more is on its way.
+    canVODpy implements community-agreed best practices and principles
+    for deriving VOD from GNSS Transmissometry — covering raw data
+    preprocessing, nomenclature, retrieval methodology, and more.
 
     [:octicons-arrow-right-24: Community-Agreed Best Practices & Principles](principles.md)
 

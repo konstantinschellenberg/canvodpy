@@ -51,4 +51,4 @@ Based on Humphrey, V., & Frankenberg, C. (2022). SMAP L-band microwave radiation
 
 ## License
 
-Apache License 2.0 - see LICENSE file
+MIT License - see LICENSE file
