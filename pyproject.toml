@@ -111,6 +111,7 @@ testpaths = [
     "packages/canvod-utils/tests",
     "packages/canvod-viz/tests",
     "packages/canvod-vod/tests",
+    "packages/canvod-ops/tests",
 ]
 addopts = "--cov --cov-report term-missing --cov-report lcov -rsx --verbose --color=yes"
 markers = [
@@ -137,6 +138,7 @@ version_files = [
     "packages/canvod-viz/pyproject.toml:version",
     "packages/canvod-utils/pyproject.toml:version",
     "packages/canvod-naming/pyproject.toml:version",
+    "packages/canvod-ops/pyproject.toml:version",
 ]
 tag_format = "v$version"
 update_changelog_on_bump = true
@@ -156,6 +158,7 @@ scopes = [
     "naming",
     "orchestrator",
     "diagnostics",
+    "ops",
     "ci",
     "docs",
     "deps",

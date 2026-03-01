@@ -17,6 +17,7 @@ members = [
     "canvod-auxiliary",
     "canvod-grids",
     "canvod-naming",
+    "canvod-ops",
     "canvod-readers",
     "canvod-store",
     "canvod-utils",
@@ -318,6 +319,43 @@ requires-dist = [
 ]
 
 [[package]]
+name = "canvod-ops"
+version = "0.1.0"
+source = { editable = "packages/canvod-ops" }
+dependencies = [
+    { name = "canvod-grids" },
+    { name = "canvod-utils" },
+    { name = "loguru" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "polars" },
+    { name = "xarray" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "canvod-grids", editable = "packages/canvod-grids" },
+    { name = "canvod-utils", editable = "packages/canvod-utils" },
+    { name = "loguru", specifier = ">=0.7.0" },
+    { name = "numpy", specifier = ">=1.26.0" },
+    { name = "pandas", specifier = ">=2.1.0" },
+    { name = "polars", specifier = ">=1.0.0" },
+    { name = "xarray", specifier = ">=2024.1.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-cov", specifier = ">=5.0.0" },
+]
+
+[[package]]
 name = "canvod-readers"
 version = "0.1.0"
 source = { editable = "packages/canvod-readers" }
@@ -383,6 +421,7 @@ version = "0.1.0"
 source = { editable = "packages/canvod-store" }
 dependencies = [
     { name = "canvod-grids" },
+    { name = "canvod-ops" },
     { name = "icechunk" },
     { name = "networkx" },
     { name = "numpy" },
@@ -402,6 +441,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "canvod-grids", editable = "packages/canvod-grids" },
+    { name = "canvod-ops", editable = "packages/canvod-ops" },
     { name = "icechunk", specifier = ">=1.1.5" },
     { name = "networkx", specifier = ">=3.6.1" },
     { name = "numpy", specifier = ">=1.24.0" },
@@ -501,6 +541,7 @@ dependencies = [
     { name = "canvod-auxiliary" },
     { name = "canvod-grids" },
     { name = "canvod-naming" },
+    { name = "canvod-ops" },
     { name = "canvod-readers" },
     { name = "canvod-store" },
     { name = "canvod-utils" },
@@ -537,6 +578,7 @@ requires-dist = [
     { name = "canvod-auxiliary", editable = "packages/canvod-auxiliary" },
     { name = "canvod-grids", editable = "packages/canvod-grids" },
     { name = "canvod-naming", editable = "packages/canvod-naming" },
+    { name = "canvod-ops", editable = "packages/canvod-ops" },
     { name = "canvod-readers", editable = "packages/canvod-readers" },
     { name = "canvod-store", editable = "packages/canvod-store" },
     { name = "canvod-utils", editable = "packages/canvod-utils" },

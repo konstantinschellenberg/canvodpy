@@ -1,16 +1,14 @@
 [project]
-name = "canvod-store"
+name = "canvod-ops"
 version = "0.1.0"
-description = "Icechunk storage for GNSS VOD data"
+description = "Preprocessing operations pipeline for GNSS VOD data"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]
 maintainers = [
     {name = "Climate and Environmental Remote Sensing (CLIMERS)", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]
-readme = "README.md"
 requires-python = ">=3.13"
-keywords = ["GNSS", "VOD", "storage", "icechunk", "zarr"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
@@ -18,49 +16,36 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
-
 dependencies = [
-    "canvod-grids>=0.1.0",
-    "canvod-ops>=0.1.0",
-    "icechunk>=1.1.5",
-    "zarr>=3.1.2",
-    "xarray>=2023.12.0",
+    "xarray>=2024.1.0",
     "polars>=1.0.0",
-    "numpy>=1.24.0",
-    "networkx>=3.6.1",
+    "numpy>=1.26.0",
+    "pandas>=2.1.0",
+    "canvod-utils>=0.1.0",
+    "canvod-grids>=0.1.0",
+    "loguru>=0.7.0",
 ]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.0",
-    "pytest-cov>=5.0",
-    "ruff>=0.14",
-    "ty>=0.0.9",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
 ]
 
 [tool.uv.sources]
+canvod-utils = { workspace = true }
 canvod-grids = { workspace = true }
-canvod-ops = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "canvod.store"
+module-name = "canvod.ops"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = [
-    "-v",
-    "--strict-markers",
-    "--tb=short",
-    "--disable-warnings",
-]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-]
+addopts = ["-v", "--tb=short", "--disable-warnings"]

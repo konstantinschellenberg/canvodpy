@@ -344,6 +344,13 @@ class IcechunkDataReader:
                         rx_z=approx_pos.z,
                     )
 
+                    # --- 3b) Preprocessing pipeline ---
+                    from canvod.ops import build_default_pipeline
+
+                    pipeline = build_default_pipeline()
+                    ds, pipeline_result = pipeline(ds)
+                    ds.attrs.update(pipeline_result.to_metadata_dict())
+
                     # --- 4) Store to Icechunk ---
                     existing_groups = self._site.rinex_store.list_groups()
                     if not exists and store_group not in existing_groups and idx == 0:

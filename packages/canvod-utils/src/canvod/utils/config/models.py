@@ -479,6 +479,35 @@ class LoggingConfig(BaseModel):
         return self.get_log_dir() / self.log_file_name
 
 
+class TemporalAggregationConfig(BaseModel):
+    """Temporal aggregation preprocessing settings."""
+
+    enabled: bool = Field(True, description="Enable temporal aggregation")
+    freq: str = Field("1min", description="Aggregation frequency (pandas offset alias)")
+    method: Literal["mean", "median"] = Field("mean", description="Aggregation method")
+
+
+class GridAssignmentConfig(BaseModel):
+    """Grid cell assignment preprocessing settings."""
+
+    enabled: bool = Field(True, description="Enable grid cell assignment")
+    grid_type: str = Field("equal_area", description="Grid type for cell assignment")
+    angular_resolution: float = Field(
+        2.0, gt=0, le=90, description="Angular resolution in degrees"
+    )
+
+
+class PreprocessingConfig(BaseModel):
+    """Preprocessing pipeline configuration."""
+
+    temporal_aggregation: TemporalAggregationConfig = Field(
+        default_factory=TemporalAggregationConfig,
+    )
+    grid_assignment: GridAssignmentConfig = Field(
+        default_factory=GridAssignmentConfig,
+    )
+
+
 class ProcessingConfig(BaseModel):
     """Complete processing configuration."""
 
@@ -493,6 +522,9 @@ class ProcessingConfig(BaseModel):
     icechunk: IcechunkConfig = Field(default_factory=IcechunkConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    preprocessing: PreprocessingConfig = Field(
+        default_factory=PreprocessingConfig,
+    )
 
 
 # ============================================================================
