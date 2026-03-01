@@ -219,7 +219,7 @@ from canvod.utils.config import load_config
 
 cfg = load_config()
 cfg.processing.aux_data.nasa_earthdata_acc_mail
-cfg.processing.storage.gnss_root_dir
+cfg.processing.storage.stores_root_dir
 ```
 
 ```bash

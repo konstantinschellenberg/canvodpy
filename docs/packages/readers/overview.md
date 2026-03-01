@@ -147,16 +147,15 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
         print(f"{system}: {mean_snr:.2f} dB")
     ```
 
-=== "ReaderFactory — auto-detect format"
+=== "ReaderFactory — format registry"
 
     ```python
-    from canvodpy.factories import ReaderFactory
+    from canvod.readers import ReaderFactory
 
-    # Selects Rnxv3Obs or SbfReader based on reader_name
-    reader = ReaderFactory.create("rinex3", fpath="station.25o")
-    reader = ReaderFactory.create("sbf", fpath="station.25_")
+    # Rnxv3Obs is auto-registered; SBF files use SbfReader directly
+    reader = ReaderFactory.create(fpath="station.25o")  # auto-detects RINEX v3
 
-    # Both return identical (epoch × sid) datasets
+    # Both produce identical (epoch × sid) datasets
     ds = reader.to_ds(keep_data_vars=["SNR"])
     ```
 
@@ -223,8 +222,8 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
     centre frequencies.
 
     ```python
-    from canvod.readers.gnss_specs import GPS
-    gps = GPS()
+    from canvod.readers.gnss_specs.constellations import GPS
+    gps = GPS(use_wiki=False)  # static SVs, no network
     gps.BANDS  # {'1': 'L1', '2': 'L2', '5': 'L5'}
     ```
 
@@ -263,13 +262,11 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 
 ### Single-Pass Parser
 
-`Rnxv3Obs` uses a single-pass parser that pre-computes the full Signal ID (SID) space from the RINEX header and fills pre-allocated NumPy arrays in one pass over the file. This avoids the overhead of:
+`Rnxv3Obs` uses a single-pass parser (`_create_dataset_single_pass`) that pre-computes the full Signal ID (SID) space from the RINEX header and fills pre-allocated NumPy arrays in one pass over the file. This avoids the overhead of:
 
-- **Two-pass iteration** — epoch batches are cached, SIDs are derived from header metadata
-- **Per-observation object allocation** — inline string parsing replaces Pydantic model instantiation
+- **Per-observation object allocation** — inline string parsing (`_parse_obs_fast`) replaces Pydantic model instantiation
 - **Repeated signal ID lookups** — a pre-built lookup table maps `(SV, obs_code)` → array index directly
-
-The fast path is used by default. The original two-pass path is preserved for special features (conflict analysis, system analysis, time slicing).
+- **Redundant header re-parsing** — SIDs are derived once from header metadata via `_precompute_sids_from_header()`
 
 ### Tips
 
@@ -280,8 +277,10 @@ The fast path is used by default. The original two-pass path is preserved for sp
 
 !!! tip "Batch processing"
 
-    For many files, use `ProcessPoolExecutor`. Each reader is fully
-    picklable and stateless after construction.
+    For many files, the orchestrator uses **Dask Distributed** with a
+    `LocalCluster` for parallel RINEX processing (falls back to
+    `ProcessPoolExecutor` if Dask is unavailable).  See
+    `canvodpy.orchestrator` for batch pipeline details.
 
 !!! tip "Storage"
 

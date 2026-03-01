@@ -67,7 +67,7 @@ signal-to-noise ratio observations.
 
     ---
 
-    `ProcessPoolExecutor`-backed pipeline with per-file commit,
+    Dask Distributed pipeline with per-file commit,
     hash deduplication, and cooperative distributed writing.
 
     [:octicons-arrow-right-24: Architecture](architecture.md)

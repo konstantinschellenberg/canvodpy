@@ -232,7 +232,7 @@ graph TB
 sequenceDiagram
     participant User
     participant Reader as Rnxv3Obs<br/>(GNSSDataReader)
-    participant Header as Rnxv3ObsHeader<br/>(Pydantic)
+    participant Header as Rnxv3Header<br/>(Pydantic)
     participant Builder as DatasetBuilder
     participant SigID as SignalID
     participant Mapper as SignalIDMapper
@@ -299,8 +299,9 @@ Key interactions in this flow:
 
     ---
 
-    Readers are `frozen=True` Pydantic models. Once constructed, `reader.fpath`
-    cannot be reassigned — predictable, thread-safe, cacheable.
+    Readers like `Rnxv3Obs` are `frozen=True` Pydantic models. Once constructed,
+    `reader.fpath` cannot be reassigned — predictable, thread-safe, cacheable.
+    `SbfReader` uses `frozen=False` with `@cached_property` for lazy computation.
 
 -   :fontawesome-solid-puzzle-piece: &nbsp; **Separation of Concerns**
 
@@ -325,24 +326,25 @@ Key interactions in this flow:
 Errors discovered during analysis are expensive to diagnose and correct. Validation is therefore performed during parsing:
 
 ```python
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
-class Rnxv3ObsHeader(BaseModel):
-    """RINEX v3 header with automatic validation."""
+class Rnxv3Header(BaseModel):
+    """RINEX v3 header with automatic validation (simplified)."""
 
-    rinex_version: float
-    rinex_type: str
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    @field_validator('rinex_version')
+    fpath: Path
+    version: float
+    filetype: str
+    systems: str
+    obs_codes_per_system: dict[str, list[str]]
+    # ... 20+ additional fields parsed from header
+
+    @field_validator("version")
+    @classmethod
     def check_version(cls, v):
         if not (3.0 <= v < 4.0):
             raise ValueError(f"Expected RINEX v3, got {v}")
-        return v
-
-    @field_validator('rinex_type')
-    def check_type(cls, v):
-        if v != 'O':
-            raise ValueError(f"Expected observation file, got {v}")
         return v
 ```
 
@@ -376,9 +378,13 @@ Immutability ensures predictable behavior, thread safety, and cacheable results.
 Format-specific code is contained within the reader:
 
 ```python
-# In Rnxv3Obs
-def _parse_epoch_line(self, line: str) -> Rnxv3ObsEpochRecord:
-    """RINEX v3 specific parsing."""
+# In Rnxv3Obs — format-specific fast parsing
+def _parse_obs_fast(slice_text: str) -> tuple[float | None, int | None, int | None]:
+    """Inline RINEX v3 observation extraction (no Pydantic overhead)."""
+    ...
+
+def _create_dataset_single_pass(self) -> xr.Dataset:
+    """Single-pass: header-derived SIDs → pre-allocated arrays → one file scan."""
     ...
 ```
 
@@ -496,13 +502,17 @@ class ReaderFactory:
 Usage:
 
 ```python
-# Register readers
-ReaderFactory.register('rinex_v3', Rnxv3Obs)
-ReaderFactory.register('sbf', SbfReader)
+# Rnxv3Obs auto-registers at import time
+# For custom readers, register explicitly:
+ReaderFactory.register("my_format", MyFormatReader)
 
-# Automatic detection
-reader = ReaderFactory.create("unknown_file.rnx")
-# Returns Rnxv3Obs or SbfReader based on content
+# Auto-detect RINEX version from file header
+reader = ReaderFactory.create("station.25o")
+# Returns Rnxv3Obs for RINEX v3.x files
+
+# SBF files are not auto-detected — use SbfReader directly:
+from canvod.readers.sbf import SbfReader
+reader = SbfReader(fpath="station.25_")
 ```
 
 ## Summary

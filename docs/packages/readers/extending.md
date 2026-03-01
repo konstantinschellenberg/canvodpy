@@ -21,7 +21,8 @@ Add support for a new GNSS data format by implementing the `GNSSDataReader` abst
     ---
 
     `file_hash`, `to_ds()`, `iter_epochs()`, `start_time`, `end_time`,
-    `systems`, `num_epochs`, `num_satellites`.
+    `systems`, `num_satellites`.  (`num_epochs` has a default that counts
+    via `iter_epochs()` — override for O(1) if your format stores the count.)
 
 -   :fontawesome-solid-shield-halved: &nbsp; **3. Use `DatasetBuilder` (recommended)**
 
@@ -112,9 +113,8 @@ class MyFormatReader(GNSSDataReader):
     def systems(self) -> list[str]:
         return self._parse_systems()   # e.g. ["G", "E"]
 
-    @property
-    def num_epochs(self) -> int:
-        return self._count_epochs()
+    # num_epochs has a default (iterates via iter_epochs);
+    # override for O(1) if your format stores the count in the header.
 
     @property
     def num_satellites(self) -> int:
@@ -124,14 +124,14 @@ class MyFormatReader(GNSSDataReader):
 ### Step 4 — Epoch Iterator
 
 ```python
-from typing import Generator
+from collections.abc import Iterator
 
 class MyFormatReader(GNSSDataReader):
     ...
 
-    def iter_epochs(self) -> Generator:
+    def iter_epochs(self) -> Iterator:
         """Lazily yield one epoch at a time — keep memory bounded."""
-        with open(self.fpath, "rb") as f:
+        with self.fpath.open("rb") as f:
             self._skip_header(f)
             for raw in self._raw_epoch_generator(f):
                 yield self._decode_epoch(raw)

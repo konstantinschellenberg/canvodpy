@@ -805,12 +805,19 @@ from canvod.readers.base import ReaderFactory
 # Register your reader
 ReaderFactory.register("my_format", MyFormatReader)
 
-# Now it can be used via the factory
-reader = ReaderFactory.create("data.myf")
+# Now it can be used via the factory with explicit format name
+reader = ReaderFactory.create(fpath="data.myf")
 ds = reader.to_ds()
 ```
 
-If you want automatic format detection (not just name-based), you'll also need to update `ReaderFactory._detect_format()` to recognise your format's magic bytes or header pattern:
+!!! note "Auto-detection limitations"
+
+    `ReaderFactory._detect_format()` currently only auto-detects **RINEX v2/v3** files
+    by parsing the version string from the first 9 characters.  SBF and other binary
+    formats are **not** auto-detected — use the reader class directly or register and
+    call with an explicit format name.
+
+If you want automatic format detection for your format, update `_detect_format()` to recognise your format's magic bytes or header pattern:
 
 ```python
 # In canvod/readers/base.py → ReaderFactory._detect_format()
