@@ -78,6 +78,25 @@ class TestReceiverNamingConfig:
         with pytest.raises(ValidationError):
             ReceiverNamingConfig(receiver_number=100)
 
+    def test_metadata_none_by_default(self):
+        cfg = ReceiverNamingConfig(receiver_number=1)
+        assert cfg.metadata is None
+
+    def test_metadata_with_values(self):
+        cfg = ReceiverNamingConfig(
+            receiver_number=1,
+            metadata={
+                "site_url": "https://example.com",
+                "antenna_height": 1.5,
+                "species": "Fagus sylvatica",
+                "is_permanent": True,
+            },
+        )
+        assert cfg.metadata["site_url"] == "https://example.com"
+        assert cfg.metadata["antenna_height"] == 1.5
+        assert cfg.metadata["species"] == "Fagus sylvatica"
+        assert cfg.metadata["is_permanent"] is True
+
     def test_from_dict(self):
         d = {
             "receiver_number": 1,
@@ -86,6 +105,14 @@ class TestReceiverNamingConfig:
         }
         cfg = ReceiverNamingConfig.model_validate(d)
         assert cfg.directory_layout == DirectoryLayout.YYDDD_SUBDIRS
+
+    def test_from_dict_with_metadata(self):
+        d = {
+            "receiver_number": 1,
+            "metadata": {"species": "Picea abies", "antenna_height": 2.0},
+        }
+        cfg = ReceiverNamingConfig.model_validate(d)
+        assert cfg.metadata["species"] == "Picea abies"
 
 
 class TestDirectoryLayout:

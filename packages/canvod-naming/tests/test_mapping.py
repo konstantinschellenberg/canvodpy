@@ -356,6 +356,41 @@ class TestMapSingleFile:
         assert vf.conventional_name.receiver_type == ReceiverType.ACTIVE
 
 
+class TestFilenameMapperMetadata:
+    def test_metadata_propagated_to_virtual_file(self, tmp_path, site_naming):
+        p = tmp_path / "rosl001a.25o"
+        p.write_bytes(b"data")
+
+        meta = {"species": "Fagus sylvatica", "antenna_height": 1.5}
+        rx = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout=DirectoryLayout.FLAT,
+            metadata=meta,
+        )
+        mapper = FilenameMapper(
+            site_naming=site_naming,
+            receiver_naming=rx,
+            receiver_type="canopy",
+            receiver_base_dir=tmp_path,
+        )
+        vf = mapper.map_single_file(p)
+        assert vf.receiver_metadata == meta
+
+    def test_no_metadata_is_none(self, tmp_path, site_naming, rx_naming):
+        p = tmp_path / "rosl001a.25o"
+        p.write_bytes(b"data")
+
+        mapper = FilenameMapper(
+            site_naming=site_naming,
+            receiver_naming=rx_naming,
+            receiver_type="reference",
+            receiver_base_dir=tmp_path,
+        )
+        vf = mapper.map_single_file(p)
+        assert vf.receiver_metadata is None
+
+
 class TestFilenameMapperNonexistentDir:
     def test_discover_all_missing_dir(self, tmp_path, site_naming, rx_naming):
         mapper = FilenameMapper(
