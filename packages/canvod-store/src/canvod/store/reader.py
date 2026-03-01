@@ -347,7 +347,8 @@ class IcechunkDataReader:
                     # --- 3b) Preprocessing pipeline ---
                     from canvod.ops import build_default_pipeline
 
-                    pipeline = build_default_pipeline()
+                    preprocessing_config = load_config().processing.preprocessing
+                    pipeline = build_default_pipeline(preprocessing_config)
                     ds, pipeline_result = pipeline(ds)
                     ds.attrs.update(pipeline_result.to_metadata_dict())
 

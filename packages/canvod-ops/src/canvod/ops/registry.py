@@ -14,8 +14,9 @@ def build_default_pipeline(
     Parameters
     ----------
     config : PreprocessingConfig | None
-        Explicit config. If ``None``, uses
-        :pyclass:`PreprocessingConfig` defaults.
+        Explicit config. If ``None``, attempts to load from the user's
+        config files via ``load_config()``. Falls back to
+        ``PreprocessingConfig()`` defaults if no config is available.
 
     Returns
     -------
@@ -23,7 +24,12 @@ def build_default_pipeline(
         Ready-to-call pipeline.
     """
     if config is None:
-        config = PreprocessingConfig()
+        try:
+            from canvod.utils.config import load_config
+
+            config = load_config().processing.preprocessing
+        except Exception:
+            config = PreprocessingConfig()
 
     pipeline = Pipeline()
 

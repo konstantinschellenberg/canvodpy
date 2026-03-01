@@ -101,6 +101,23 @@ processing:
   # Dask dashboard: http://localhost:8787/status
 
 # =============================================================================
+# Preprocessing Pipeline
+# =============================================================================
+# Operations applied automatically during ingestion (after augmentation).
+# Each step can be disabled or tuned independently.
+
+preprocessing:
+  temporal_aggregation:
+    enabled: true
+    freq: "1min"           # pandas offset alias: "1min", "30s", "5min", etc.
+    method: "mean"         # "mean" or "median"
+
+  grid_assignment:
+    enabled: true
+    grid_type: "equal_area"
+    angular_resolution: 2.0  # degrees (0 < value ≤ 90)
+
+# =============================================================================
 # Compression
 # =============================================================================
 
