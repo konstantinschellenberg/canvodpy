@@ -520,6 +520,10 @@ class ReceiverConfig(BaseModel):
         None,
         description="Human-readable description",
     )
+    naming: dict | None = Field(
+        None,
+        description="Naming configuration (validated by canvod-naming package)",
+    )
 
     @model_validator(mode="after")
     def validate_scs_from(self) -> "ReceiverConfig":
@@ -551,6 +555,10 @@ class SiteConfig(BaseModel):
     vod_analyses: dict[str, VodAnalysisConfig] | None = Field(
         None,
         description="VOD analysis pairs",
+    )
+    naming: dict | None = Field(
+        None,
+        description="Naming configuration (validated by canvod-naming package)",
     )
 
     @model_validator(mode="after")

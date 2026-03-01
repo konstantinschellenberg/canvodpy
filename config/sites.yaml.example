@@ -10,6 +10,12 @@ sites:
     # Absolute path to site data directory
     gnss_site_data_root: /path/to/your/gnss/data/01_Rosalia
 
+    # Naming convention defaults (validated by canvod-naming)
+    naming:
+      site_id: ROS
+      agency: TUW
+      default_sampling: "05S"
+
     # Receiver definitions
     receivers:
       reference_01:
@@ -17,16 +23,28 @@ sites:
         directory: 01_reference/01_GNSS/01_raw
         scs_from: all                        # 'all' or list of canopy receiver names
         description: First reference receiver (open sky)
+        naming:
+          receiver_number: 1
+          source_pattern: auto
+          directory_layout: yyddd_subdirs
 
       canopy_01:
         type: canopy
         directory: 02_canopy/01_GNSS/01_raw
         description: First canopy receiver (under vegetation)
+        naming:
+          receiver_number: 1
+          source_pattern: auto
+          directory_layout: yyddd_subdirs
 
       canopy_02:
         type: canopy
         directory: 03_canopy_ext1/01_GNSS/01_raw
         description: Second canopy receiver (under vegetation)
+        naming:
+          receiver_number: 2
+          source_pattern: auto
+          directory_layout: yyddd_subdirs
 
     # VOD analysis pairs
     vod_analyses:

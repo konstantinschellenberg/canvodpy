@@ -76,6 +76,7 @@ test-all-packages:
     uv run pytest packages/canvod-store/tests/ --verbose --color=yes
     uv run pytest packages/canvod-grids/tests/ --verbose --color=yes
     uv run pytest packages/canvod-viz/tests/ --verbose --color=yes
+    uv run pytest packages/canvod-naming/tests/ --verbose --color=yes
     uv run pytest packages/canvod-vod/tests/ --verbose --color=yes
 
 # run tests with coverage report
@@ -169,7 +170,7 @@ release VERSION: test
 
 # Build all 8 packages (outputs to workspace root dist/)
 build-all:
-    @echo "🔨 Building all 8 packages..."
+    @echo "🔨 Building all 9 packages..."
     @rm -rf dist/
     @mkdir -p dist/
     cd packages/canvod-readers && uv build
@@ -178,9 +179,10 @@ build-all:
     cd packages/canvod-store && uv build
     cd packages/canvod-utils && uv build
     cd packages/canvod-viz && uv build
+    cd packages/canvod-naming && uv build
     cd packages/canvod-vod && uv build
     cd canvodpy && uv build
-    @echo "✅ Built 8 packages to dist/"
+    @echo "✅ Built 9 packages to dist/"
     @ls -lh dist/*.whl
 
 # Publish all packages to TestPyPI (requires credentials)

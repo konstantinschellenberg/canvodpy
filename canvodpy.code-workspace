@@ -5,6 +5,10 @@
             "path": ".",
         },
         {
+            "name": "📝 canvod-naming",
+            "path": "packages/canvod-naming",
+        },
+        {
             "name": "🛠️ canvod-utils",
             "path": "packages/canvod-utils",
         },
@@ -100,7 +104,7 @@
             "titleBar.activeBackground": "#215732",
             "titleBar.activeForeground": "#e7e7e7",
             "titleBar.inactiveBackground": "#21573299",
-            "titleBar.inactiveForeground": "#e7e7e799"
+            "titleBar.inactiveForeground": "#e7e7e799",
         },
         "liveServer.settings.multiRootWorkspaceName": "🏠 Root",
     },
