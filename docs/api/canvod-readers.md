@@ -14,7 +14,6 @@ RINEX observation file parsing with validation and GNSS signal specifications.
         - validate_dataset
         - Rnxv3Obs
         - SbfReader
-        - ReaderFactory
         - DataDirMatcher
         - PairDataDirMatcher
         - MatchedDirs

@@ -13,7 +13,6 @@ Classes:
 - Rnxv3Obs: Main reader class, converts RINEX to xarray Dataset
 """
 
-import contextlib
 import hashlib
 import json
 import re
@@ -39,7 +38,7 @@ from pydantic import (
     model_validator,
 )
 
-from canvod.readers.base import GNSSDataReader, ReaderFactory, validate_dataset
+from canvod.readers.base import GNSSDataReader, validate_dataset
 from canvod.readers.gnss_specs.constants import (
     EPOCH_RECORD_INDICATOR,
     UREG,
@@ -2027,15 +2026,6 @@ def adapt_existing_rnxv3obs_class(original_class_path: str | None = None) -> str
     )
     """
 
-
-# Auto-register with ReaderFactory
-def _register_with_factory() -> None:
-    """Register Rnxv3Obs with ReaderFactory on module import."""
-    with contextlib.suppress(ImportError):
-        ReaderFactory.register("rinex_v3", Rnxv3Obs)
-
-
-_register_with_factory()
 
 if __name__ == "__main__":
     filepath = Path(

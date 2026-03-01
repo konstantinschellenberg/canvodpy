@@ -386,20 +386,16 @@ The default implementation calls `to_ds()` and returns an empty dict.
 ## Registering with ReaderFactory
 
 ```python
-from canvod.readers.base import ReaderFactory
+from canvodpy import ReaderFactory
 from my_package.readers import MyFormatReader
 
-# Register
+# Register by name
 ReaderFactory.register("my_format", MyFormatReader)
 
-# Automatic detection
-reader = ReaderFactory.create("file.dat")   # → MyFormatReader
+# Create by name
+reader = ReaderFactory.create("my_format", fpath="file.dat")
 ```
 
-Update the detection logic to recognise your format:
-
-```python
-# In ReaderFactory._detect_format()
-if first_bytes.startswith(b"MY_FORMAT"):
-    return "my_format"
-```
+For RINEX files, `ReaderFactory.create_from_file(path)` auto-detects
+v2/v3 from the file header. Custom binary formats should use the
+name-based API above.

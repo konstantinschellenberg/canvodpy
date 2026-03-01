@@ -15,7 +15,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar, Final
+from typing import Final
 
 import xarray as xr
 from pydantic import BaseModel, ConfigDict, field_validator
@@ -477,136 +477,6 @@ class GNSSDataReader(BaseModel, ABC):
         return f"{self.__class__.__name__}(file='{self.fpath.name}')"
 
 
-class ReaderFactory:
-    """Factory for creating appropriate reader based on file format.
-
-    Automatically detects format and instantiates correct reader.
-
-    Examples
-    --------
-    >>> reader = ReaderFactory.create("station.24o")
-    >>> isinstance(reader, Rnxv3Obs)
-    True
-
-    >>> reader = ReaderFactory.create("station.10o")
-    >>> isinstance(reader, Rnxv2Obs)
-    True
-
-    """
-
-    _readers: ClassVar[dict[str, type]] = {}
-
-    @classmethod
-    def register(cls, format_name: str, reader_class: type) -> None:
-        """Register a reader class for a format.
-
-        Parameters
-        ----------
-        format_name : str
-            Format identifier (e.g., 'rinex_v3', 'rinex_v2')
-        reader_class : type
-            Reader class (must inherit from GNSSDataReader)
-
-        Raises
-        ------
-        TypeError
-            If reader_class does not inherit from GNSSDataReader.
-        """
-        if not issubclass(reader_class, GNSSDataReader):
-            msg = f"{reader_class} must inherit from GNSSDataReader"
-            raise TypeError(msg)
-        cls._readers[format_name] = reader_class
-
-    @classmethod
-    def create(
-        cls,
-        fpath: Path | str,
-        **kwargs: object,
-    ) -> GNSSDataReader:
-        """Create appropriate reader for file.
-
-        Parameters
-        ----------
-        fpath : Path or str
-            Path to data file
-        **kwargs
-            Parameters to pass to reader constructor
-
-        Returns
-        -------
-        GNSSDataReader
-            Instantiated reader.
-
-        Raises
-        ------
-        ValueError
-            If file format cannot be determined.
-        """
-        fpath = Path(fpath)
-
-        if not fpath.exists():
-            msg = f"File not found: {fpath}"
-            raise FileNotFoundError(msg)
-
-        format_name = cls._detect_format(fpath)
-
-        if format_name not in cls._readers:
-            msg = (
-                f"No reader registered for format: {format_name}. "
-                f"Available: {list(cls._readers.keys())}"
-            )
-            raise ValueError(msg)
-
-        reader_class = cls._readers[format_name]
-        return reader_class(fpath=fpath, **kwargs)
-
-    @staticmethod
-    def _detect_format(fpath: Path) -> str:
-        """Detect file format.
-
-        Parameters
-        ----------
-        fpath : Path
-            Path to file
-
-        Returns
-        -------
-        str
-            Format name.
-        """
-        with fpath.open() as f:
-            first_line = f.readline()
-
-        try:
-            version_str = first_line[:9].strip()
-            version = float(version_str)
-        except (ValueError, IndexError) as e:
-            msg = f"Cannot determine file format: {e}"
-            raise ValueError(msg) from e
-
-        rinex_v2_min = 2.0
-        rinex_v3_min = 3.0
-        rinex_v4_min = 4.0
-
-        if rinex_v3_min <= version < rinex_v4_min:
-            return "rinex_v3"
-        if rinex_v2_min <= version < rinex_v3_min:
-            return "rinex_v2"
-        msg = f"Unsupported RINEX version: {version}"
-        raise ValueError(msg)
-
-    @classmethod
-    def list_formats(cls) -> list[str]:
-        """List available formats.
-
-        Returns
-        -------
-        list of str
-            Registered format identifiers.
-        """
-        return list(cls._readers.keys())
-
-
 __all__ = [
     "DEFAULT_REQUIRED_VARS",
     "REQUIRED_ATTRS",
@@ -614,7 +484,6 @@ __all__ = [
     "REQUIRED_DIMS",
     "DatasetStructureValidator",
     "GNSSDataReader",
-    "ReaderFactory",
     "SignalID",
     "validate_dataset",
 ]

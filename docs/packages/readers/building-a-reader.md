@@ -797,40 +797,31 @@ def test_full_pipeline(real_test_file):
 
 ## Step 10 — Register with ReaderFactory
 
-The `ReaderFactory` allows automatic format detection and reader instantiation:
+The `canvodpy.ReaderFactory` provides name-based reader creation and
+optional auto-detection for RINEX files:
 
 ```python
-from canvod.readers.base import ReaderFactory
+from canvodpy import ReaderFactory
 
 # Register your reader
 ReaderFactory.register("my_format", MyFormatReader)
 
-# Now it can be used via the factory with explicit format name
-reader = ReaderFactory.create(fpath="data.myf")
+# Create by name
+reader = ReaderFactory.create("my_format", fpath="data.myf")
 ds = reader.to_ds()
 ```
 
-!!! note "Auto-detection limitations"
-
-    `ReaderFactory._detect_format()` currently only auto-detects **RINEX v2/v3** files
-    by parsing the version string from the first 9 characters.  SBF and other binary
-    formats are **not** auto-detected — use the reader class directly or register and
-    call with an explicit format name.
-
-If you want automatic format detection for your format, update `_detect_format()` to recognise your format's magic bytes or header pattern:
+For RINEX files, `create_from_file()` auto-detects v2/v3 from the header:
 
 ```python
-# In canvod/readers/base.py → ReaderFactory._detect_format()
-@staticmethod
-def _detect_format(fpath: Path) -> str:
-    with fpath.open("rb") as f:
-        magic = f.read(8)
-
-    if magic.startswith(b"MYFORMAT"):
-        return "my_format"
-
-    # ... existing RINEX detection ...
+reader = ReaderFactory.create_from_file("station.25o")  # auto-detects RINEX v3
 ```
+
+!!! note "Auto-detection scope"
+
+    `create_from_file()` currently auto-detects **RINEX v2/v3** only.
+    SBF and other binary formats should use the name-based API:
+    `ReaderFactory.create("sbf", fpath=path)`.
 
 ---
 
@@ -1141,8 +1132,8 @@ from canvod.readers.base import GNSSDataReader, SignalID, validate_dataset
 # Dataset construction
 from canvod.readers.builder import DatasetBuilder
 
-# Factory
-from canvod.readers.base import ReaderFactory
+# Factory (from canvodpy umbrella)
+from canvodpy import ReaderFactory
 
 # Signal mapping
 from canvod.readers.gnss_specs.signals import SignalIDMapper

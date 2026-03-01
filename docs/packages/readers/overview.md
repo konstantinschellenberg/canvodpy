@@ -150,10 +150,13 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 === "ReaderFactory — format registry"
 
     ```python
-    from canvod.readers import ReaderFactory
+    from canvodpy import ReaderFactory
 
-    # Rnxv3Obs is auto-registered; SBF files use SbfReader directly
-    reader = ReaderFactory.create(fpath="station.25o")  # auto-detects RINEX v3
+    # By name (works for all registered readers)
+    reader = ReaderFactory.create("rinex3", fpath="station.25o")
+
+    # Auto-detect RINEX v2/v3 from file header
+    reader = ReaderFactory.create_from_file("station.25o")
 
     # Both produce identical (epoch × sid) datasets
     ds = reader.to_ds(keep_data_vars=["SNR"])

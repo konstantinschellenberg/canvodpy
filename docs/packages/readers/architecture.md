@@ -455,65 +455,31 @@ The function checks:
 
 ## ReaderFactory Pattern
 
-The `ReaderFactory` provides automatic format detection:
+The `canvodpy.ReaderFactory` lives in the umbrella package and provides
+name-based reader creation plus RINEX auto-detection.  It is part of the
+generic `ComponentFactory` family (alongside `GridFactory`, `VODFactory`,
+`AugmentationFactory`).
 
 ```python
-class ReaderFactory:
-    """Factory for creating appropriate reader."""
+from canvodpy import ReaderFactory
 
-    _readers: dict[str, type] = {}
+# Name-based creation (works for all registered readers)
+reader = ReaderFactory.create("rinex3", fpath="station.25o")
+reader = ReaderFactory.create("sbf", fpath="station.25_")
 
-    @classmethod
-    def register(cls, format_name: str, reader_class: type) -> None:
-        """Register a reader for a format."""
-        if not issubclass(reader_class, GNSSDataReader):
-            raise TypeError(f"{reader_class} must inherit GNSSDataReader")
-        cls._readers[format_name] = reader_class
+# Auto-detect RINEX v2/v3 from file header
+reader = ReaderFactory.create_from_file("station.25o")
 
-    @classmethod
-    def create(cls, fpath: Path, **kwargs) -> GNSSDataReader:
-        """Create appropriate reader for file."""
-        format_name = cls._detect_format(fpath)
-
-        if format_name not in cls._readers:
-            raise ValueError(f"No reader for format: {format_name}")
-
-        reader_class = cls._readers[format_name]
-        return reader_class(fpath=fpath, **kwargs)
-
-    @staticmethod
-    def _detect_format(fpath: Path) -> str:
-        """Detect format from file content."""
-        with open(fpath, 'r') as f:
-            first_line = f.readline()
-
-        # RINEX version in columns 1-9
-        version_str = first_line[:9].strip()
-        version = float(version_str)
-
-        if 3.0 <= version < 4.0:
-            return 'rinex_v3'
-        elif 2.0 <= version < 3.0:
-            return 'rinex_v2'
-        else:
-            raise ValueError(f"Unsupported RINEX version: {version}")
-```
-
-Usage:
-
-```python
-# Rnxv3Obs auto-registers at import time
-# For custom readers, register explicitly:
+# Register a custom reader
 ReaderFactory.register("my_format", MyFormatReader)
-
-# Auto-detect RINEX version from file header
-reader = ReaderFactory.create("station.25o")
-# Returns Rnxv3Obs for RINEX v3.x files
-
-# SBF files are not auto-detected — use SbfReader directly:
-from canvod.readers.sbf import SbfReader
-reader = SbfReader(fpath="station.25_")
+reader = ReaderFactory.create("my_format", fpath="data.myf")
 ```
+
+!!! note "Auto-detection scope"
+
+    `create_from_file()` auto-detects **RINEX v2/v3** from the first 9
+    characters of the file header.  SBF and other binary formats should
+    use the name-based API: `ReaderFactory.create("sbf", fpath=path)`.
 
 ## Summary
 

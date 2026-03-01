@@ -17,12 +17,12 @@ reader = Rnxv3Obs(fpath="station.24o")
 dataset = reader.to_ds()
 ```
 
-Or use the factory for automatic format detection:
+Or use the canvodpy factory for automatic format detection:
 ```python
-from canvod.readers import ReaderFactory
+from canvodpy import ReaderFactory
 
-# Auto-detects format
-reader = ReaderFactory.create("station.24o")
+# Auto-detects format from file header
+reader = ReaderFactory.create_from_file("station.24o")
 dataset = reader.to_ds()
 ```
 
@@ -45,7 +45,6 @@ from canvod.readers.base import (
     REQUIRED_DIMS,
     DatasetStructureValidator,
     GNSSDataReader,
-    ReaderFactory,
     SignalID,
     validate_dataset,
 )
@@ -75,7 +74,6 @@ __all__ = [
     "MatchedDirs",
     "PairDataDirMatcher",
     "PairMatchedDirs",
-    "ReaderFactory",
     "Rnxv3Obs",
     "SbfEpoch",
     "SbfHeader",
