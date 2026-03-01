@@ -84,6 +84,7 @@ nav = [
     { "Architecture & Design Patterns" = "guides/architecture-design.md" },
     { "Build System" = "build-system.md" },
     { "Tooling" = "tooling.md" },
+    { "Airflow Integration" = "guides/airflow.md" },
   ]},
 
   { "Release & Publishing" = [
