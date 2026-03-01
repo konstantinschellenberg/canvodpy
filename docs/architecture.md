@@ -20,7 +20,7 @@ graph LR
     end
 
     subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSBF binary (SbfReader)\nReaderFactory auto-detect"]
+        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSBF binary (SbfReader)"]
         AUX["canvod-auxiliary\nSP3/CLK retrieval\nHermite interpolation\nFTP download management"]
     end
 
@@ -188,7 +188,7 @@ flowchart TD
         AUX_ZARR["Auxiliary Zarr Cache"]
     end
 
-    subgraph PARALLEL["Parallel Processing (Dask / ProcessPool)"]
+    subgraph PARALLEL["Parallel Processing (Dask Distributed)"]
         READ_R["Read GNSS file\n(ReaderFactory)"]
         SPHERICAL["Spherical Coords\n(ECEF → r, θ, φ)\nor SBF embedded geometry"]
     end

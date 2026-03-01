@@ -35,6 +35,7 @@ extra_javascript = [
 # Paths are relative to docs_dir (default: "docs/").
 nav = [
   { "Home" = "index.md" },
+  { "Community-Agreed Best Practices & Principles" = "principles.md" },
 
   { "Architecture" = [
     { "Monorepo Structure" = "architecture.md" },

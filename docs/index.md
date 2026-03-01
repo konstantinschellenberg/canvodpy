@@ -23,6 +23,16 @@ signal-to-noise ratio observations.
 
 ---
 
+!!! tip "Community-Agreed Best Practices and Principles — coming soon"
+
+    canVODpy follows community-agreed best practices and principles for
+    scientific software. A dedicated section covering reproducibility,
+    extensibility, FAIR alignment, and more is on its way.
+
+    [:octicons-arrow-right-24: Community-Agreed Best Practices & Principles](principles.md)
+
+---
+
 ## What makes canVODpy different
 
 <div class="grid cards" markdown>
