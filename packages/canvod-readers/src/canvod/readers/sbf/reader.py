@@ -15,16 +15,15 @@ import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from functools import cached_property
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pint
 import structlog
 import xarray as xr
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import ConfigDict
 
-from canvod.readers.base import GNSSDataReader
+from canvod.readers.base import GNSSDataReader, validate_dataset
 from canvod.readers.gnss_specs.constants import UREG
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
@@ -40,9 +39,7 @@ from canvod.readers.gnss_specs.metadata import (
     COORDS_METADATA,
     DTYPES,
     OBSERVABLES_METADATA,
-    get_global_attrs,
 )
-from canvod.readers.gnss_specs.utils import get_version_from_pyproject
 from canvod.readers.sbf._registry import FDMA_SIGNAL_NUMS, SIGNAL_TABLE, decode_svid
 from canvod.readers.sbf._scaling import (
     cn0_dbhz,
@@ -540,7 +537,7 @@ def _sid_props_from_obs(
 # ---------------------------------------------------------------------------
 
 
-class SbfReader(GNSSDataReader, BaseModel):
+class SbfReader(GNSSDataReader):
     """Read and decode a Septentrio Binary Format (SBF) observation file.
 
     Parameters
@@ -567,37 +564,11 @@ class SbfReader(GNSSDataReader, BaseModel):
       given SVID have ``phase_cycles=None``.
     - The file is scanned once per :meth:`iter_epochs` call; use
       :attr:`num_epochs` for a pre-computed count (scans once on first access).
+    - Inherits ``fpath``, its validator, and ``arbitrary_types_allowed``
+      from :class:`GNSSDataReader`.
     """
 
-    model_config = ConfigDict(
-        frozen=False, arbitrary_types_allowed=True, extra="ignore"
-    )
-
-    fpath: Path
-
-    @field_validator("fpath")
-    @classmethod
-    def validate_fpath(cls, v: Path) -> Path:
-        """Validate that the file exists and is readable.
-
-        Parameters
-        ----------
-        v : Path
-            Path to validate.
-
-        Returns
-        -------
-        Path
-            Validated path.
-
-        Raises
-        ------
-        FileNotFoundError
-            If the file does not exist.
-        """
-        if not v.is_file():
-            raise FileNotFoundError(f"SBF file not found: {v}")
-        return v
+    model_config = ConfigDict(extra="ignore")
 
     # ------------------------------------------------------------------
     # Pre-scan caches
@@ -826,7 +797,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
     def to_ds(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         pad_global_sid: bool = True,
         strip_fillval: bool = True,
         **kwargs: object,
@@ -834,11 +805,11 @@ class SbfReader(GNSSDataReader, BaseModel):
         """Convert SBF observations to an ``(epoch, sid)`` xarray Dataset.
 
         Produces the same structure as :class:`~canvod.readers.rinex.v3_04.Rnxv3Obs`
-        and passes :class:`~canvod.readers.base.DatasetStructureValidator`.
+        and passes :func:`~canvod.readers.base.validate_dataset`.
 
         Parameters
         ----------
-        keep_rnx_data_vars : list of str, optional
+        keep_data_vars : list of str, optional
             Data variables to retain.  If ``None``, all five variables are
             kept: ``SNR``, ``Pseudorange``, ``Phase``, ``Doppler``, ``SSI``.
             Note: ``LLI`` is not produced — SBF has no loss-of-lock indicator.
@@ -855,7 +826,7 @@ class SbfReader(GNSSDataReader, BaseModel):
         -------
         xr.Dataset
             Dataset with dimensions ``(epoch, sid)`` that passes
-            :class:`~canvod.readers.base.DatasetStructureValidator`.
+            :func:`~canvod.readers.base.validate_dataset`.
         """
         import math
 
@@ -964,11 +935,7 @@ class SbfReader(GNSSDataReader, BaseModel):
             "freq_max": ("sid", freq_max, COORDS_METADATA["freq_max"]),
         }
 
-        attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(UTC).isoformat()
-        attrs["Software"] = (
-            f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
-        )
+        attrs = self._build_attrs()
 
         # Add ECEF position from ReceiverSetup header for pipeline compatibility.
         # ECEFPosition.from_ds_metadata() reads "APPROX POSITION X/Y/Z".
@@ -1003,9 +970,9 @@ class SbfReader(GNSSDataReader, BaseModel):
         )
 
         # Post-process
-        if keep_rnx_data_vars is not None:
+        if keep_data_vars is not None:
             for var in list(ds.data_vars):
-                if var not in keep_rnx_data_vars:
+                if var not in keep_data_vars:
                     ds = ds.drop_vars([var])
 
         if pad_global_sid:
@@ -1018,8 +985,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
             ds = strip_fillvalue(ds)
 
-        ds.attrs["File Hash"] = self.file_hash
-        self.validate_output(ds, required_vars=keep_rnx_data_vars)
+        validate_dataset(ds, required_vars=keep_data_vars)
         return ds
 
     # ------------------------------------------------------------------
@@ -1310,12 +1276,7 @@ class SbfReader(GNSSDataReader, BaseModel):
             "rx_error": ("epoch", rx_error_arr, _RX_ERROR_ATTRS),
         }
 
-        attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(UTC).isoformat()
-        attrs["Software"] = (
-            f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
-        )
-        attrs["File Hash"] = self.file_hash
+        attrs = self._build_attrs()
 
         ds = xr.Dataset(
             data_vars={
@@ -1347,7 +1308,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
     def to_ds_and_auxiliary(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         pad_global_sid: bool = True,
         strip_fillval: bool = True,
         **kwargs: object,
@@ -1360,7 +1321,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
         Parameters
         ----------
-        keep_rnx_data_vars : list of str, optional
+        keep_data_vars : list of str, optional
             Data variables to retain in the obs dataset.
         pad_global_sid : bool, default True
             Pad obs dataset to the global SID space.
@@ -1575,11 +1536,7 @@ class SbfReader(GNSSDataReader, BaseModel):
             "freq_max": ("sid", freq_max, COORDS_METADATA["freq_max"]),
         }
 
-        attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(UTC).isoformat()
-        attrs["Software"] = (
-            f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
-        )
+        attrs = self._build_attrs()
 
         try:
             import pymap3d as pm
@@ -1611,9 +1568,9 @@ class SbfReader(GNSSDataReader, BaseModel):
             attrs=attrs,
         )
 
-        if keep_rnx_data_vars is not None:
+        if keep_data_vars is not None:
             for var in list(obs_ds.data_vars):
-                if var not in keep_rnx_data_vars:
+                if var not in keep_data_vars:
                     obs_ds = obs_ds.drop_vars([var])
 
         if pad_global_sid:
@@ -1626,8 +1583,7 @@ class SbfReader(GNSSDataReader, BaseModel):
 
             obs_ds = strip_fillvalue(obs_ds)
 
-        obs_ds.attrs["File Hash"] = self.file_hash
-        self.validate_output(obs_ds, required_vars=keep_rnx_data_vars)
+        validate_dataset(obs_ds, required_vars=keep_data_vars)
 
         # ----------------------------------------------------------------
         # Build metadata dataset (verbatim from to_metadata_ds())
@@ -1792,12 +1748,7 @@ class SbfReader(GNSSDataReader, BaseModel):
             "rx_error": ("epoch", rx_error_arr, _RX_ERROR_ATTRS),
         }
 
-        attrs_meta = get_global_attrs()
-        attrs_meta["Created"] = datetime.now(UTC).isoformat()
-        attrs_meta["Software"] = (
-            f"{attrs_meta['Software']}, Version: {get_version_from_pyproject()}"
-        )
-        attrs_meta["File Hash"] = self.file_hash
+        attrs_meta = self._build_attrs()
 
         meta_ds = xr.Dataset(
             data_vars={

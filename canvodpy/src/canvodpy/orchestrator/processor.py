@@ -141,11 +141,9 @@ def preprocess_with_hermite_aux(
             log.debug("reading_gnss_file", file=str(rnx_file.name), reader=reader_name)
             from canvodpy.factories import ReaderFactory
 
-            rnx = ReaderFactory.create(
-                reader_name, fpath=rnx_file, include_auxiliary=False
-            )
+            rnx = ReaderFactory.create(reader_name, fpath=rnx_file)
             ds, aux_datasets = rnx.to_ds_and_auxiliary(
-                keep_rnx_data_vars=keep_vars,
+                keep_data_vars=keep_vars,
                 write_global_attrs=True,
                 keep_sids=keep_sids,
             )
@@ -636,9 +634,7 @@ class RinexDataProcessor:
         """Instantiate the configured GNSS reader for *fpath*."""
         from canvodpy.factories import ReaderFactory
 
-        return ReaderFactory.create(
-            self._reader_name, fpath=fpath, include_auxiliary=False
-        )
+        return ReaderFactory.create(self._reader_name, fpath=fpath)
 
     @staticmethod
     def _parse_sampling_interval_from_filename(filename: str) -> float | None:
@@ -715,7 +711,7 @@ class RinexDataProcessor:
             )
             first_rnx = self._make_reader(rinex_files[0])
             first_ds = first_rnx.to_ds(
-                keep_rnx_data_vars=[],
+                keep_data_vars=[],
                 write_global_attrs=True,
             )
             t1 = time.perf_counter()
@@ -1489,9 +1485,7 @@ class RinexDataProcessor:
                 )
 
                 # Get file metadata
-                rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get(
-                    "RINEX File Hash"
-                )
+                rinex_hash = ds.attrs.get("File Hash")
                 if not rinex_hash:
                     log.warning(
                         "file_missing_hash",
@@ -1750,8 +1744,7 @@ class RinexDataProcessor:
         t1 = time.time()
 
         file_hash_map = {
-            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
-            for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -2089,8 +2082,7 @@ class RinexDataProcessor:
         )
 
         file_hash_map = {
-            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
-            for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -2402,8 +2394,7 @@ class RinexDataProcessor:
         log.info("Batch checking %s files...", len(augmented_datasets))
         t1 = time.time()
         file_hash_map = {
-            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
-            for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
         valid_hashes = [h for h in file_hash_map.values() if h]
         existing_hashes = self.site.rinex_store.batch_check_existing(
@@ -2741,7 +2732,7 @@ class RinexDataProcessor:
         # STEP 2: Compute receiver position ONCE (same for all receivers)
         # ====================================================================
         first_rnx = self._make_reader(canopy_files[0])
-        first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
+        first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
         receiver_position = ECEFPosition.from_ds_metadata(first_ds)
         self._logger.info(
             "Computed receiver position (shared): %s",
@@ -3531,8 +3522,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
         # 1) Pre-check which hashes already exist
         file_hash_map = {
-            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
-            for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
         valid_hashes = [h for h in file_hash_map.values() if h]
         existing_hashes = self.site.rinex_store.batch_check_existing(
@@ -3677,8 +3667,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         t1 = time.time()
 
         file_hash_map = {
-            fname: ds.attrs.get("File Hash") or ds.attrs.get("RINEX File Hash")
-            for fname, ds in augmented_datasets
+            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
         valid_hashes = [h for h in file_hash_map.values() if h]
@@ -4008,7 +3997,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         # STEP 2: Compute receiver position ONCE (same for all receivers)
         # ====================================================================
         first_rnx = self._make_reader(canopy_files[0])
-        first_ds = first_rnx.to_ds(keep_rnx_data_vars=[], write_global_attrs=True)
+        first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
         receiver_position = ECEFPosition.from_ds_metadata(first_ds)
         self._logger.info(
             "Computed receiver position (shared): %s",

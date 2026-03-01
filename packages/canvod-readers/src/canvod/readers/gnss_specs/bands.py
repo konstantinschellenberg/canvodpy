@@ -65,12 +65,6 @@ class Bands(BaseModel):
             **QZSS.BAND_PROPERTIES,
         }
 
-        # Add X1 auxiliary observation band
-        combined_band_properties["X1"] = {
-            "auxiliary": True,
-            "system": "Universal",  # X1 can appear in any system
-        }
-
         super().__init__(
             BAND_PROPERTIES=self.strip_units(combined_band_properties),
             SYSTEM_BANDS={
@@ -128,7 +122,6 @@ class Bands(BaseModel):
                 "group_7": ["G1"],
                 "group_8": ["G2"],
                 "group_9": ["G3"],
-                "group_aux": ["X1"],
             }
         return {
             "group_1": ["L1", "E1", "B1I", "B1C", "S", "J1"],
@@ -140,7 +133,6 @@ class Bands(BaseModel):
             "group_7": ["G1_FDMA"],
             "group_8": ["G2_FDMA"],
             "group_9": ["G3"],
-            "group_aux": ["X1"],
         }
 
     def plot_bands(

@@ -6,7 +6,6 @@ import json
 import re
 import sqlite3
 import threading
-from abc import ABC, abstractmethod
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NoReturn
@@ -14,7 +13,6 @@ from typing import TYPE_CHECKING, ClassVar, NoReturn
 import pandas as pd
 import requests
 import structlog
-from natsort import natsorted
 
 from canvod.readers.gnss_specs.constants import FREQ_UNIT, UREG
 
@@ -306,12 +304,8 @@ OBS_TYPE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9\d]?[A-Z0-9]?$")  # e.g., *1C, *
 # ================================================================
 # -------------------- Base Class --------------------
 # ================================================================
-class ConstellationBase(ABC):
-    r"""Abstract base class for GNSS constellations.
-
-    Notes
-    -----
-    This class uses ``ABC`` and defines the abstract ``freqs_lut`` property.
+class ConstellationBase:
+    r"""Base class for GNSS constellations.
 
     Parameters
     ----------
@@ -339,7 +333,6 @@ class ConstellationBase(ABC):
     BANDS: ClassVar[dict[str, str]] = {}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {}
     BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {}
-    AUX_FREQ: ClassVar[pint.Quantity] = 1575.42 * UREG.MHz
 
     def __init__(
         self,
@@ -363,7 +356,6 @@ class ConstellationBase(ABC):
         self.svs: list[str] = (
             static_svs if static_svs else (self.get_svs() if use_wiki and url else [])
         )
-        self.x1: dict[str, pint.Quantity] = {"X1": self.AUX_FREQ}
         self.aggregate_fdma = aggregate_fdma
 
     def get_svs(self) -> list[str]:
@@ -393,35 +385,6 @@ class ConstellationBase(ABC):
             re_pattern=self.re_pattern,
         )
         return result
-
-    @property
-    def bands_freqs(self) -> dict[str, pint.Quantity]:
-        """Generate RINEX observation codes mapped to frequencies.
-
-        Returns
-        -------
-        dict
-            Keys are obs codes (e.g., ``"*1C"``), values are frequencies in Hz.
-
-        """
-        out: dict[str, pint.Quantity] = {}
-        for band_num, band_name in self.BANDS.items():
-            freq = self.BAND_PROPERTIES[band_name]["freq"].to(FREQ_UNIT)
-            for code in self.BAND_CODES[band_name]:
-                out[f"*{band_num}{code}"] = freq
-        return out
-
-    @property
-    @abstractmethod
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency.
-
-        Returns
-        -------
-        dict
-            Keys of the form ``"SV|*1C"`` and values are frequencies.
-
-        """
 
 
 # ================================================================
@@ -506,24 +469,6 @@ class GALILEO(ConstellationBase):
             static_svs=[f"E{x:02d}" for x in range(1, 37)],  # E01-E36
         )
 
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency.
-
-        Returns
-        -------
-        dict
-            Keys of format "SV|*1C" mapped to frequencies
-
-        """
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
-
 
 class GPS(ConstellationBase):
     """GPS constellation model.
@@ -582,17 +527,6 @@ class GPS(ConstellationBase):
             use_wiki=use_wiki,
             static_svs=[f"G{x:02d}" for x in range(1, 33)],
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class BEIDOU(ConstellationBase):
@@ -696,17 +630,6 @@ class BEIDOU(ConstellationBase):
             static_svs=[f"C{x:02d}" for x in range(1, 64)],  # C01-C63
         )
 
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
-
 
 class GLONASS(ConstellationBase):
     """GLONASS constellation model (uses FDMA for L1/L2).
@@ -793,7 +716,6 @@ class GLONASS(ConstellationBase):
         },
     }
 
-    SV_DEPENDENT_BANDS: ClassVar[list[str]] = ["*1C", "*1P", "*2C", "*2P"]
     G1_G2_subband_bandwidth: ClassVar[pint.Quantity] = 1.022 * UREG.MHz
 
     def __init__(
@@ -808,7 +730,6 @@ class GLONASS(ConstellationBase):
             raise FileNotFoundError(msg)
         self.pth = glonass_channel_pth
         self.svs: list[str] = [f"R{i:02d}" for i in range(1, 25)]
-        self.x1 = {"X1": self.AUX_FREQ}
         self.aggregate_fdma = aggregate_fdma
 
         if self.aggregate_fdma:
@@ -899,49 +820,6 @@ class GLONASS(ConstellationBase):
             FREQ_UNIT
         )
 
-    def freqs_G1_G2_lut(self) -> dict[str, pint.Quantity]:
-        """Build the FDMA-dependent L1/L2 frequency LUT.
-
-        Returns
-        -------
-        dict
-            SV|obs_code → frequency for FDMA-dependent L1/L2 bands.
-
-        """
-        out: dict[str, pint.Quantity] = {}
-        for band in self.SV_DEPENDENT_BANDS:
-            for sv in self.svs:
-                freq = (
-                    self.band_G1_equation(sv)
-                    if band.startswith("*1")
-                    else self.band_G2_equation(sv)
-                )
-                out[f"{sv}|{band}"] = freq
-        return out
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency including FDMA channels.
-
-        Returns
-        -------
-        dict
-            Keys of format "SV|*1C" mapped to frequencies, including
-            FDMA-dependent L1/L2.
-
-        """
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-
-        if not self.aggregate_fdma:
-            out.update(self.freqs_G1_G2_lut())
-
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
-
 
 # ================================================================
 # ----------- 2. Satellite-based Augmentation Systems  -----------
@@ -992,17 +870,6 @@ class SBAS(ConstellationBase):
             static_svs=[f"S{x:02d}" for x in range(1, 37)],
         )
 
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
-
 
 # ================================================================
 # ----------- 3. Regional Navigation Satellite Systems  ----------
@@ -1048,17 +915,6 @@ class IRNSS(ConstellationBase):
             use_wiki=False,
             static_svs=[f"I{x:02d}" for x in range(1, 15)],  # I01-I14
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class QZSS(ConstellationBase):
@@ -1122,58 +978,8 @@ class QZSS(ConstellationBase):
             static_svs=[f"J{x:02d}" for x in range(1, 11)],
         )
 
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
-
 
 if __name__ == "__main__":
     gal = GALILEO()
-    # gps = GPS()
-    # bds = BEIDOU()
-    # irnss = IRNSS()
-    # glonass = GLONASS()
-
-    # Example usage
-    print("Galileo Frequencies LUT:")
-    for k, v in gal.freqs_lut.items():
-        print(f"{k}: {v}")
-
-    # print("\nGPS Frequencies LUT:")
-    # for k, v in gps.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nBeiDou Frequencies LUT:")
-    # for k, v in bds.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nIRNSS Frequencies LUT:")
-    # for k, v in irnss.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nGLONASS Frequencies LUT:")
-    # glonass_freqs = glonass.freqs_lut
-    # for k, v in glonass_freqs.items():
-    #     print(f"{k}: {v}")
-
-    # glonass = GLONASS(aggregate_fdma=False)
-    # print("\nGLONASS Frequencies LUT:")
-    # glonass_freqs2 = glonass.freqs_lut
-    # for k, v in glonass_freqs.items():
-    #     print(f"{k}: {v}")
-
-    # print(len(glonass_freqs), len(glonass_freqs2))
-    # print(
-    #     len({x.magnitude for x in glonass_freqs.values()}),
-    #     len({x.magnitude for x in glonass_freqs2.values()}),
-    # )
-
-    # print({x.magnitude for x in glonass_freqs.values()})
-    # print({x.magnitude for x in glonass_freqs2.values()})
+    print("Galileo SVs:", gal.svs)
+    print("Galileo Bands:", gal.BANDS)

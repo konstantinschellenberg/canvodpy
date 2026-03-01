@@ -4,16 +4,16 @@ import hashlib
 from pathlib import Path
 
 
-def rinex_file_hash(path: Path, chunk_size: int = 8192) -> str:
+def file_hash(path: Path, chunk_size: int = 8192) -> str:
     """
-    Compute SHA256 hash of a RINEX file's content.
+    Compute SHA256 hash of a GNSS data file's content.
 
     Uses first 16 characters of the SHA256 hexdigest for a compact hash.
 
     Parameters
     ----------
     path : Path
-        Path to RINEX file.
+        Path to GNSS data file.
     chunk_size : int, optional
         Size of chunks to read (default: 8192 bytes).
 
@@ -25,7 +25,7 @@ def rinex_file_hash(path: Path, chunk_size: int = 8192) -> str:
     Examples
     --------
     >>> from pathlib import Path
-    >>> hash_val = rinex_file_hash(Path("data.rnx"))
+    >>> hash_val = file_hash(Path("data.rnx"))
     >>> len(hash_val)
     16
     """

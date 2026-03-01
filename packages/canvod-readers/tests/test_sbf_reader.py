@@ -11,7 +11,10 @@ import pytest
 import xarray as xr
 from pydantic import ValidationError
 
-from canvod.readers.base import DatasetStructureValidator, GNSSDataReader
+from canvod.readers.base import (
+    GNSSDataReader,
+    validate_dataset,
+)
 from canvod.readers.sbf.models import SbfHeader
 from canvod.readers.sbf.reader import SbfReader
 
@@ -211,8 +214,7 @@ class TestToDs:
     """to_ds() produces a valid (epoch, sid) observation dataset."""
 
     def test_to_ds_validates(self, obs_ds: xr.Dataset) -> None:
-        validator = DatasetStructureValidator(dataset=obs_ds)
-        validator.validate_all()  # raises ValueError on failure
+        validate_dataset(obs_ds)
 
     def test_to_ds_dims(self, obs_ds: xr.Dataset) -> None:
         assert "epoch" in obs_ds.dims
@@ -328,9 +330,9 @@ class TestToDs:
         assert np.all(np.diff(epochs) > 0), "Epoch coordinate is not strictly monotone"
 
     def test_to_ds_keep_vars(self, reader: SbfReader) -> None:
-        """keep_rnx_data_vars filters data variables to the requested subset."""
+        """keep_data_vars filters data variables to the requested subset."""
         ds = reader.to_ds(
-            keep_rnx_data_vars=["SNR"], pad_global_sid=False, strip_fillval=False
+            keep_data_vars=["SNR"], pad_global_sid=False, strip_fillval=False
         )
         assert list(ds.data_vars) == ["SNR"]
 
@@ -467,8 +469,7 @@ class TestToDsAndAuxiliary:
         self, combined_result: tuple[xr.Dataset, dict]
     ) -> None:
         obs, _ = combined_result
-        validator = DatasetStructureValidator(dataset=obs)
-        validator.validate_all()  # raises on failure
+        validate_dataset(obs)
 
     def test_obs_dims(self, combined_result: tuple[xr.Dataset, dict]) -> None:
         obs, _ = combined_result

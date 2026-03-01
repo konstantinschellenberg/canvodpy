@@ -29,7 +29,6 @@ class TestCreateSvToSidMapping:
         assert "G01|L1|C" in sids
         assert "G01|L2|W" in sids
         assert "G01|L5|I" in sids
-        assert "G01|X1|X" in sids  # Auxiliary observation
 
         # Should have multiple sids
         assert len(sids) > 10
@@ -44,7 +43,6 @@ class TestCreateSvToSidMapping:
         assert "E01|E1|C" in sids
         assert "E01|E5a|Q" in sids
         assert "E01|E5b|I" in sids
-        assert "E01|X1|X" in sids
 
     def test_glonass_satellite_mapping(self):
         """Test GLONASS satellite generates correct signal IDs."""
@@ -55,7 +53,6 @@ class TestCreateSvToSidMapping:
 
         assert "R01|G1|C" in sids
         assert "R01|G2|P" in sids
-        assert "R01|X1|X" in sids
 
     def test_beidou_satellite_mapping(self):
         """Test BeiDou satellite generates correct signal IDs."""
@@ -66,7 +63,6 @@ class TestCreateSvToSidMapping:
 
         # BeiDou has B1, B2, B3 bands
         assert any("B1" in sid for sid in sids)
-        assert "C01|X1|X" in sids
 
     def test_multiple_satellites(self):
         """Test mapping multiple satellites at once."""

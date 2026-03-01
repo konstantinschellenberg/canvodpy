@@ -606,7 +606,6 @@ class MyIcechunkStore:
             "GLONASS PHS",
             "GLONASS BIS",
             "Leap Seconds",
-            # "RINEX File Hash",
         ]
         for attr in attrs_to_remove:
             if attr in dataset.attrs:
@@ -686,14 +685,9 @@ class MyIcechunkStore:
         with self.writable_session(branch) as session:
             dataset = self._normalize_encodings(dataset)
 
-            # Accept canonical "File Hash" or legacy "RINEX File Hash"
-            rinex_hash = dataset.attrs.get("File Hash") or dataset.attrs.get(
-                "RINEX File Hash"
-            )
+            rinex_hash = dataset.attrs.get("File Hash")
             if rinex_hash is None:
-                raise ValueError(
-                    "Dataset missing 'File Hash' attribute (or legacy 'RINEX File Hash')"
-                )
+                raise ValueError("Dataset missing 'File Hash' attribute")
             start = dataset.epoch.min().values
             end = dataset.epoch.max().values
 
@@ -1183,13 +1177,9 @@ class MyIcechunkStore:
 
         dataset = self._normalize_encodings(dataset)
 
-        rinex_hash = dataset.attrs.get("File Hash") or dataset.attrs.get(
-            "RINEX File Hash"
-        )
+        rinex_hash = dataset.attrs.get("File Hash")
         if rinex_hash is None:
-            raise ValueError(
-                "Dataset missing 'File Hash' attribute (or legacy 'RINEX File Hash')"
-            )
+            raise ValueError("Dataset missing 'File Hash' attribute")
         start = dataset.epoch.min().values
         end = dataset.epoch.max().values
 

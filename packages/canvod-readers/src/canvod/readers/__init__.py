@@ -39,13 +39,17 @@ for matched_dirs in matcher:
 """
 
 from canvod.readers.base import (
+    DEFAULT_REQUIRED_VARS,
+    REQUIRED_ATTRS,
+    REQUIRED_COORDS,
+    REQUIRED_DIMS,
     DatasetStructureValidator,
     GNSSDataReader,
-    # Backwards compatibility aliases
-    GNSSReader,
     ReaderFactory,
-    RinexReader,
+    SignalID,
+    validate_dataset,
 )
+from canvod.readers.builder import DatasetBuilder
 from canvod.readers.matching import (
     DataDirMatcher,
     MatchedDirs,
@@ -59,19 +63,24 @@ from canvod.utils.tools import YYYYDOY
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_REQUIRED_VARS",
+    "REQUIRED_ATTRS",
+    "REQUIRED_COORDS",
+    "REQUIRED_DIMS",
     "YYYYDOY",
     "DataDirMatcher",
+    "DatasetBuilder",
     "DatasetStructureValidator",
     "GNSSDataReader",
-    "GNSSReader",
     "MatchedDirs",
     "PairDataDirMatcher",
     "PairMatchedDirs",
     "ReaderFactory",
-    "RinexReader",
     "Rnxv3Obs",
     "SbfEpoch",
     "SbfHeader",
     "SbfReader",
     "SbfSignalObs",
+    "SignalID",
+    "validate_dataset",
 ]

@@ -546,10 +546,8 @@ class GnssResearchSite:
         vod_ds.attrs["canopy_receiver"] = analysis_config["canopy_receiver"]
         vod_ds.attrs["reference_receiver"] = analysis_config["reference_receiver"]
         vod_ds.attrs["calculator"] = calculator_class.__name__
-        vod_ds.attrs["canopy_hash"] = canopy_ds.attrs.get("RINEX File Hash", "unknown")
-        vod_ds.attrs["reference_hash"] = reference_ds.attrs.get(
-            "RINEX File Hash", "unknown"
-        )
+        vod_ds.attrs["canopy_hash"] = canopy_ds.attrs.get("File Hash", "unknown")
+        vod_ds.attrs["reference_hash"] = reference_ds.attrs.get("File Hash", "unknown")
 
         self._logger.info(
             f"VOD calculated for {analysis_name} using {calculator_class.__name__}"

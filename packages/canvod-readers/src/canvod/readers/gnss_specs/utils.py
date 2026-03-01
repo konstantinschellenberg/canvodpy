@@ -37,8 +37,8 @@ def get_version_from_pyproject(pyproject_path: Path | None = None) -> str:
     return data["project"]["version"]
 
 
-def rinex_file_hash(path: Path, chunk_size: int = 8192) -> str:
-    """Compute SHA256 hash of a RINEX file's content.
+def file_hash(path: Path, chunk_size: int = 8192) -> str:
+    """Compute SHA256 hash of a GNSS data file's content.
 
     Used by MyIcechunkStore for deduplication - ensures same file
     isn't ingested multiple times.
@@ -46,7 +46,7 @@ def rinex_file_hash(path: Path, chunk_size: int = 8192) -> str:
     Parameters
     ----------
     path : Path
-        Path to RINEX file.
+        Path to GNSS data file.
     chunk_size : int, optional
         Chunk size for reading file in bytes. Default is 8192.
 
@@ -58,8 +58,8 @@ def rinex_file_hash(path: Path, chunk_size: int = 8192) -> str:
     Examples
     --------
     >>> from pathlib import Path
-    >>> hash1 = rinex_file_hash(Path("station.24o"))
-    >>> hash2 = rinex_file_hash(Path("station.24o"))
+    >>> hash1 = file_hash(Path("station.24o"))
+    >>> hash2 = file_hash(Path("station.24o"))
     >>> hash1 == hash2
     True
 

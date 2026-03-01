@@ -101,7 +101,7 @@ The generator scans forward from `END OF HEADER`, yielding one `Rnxv3ObsEpochRec
 ### Step 3 — Dataset Construction
 
 ```python
-ds = reader.to_ds(keep_rnx_data_vars=["SNR", "Phase"])
+ds = reader.to_ds(keep_data_vars=["SNR", "Phase"])
 ```
 
 The full pipeline:
@@ -109,28 +109,23 @@ The full pipeline:
 === "Collect + Index"
 
     ```python
-    all_epochs = list(self.iter_epochs())
-
-    # Build the full SID index (sorted for reproducibility)
+    # Build the full SID index from header obs codes (sorted)
     mapper = SignalIDMapper()
-    all_sids = sorted({
-        mapper.create_signal_id(obs.sv, obs.code)
-        for epoch in all_epochs
-        for obs in epoch.observations
-    })
+    sorted_sids, sid_props = self._precompute_sids_from_header()
     ```
 
 === "Allocate + Fill"
 
     ```python
     # Pre-allocate — avoids repeated memory reallocation
-    snr_data = np.full((len(epochs), len(sids)), np.nan, dtype=np.float32)
-    sid_to_idx = {sid: i for i, sid in enumerate(all_sids)}
+    snr_data = np.full((n_epochs, len(sorted_sids)), np.nan, dtype=np.float32)
+    sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
 
-    for i, epoch in enumerate(all_epochs):
-        for obs in epoch.observations:
-            sid = mapper.create_signal_id(obs.sv, obs.code)
-            snr_data[i, sid_to_idx[sid]] = obs.snr
+    # Single pass over file lines (no Pydantic objects)
+    for t_idx, (start, end) in enumerate(epoch_batches):
+        for line in lines[start+1:end]:
+            sv = line[:3].strip()
+            # ... inline parsing ...
     ```
 
 === "Build Coordinates"
@@ -157,11 +152,11 @@ The full pipeline:
             "Created":         datetime.now().isoformat(),
             "Software":        f"canvod-readers {__version__}",
             "Institution":     "...",
-            "RINEX File Hash": self.file_hash,
+            "File Hash": self.file_hash,
         },
     )
 
-    self.validate_output(ds, required_vars=keep_rnx_data_vars)
+    validate_dataset(ds, required_vars=keep_data_vars)
     return ds
     ```
 

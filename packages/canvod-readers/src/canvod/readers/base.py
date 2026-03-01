@@ -1,208 +1,301 @@
 """Abstract base class for GNSS data readers.
 
-Defines interface that all readers (RINEX v3, RINEX v2, future formats)
+Defines interface that all readers (RINEX v3, RINEX v2, SBF, future formats)
 must implement to ensure compatibility with downstream pipeline:
 - VOD calculation (canvod-vod)
 - Storage (canvod-store / MyIcechunkStore)
 - Grid operations (canvod-grids)
+
+Contract constants (``REQUIRED_DIMS``, ``REQUIRED_COORDS``, etc.) are the
+single source of truth for the output Dataset structure.  Use
+:func:`validate_dataset` to check any Dataset against them.
 """
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Final
 
 import xarray as xr
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+from canvod.readers.gnss_specs.constellations import SV_PATTERN
+
+# ---------------------------------------------------------------------------
+# Contract constants — single source of truth
+# ---------------------------------------------------------------------------
+
+REQUIRED_DIMS: Final = ("epoch", "sid")
+
+REQUIRED_COORDS: Final = {
+    "epoch": "datetime64[ns]",
+    "sid": "object",
+    "sv": "object",
+    "system": "object",
+    "band": "object",
+    "code": "object",
+    "freq_center": "float32",
+    "freq_min": "float32",
+    "freq_max": "float32",
+}
+
+REQUIRED_ATTRS: Final = {"Created", "Software", "Institution", "File Hash"}
+
+DEFAULT_REQUIRED_VARS: Final = ["SNR"]
+
+
+# ---------------------------------------------------------------------------
+# Standalone validation function
+# ---------------------------------------------------------------------------
+
+
+def validate_dataset(ds: xr.Dataset, required_vars: list[str] | None = None) -> None:
+    """Validate *ds* meets the GNSSDataReader output contract.
+
+    Collects **all** violations and raises a single ``ValueError`` listing
+    every problem, rather than stopping at the first failure.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset to validate.
+    required_vars : list of str, optional
+        Data variables that must be present.  Defaults to
+        :data:`DEFAULT_REQUIRED_VARS` (``["SNR"]``).
+
+    Raises
+    ------
+    ValueError
+        If any contract violation is found.
+    """
+    if required_vars is None:
+        required_vars = list(DEFAULT_REQUIRED_VARS)
+
+    errors: list[str] = []
+
+    # -- dimensions --
+    missing_dims = set(REQUIRED_DIMS) - set(ds.dims)
+    if missing_dims:
+        errors.append(f"Missing required dimensions: {missing_dims}")
+
+    # -- coordinates --
+    for coord, expected_dtype in REQUIRED_COORDS.items():
+        if coord not in ds.coords:
+            errors.append(f"Missing required coordinate: {coord}")
+            continue
+
+        actual_dtype = str(ds[coord].dtype)
+        if expected_dtype == "object":
+            if actual_dtype != "object" and not actual_dtype.startswith("<U"):
+                errors.append(
+                    f"Coordinate {coord} has wrong dtype: "
+                    f"expected string, got {actual_dtype}"
+                )
+        elif expected_dtype not in actual_dtype:
+            errors.append(
+                f"Coordinate {coord} has wrong dtype: "
+                f"expected {expected_dtype}, got {actual_dtype}"
+            )
+
+    # -- data variables --
+    missing_vars = set(required_vars) - set(ds.data_vars)
+    if missing_vars:
+        errors.append(f"Missing required data variables: {missing_vars}")
+
+    expected_var_dims = ("epoch", "sid")
+    for var in ds.data_vars:
+        if ds[var].dims != expected_var_dims:
+            errors.append(
+                f"Data variable {var} has wrong dimensions: "
+                f"expected {expected_var_dims}, got {ds[var].dims}"
+            )
+
+    # -- attributes --
+    missing_attrs = REQUIRED_ATTRS - set(ds.attrs.keys())
+    if missing_attrs:
+        errors.append(f"Missing required attributes: {missing_attrs}")
+
+    if errors:
+        raise ValueError(
+            "Dataset validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pydantic validator — runtime contract enforcement
+# ---------------------------------------------------------------------------
 
 
 class DatasetStructureValidator(BaseModel):
-    """Validates xarray.Dataset structure for pipeline compatibility.
+    """Validates that an xarray.Dataset meets the GNSSDataReader contract.
 
-    All readers must produce Datasets that pass this validation
-    to ensure compatibility with downstream VOD and storage operations.
+    Wraps a Dataset and checks it against the contract constants above.
+    Use this in tests and reader implementations to catch structural errors
+    early with clear messages.
 
-    Notes
-    -----
-    This is a Pydantic `BaseModel` with `arbitrary_types_allowed=True`.
-
+    Examples
+    --------
+    >>> validator = DatasetStructureValidator(dataset=ds)
+    >>> validator.validate_all()          # raises ValueError on any violation
+    >>> validator.validate_dimensions()   # check just one aspect
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     dataset: xr.Dataset
 
-    def validate_dimensions(self) -> None:
-        """Validate required dimensions exist.
+    def validate_all(self, required_vars: list[str] | None = None) -> None:
+        """Run all validations, collecting **all** errors.
 
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If required dimensions (epoch, sid) are missing.
-
+        Delegates to :func:`validate_dataset` so the logic lives in one place.
         """
-        required_dims = {"epoch", "sid"}
-        missing_dims = required_dims - set(self.dataset.dims)
-        if missing_dims:
-            msg = f"Missing required dimensions: {missing_dims}"
-            raise ValueError(msg)
+        validate_dataset(self.dataset, required_vars=required_vars)
+
+    def validate_dimensions(self) -> None:
+        """Check that required dimensions (epoch, sid) exist."""
+        missing = set(REQUIRED_DIMS) - set(self.dataset.dims)
+        if missing:
+            raise ValueError(f"Missing required dimensions: {missing}")
 
     def validate_coordinates(self) -> None:
-        """Validate required coordinates exist and have correct types.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If required coordinates are missing or have incorrect dtypes.
-
-        """
-        required_coords = {
-            "epoch": "datetime64[ns]",
-            "sid": "object",  # string
-            "sv": "object",
-            "system": "object",
-            "band": "object",
-            "code": "object",
-            "freq_center": "float32",
-            "freq_min": "float32",
-            "freq_max": "float32",
-        }
-
-        for coord, expected_dtype in required_coords.items():
+        """Check that required coordinates exist with correct dtypes."""
+        for coord, expected_dtype in REQUIRED_COORDS.items():
             if coord not in self.dataset.coords:
-                msg = f"Missing required coordinate: {coord}"
-                raise ValueError(msg)
-
-            actual_dtype = str(self.dataset[coord].dtype)
+                raise ValueError(f"Missing required coordinate: {coord}")
+            actual = str(self.dataset[coord].dtype)
             if expected_dtype == "object":
-                # String coordinates can be stored as object or Unicode string (<U)
-                if actual_dtype not in ["object"] and not actual_dtype.startswith("<U"):
-                    msg = (
-                        f"Coordinate {coord} has wrong dtype: "
-                        f"expected string, got {actual_dtype}"
+                if actual != "object" and not actual.startswith("<U"):
+                    raise ValueError(
+                        f"Coordinate {coord}: expected string, got {actual}"
                     )
-                    raise ValueError(msg)
-            elif expected_dtype not in actual_dtype:
-                msg = (
-                    f"Coordinate {coord} has wrong dtype: "
-                    f"expected {expected_dtype}, got {actual_dtype}"
+            elif expected_dtype not in actual:
+                raise ValueError(
+                    f"Coordinate {coord}: expected {expected_dtype}, got {actual}"
                 )
-                raise ValueError(msg)
 
     def validate_data_variables(self, required_vars: list[str] | None = None) -> None:
-        """Validate required data variables exist.
-
-        Parameters
-        ----------
-        required_vars : list of str, optional
-            List of required variables. If None, uses default minimum set.
-
-        Returns
-        -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If required variables are missing or have incorrect dimensions.
-
-        """
+        """Check that required data variables exist with correct dims."""
         if required_vars is None:
-            # Minimum required for VOD calculation
-            required_vars = ["SNR", "Phase"]
-
-        missing_vars = set(required_vars) - set(self.dataset.data_vars)
-        if missing_vars:
-            msg = f"Missing required data variables: {missing_vars}"
-            raise ValueError(msg)
-
-        # Validate all data vars have (epoch, sid) dimensions
+            required_vars = list(DEFAULT_REQUIRED_VARS)
+        missing = set(required_vars) - set(self.dataset.data_vars)
+        if missing:
+            raise ValueError(f"Missing required data variables: {missing}")
         for var in self.dataset.data_vars:
-            expected_dims = ("epoch", "sid")
-            actual_dims = self.dataset[var].dims
-            if actual_dims != expected_dims:
-                msg = (
-                    f"Data variable {var} has wrong dimensions: "
-                    f"expected {expected_dims}, got {actual_dims}"
+            if self.dataset[var].dims != REQUIRED_DIMS:
+                raise ValueError(
+                    f"Variable {var}: expected dims {REQUIRED_DIMS}, "
+                    f"got {self.dataset[var].dims}"
                 )
-                raise ValueError(msg)
 
     def validate_attributes(self) -> None:
-        """Validate required global attributes for storage.
+        """Check that required global attributes are present."""
+        missing = REQUIRED_ATTRS - set(self.dataset.attrs.keys())
+        if missing:
+            raise ValueError(f"Missing required attributes: {missing}")
 
-        Returns
-        -------
-        None
 
-        Raises
-        ------
-        ValueError
-            If required attributes (Created, Software, Institution,
-            File Hash) are missing.
+# ---------------------------------------------------------------------------
+# Signal ID model
+# ---------------------------------------------------------------------------
 
-        """
-        attrs_keys = set(self.dataset.attrs.keys())
 
-        # Accept canonical "File Hash" or legacy "RINEX File Hash"
-        hash_keys = {"File Hash", "RINEX File Hash"}
-        if not hash_keys.intersection(attrs_keys):
-            msg = (
-                "Missing required attribute: 'File Hash' (or legacy 'RINEX File Hash')"
+class SignalID(BaseModel):
+    """Validated signal identifier (SV + band + code).
+
+    >>> sid = SignalID(sv="G01", band="L1", code="C")
+    >>> str(sid)
+    'G01|L1|C'
+    >>> sid.system
+    'G'
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    sv: str
+    band: str
+    code: str
+
+    @field_validator("sv")
+    @classmethod
+    def _validate_sv(cls, v: str) -> str:
+        if not SV_PATTERN.match(v):
+            raise ValueError(
+                f"Invalid SV: {v!r} — expected system letter + 2-digit PRN "
+                f"(e.g. 'G01'). Valid systems: G, R, E, C, J, S, I"
             )
-            raise ValueError(msg)
+        return v
 
-        required_attrs = {"Created", "Software", "Institution"}
-        missing_attrs = required_attrs - attrs_keys
-        if missing_attrs:
-            msg = f"Missing required attributes: {missing_attrs}"
-            raise ValueError(msg)
+    @property
+    def system(self) -> str:
+        """GNSS system letter (e.g. 'G' for GPS)."""
+        return self.sv[0]
 
-    def validate_all(self, required_vars: list[str] | None = None) -> None:
-        """Run all validations.
+    @property
+    def sid(self) -> str:
+        """Full signal ID string ('SV|band|code')."""
+        return f"{self.sv}|{self.band}|{self.code}"
+
+    def __str__(self) -> str:
+        return self.sid
+
+    def __hash__(self) -> int:
+        return hash(self.sid)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, SignalID):
+            return self.sid == other.sid
+        return NotImplemented
+
+    @classmethod
+    def from_string(cls, sid_str: str) -> "SignalID":
+        """Parse a signal ID string ('SV|band|code') into a SignalID.
 
         Parameters
         ----------
-        required_vars : list of str, optional
-            List of required data variables. If None, uses default minimum set.
+        sid_str : str
+            Signal ID in 'SV|band|code' format (e.g. 'G01|L1|C').
 
         Returns
         -------
-        None
+        SignalID
+            Validated signal identifier.
 
         Raises
         ------
         ValueError
-            If any validation fails.
-
+            If the string does not have exactly three pipe-separated parts.
         """
-        self.validate_dimensions()
-        self.validate_coordinates()
-        self.validate_data_variables(required_vars)
-        self.validate_attributes()
+        parts = sid_str.split("|")
+        if len(parts) != 3:
+            raise ValueError(
+                f"Invalid SID format: {sid_str!r} — expected 'SV|band|code'"
+            )
+        return cls(sv=parts[0], band=parts[1], code=parts[2])
 
 
-class GNSSDataReader(ABC):
+# ---------------------------------------------------------------------------
+# Abstract base class
+# ---------------------------------------------------------------------------
+
+
+class GNSSDataReader(BaseModel, ABC):
     """Abstract base class for all GNSS data format readers.
 
     All readers must:
     1. Inherit from this class
     2. Implement all abstract methods
-    3. Return xarray.Dataset that passes DatasetStructureValidator
+    3. Return xarray.Dataset that passes :func:`validate_dataset`
     4. Provide file hash for deduplication
 
     This ensures compatibility with:
     - canvod-vod: VOD calculation
     - canvod-store: MyIcechunkStore storage
     - canvod-grids: Grid projection operations
+
+    Subclasses may override ``model_config`` to set ``frozen``, ``extra``,
+    etc.  The base class provides ``arbitrary_types_allowed=True`` which is
+    needed by readers that use ``pint.Quantity`` or similar third-party types.
 
     Examples
     --------
@@ -213,18 +306,21 @@ class GNSSDataReader(ABC):
     ...
     >>> reader = Rnxv3Obs(fpath="station.24o")
     >>> ds = reader.to_ds()
-    >>> reader.validate_output(ds)  # Automatic validation
-
-    Notes
-    -----
-    This class uses ``ABC`` and defines abstract methods and properties
-    for reader implementations.
-
+    >>> validate_dataset(ds)
     """
 
-    # Note: fpath is not @abstractmethod because Pydantic models define it as a field
-    # which provides the same interface
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     fpath: Path
+
+    @field_validator("fpath")
+    @classmethod
+    def _validate_fpath(cls, v: Path) -> Path:
+        """Validate that the file path points to an existing file."""
+        v = Path(v)
+        if not v.is_file():
+            raise FileNotFoundError(f"File not found: {v}")
+        return v
 
     @property
     @abstractmethod
@@ -238,13 +334,12 @@ class GNSSDataReader(ABC):
         -------
         str
             Short hash (16 chars) or full hash of file content
-
         """
 
     @abstractmethod
     def to_ds(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         **kwargs: object,
     ) -> xr.Dataset:
         """Convert data to xarray.Dataset.
@@ -252,12 +347,12 @@ class GNSSDataReader(ABC):
         Must return Dataset with structure:
         - Dims: (epoch, sid)
         - Coords: epoch, sid, sv, system, band, code, freq_*
-        - Data vars: At minimum SNR, Phase
-        - Attrs: Must include "RINEX File Hash"
+        - Data vars: At minimum SNR
+        - Attrs: Must include "File Hash"
 
         Parameters
         ----------
-        keep_rnx_data_vars : list of str, optional
+        keep_data_vars : list of str, optional
             Data variables to include. If None, includes all available.
         **kwargs
             Implementation-specific parameters
@@ -265,29 +360,22 @@ class GNSSDataReader(ABC):
         Returns
         -------
         xr.Dataset
-            Dataset that passes DatasetStructureValidator.
-
+            Dataset that passes :func:`validate_dataset`.
         """
 
     @abstractmethod
     def iter_epochs(self) -> Iterator[object]:
         """Iterate over epochs in the file.
 
-        Returns
-        -------
-        Generator
-            Generator yielding Epoch objects.
-
         Yields
         ------
         Epoch
             Parsed epoch with satellites and observations.
-
         """
 
     def to_ds_and_auxiliary(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         **kwargs: object,
     ) -> "tuple[xr.Dataset, dict[str, xr.Dataset]]":
         """Produce the obs dataset and any auxiliary datasets in a single call.
@@ -302,35 +390,29 @@ class GNSSDataReader(ABC):
             ``(obs_ds, {"name": aux_ds, ...})``.  Auxiliary dict is empty for
             readers with no extra data (RINEX v2/v3).
         """
-        return self.to_ds(keep_rnx_data_vars=keep_rnx_data_vars, **kwargs), {}
+        return self.to_ds(keep_data_vars=keep_data_vars, **kwargs), {}
 
-    def validate_output(
-        self, dataset: xr.Dataset, required_vars: list[str] | None = None
-    ) -> None:
-        """Validate output Dataset structure.
+    def _build_attrs(self) -> dict[str, str]:
+        """Build standard global attributes for the output Dataset.
 
-        Called automatically by to_ds() to ensure compatibility.
-        Can be called manually for testing.
-
-        Parameters
-        ----------
-        dataset : xr.Dataset
-            Dataset to validate
-        required_vars : list of str, optional
-            Required data variables. If None, uses minimum set.
+        Reads institution/author from config, adds timestamp, version,
+        and the file hash.
 
         Returns
         -------
-        None
-
-        Raises
-        ------
-        ValueError
-            If Dataset doesn't meet requirements.
-
+        dict[str, str]
+            Ready-to-use attrs dict.
         """
-        validator = DatasetStructureValidator(dataset=dataset)
-        validator.validate_all(required_vars=required_vars)
+        from canvod.readers.gnss_specs.metadata import get_global_attrs
+        from canvod.readers.gnss_specs.utils import get_version_from_pyproject
+
+        attrs = get_global_attrs()
+        attrs["Created"] = datetime.now(UTC).isoformat()
+        attrs["Software"] = (
+            f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
+        )
+        attrs["File Hash"] = self.file_hash
+        return attrs
 
     @property
     @abstractmethod
@@ -341,7 +423,6 @@ class GNSSDataReader(ABC):
         -------
         datetime
             First observation timestamp in the file.
-
         """
 
     @property
@@ -353,7 +434,6 @@ class GNSSDataReader(ABC):
         -------
         datetime
             Last observation timestamp in the file.
-
         """
 
     @property
@@ -365,20 +445,21 @@ class GNSSDataReader(ABC):
         -------
         list of str
             System identifiers: 'G', 'R', 'E', 'C', 'J', 'S', 'I'
-
         """
 
     @property
-    @abstractmethod
     def num_epochs(self) -> int:
         """Return number of epochs in file.
+
+        Default implementation iterates epochs.  Subclasses may override
+        with a faster approach.
 
         Returns
         -------
         int
             Total number of observation epochs.
-
         """
+        return sum(1 for _ in self.iter_epochs())
 
     @property
     @abstractmethod
@@ -389,17 +470,11 @@ class GNSSDataReader(ABC):
         -------
         int
             Count of unique satellite vehicles across all systems.
-
         """
 
     def __repr__(self) -> str:
         """Return the string representation."""
-        return (
-            f"{self.__class__.__name__}("
-            f"file='{self.fpath.name}', "
-            f"systems={self.systems}, "
-            f"epochs={self.num_epochs})"
-        )
+        return f"{self.__class__.__name__}(file='{self.fpath.name}')"
 
 
 class ReaderFactory:
@@ -432,15 +507,10 @@ class ReaderFactory:
         reader_class : type
             Reader class (must inherit from GNSSDataReader)
 
-        Returns
-        -------
-        None
-
         Raises
         ------
         TypeError
             If reader_class does not inherit from GNSSDataReader.
-
         """
         if not issubclass(reader_class, GNSSDataReader):
             msg = f"{reader_class} must inherit from GNSSDataReader"
@@ -471,7 +541,6 @@ class ReaderFactory:
         ------
         ValueError
             If file format cannot be determined.
-
         """
         fpath = Path(fpath)
 
@@ -479,7 +548,6 @@ class ReaderFactory:
             msg = f"File not found: {fpath}"
             raise FileNotFoundError(msg)
 
-        # Detect format from file
         format_name = cls._detect_format(fpath)
 
         if format_name not in cls._readers:
@@ -505,13 +573,10 @@ class ReaderFactory:
         -------
         str
             Format name.
-
         """
-        # Check RINEX version from first line
         with fpath.open() as f:
             first_line = f.readline()
 
-        # RINEX version is in columns 1-9
         try:
             version_str = first_line[:9].strip()
             version = float(version_str)
@@ -538,19 +603,18 @@ class ReaderFactory:
         -------
         list of str
             Registered format identifiers.
-
         """
         return list(cls._readers.keys())
 
 
-# Backwards compatibility aliases
-GNSSReader = GNSSDataReader
-RinexReader = GNSSDataReader
-
 __all__ = [
+    "DEFAULT_REQUIRED_VARS",
+    "REQUIRED_ATTRS",
+    "REQUIRED_COORDS",
+    "REQUIRED_DIMS",
     "DatasetStructureValidator",
     "GNSSDataReader",
-    "GNSSReader",
     "ReaderFactory",
-    "RinexReader",
+    "SignalID",
+    "validate_dataset",
 ]

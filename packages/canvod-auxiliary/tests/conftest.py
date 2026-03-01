@@ -16,6 +16,10 @@ def pytest_configure(config):
     config.addinivalue_line(
         "markers", "network: marks tests that require network access"
     )
+    config.addinivalue_line(
+        "filterwarnings",
+        "ignore:Remove `format_exc_info`:UserWarning:structlog",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -185,7 +189,7 @@ def sample_rinex_data():
         },
         attrs={
             "Created": "2024-01-01T00:00:00Z",
-            "RINEX File Hash": "abc123",
+            "File Hash": "abc123",
             "APPROX POSITION X": 4075539.8,
             "APPROX POSITION Y": 931735.3,
             "APPROX POSITION Z": 4801629.6,

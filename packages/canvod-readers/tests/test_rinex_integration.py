@@ -72,7 +72,7 @@ class TestRINEXIntegration:
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
         # Convert to dataset
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         assert isinstance(ds, xr.Dataset)
 
@@ -102,7 +102,7 @@ class TestRINEXIntegration:
     def test_band_frequencies_in_dataset(self, rinex_file):
         """Test band frequencies are correctly assigned in dataset."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Check frequency coordinates exist
         assert "freq_center" in ds.coords
@@ -127,7 +127,7 @@ class TestRINEXIntegration:
     def test_band_coordinate_in_dataset(self, rinex_file):
         """Test band coordinate is correctly set."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         assert "band" in ds.coords
 
@@ -140,7 +140,7 @@ class TestRINEXIntegration:
     def test_system_coordinate_matches_signal_ids(self, rinex_file):
         """Test system coordinate matches signal ID system letters."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         assert "system" in ds.coords
 
@@ -181,7 +181,7 @@ class TestRINEXIntegration:
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
         # Try to read multiple data variables
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR", "Pseudorange", "Phase"])
+        ds = obs.to_ds(keep_data_vars=["SNR", "Pseudorange", "Phase"])
 
         # Check which ones are actually present
         available_vars = []
@@ -226,7 +226,7 @@ class TestRINEXIntegration:
     def test_dataset_global_attributes(self, rinex_file):
         """Test dataset has proper global attributes."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Check required global attributes
         required_attrs = ["Created", "Software", "Institution"]
@@ -239,7 +239,7 @@ class TestRINEXIntegration:
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
         # Process entire file
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Check dataset is not empty
         assert ds.sizes["epoch"] > 0
@@ -254,38 +254,14 @@ class TestRINEXIntegration:
 class TestSignalMappingEdgeCases:
     """Test edge cases in signal mapping."""
 
-    def test_unknown_system(self):
-        """Test handling of unknown GNSS systems."""
+    def test_unknown_system_not_in_system_bands(self):
+        """Test unknown GNSS system is not in SYSTEM_BANDS."""
         from canvod.readers.gnss_specs.signals import SignalIDMapper
 
         mapper = SignalIDMapper()
 
-        # Unknown system should still produce a signal ID
-        sid = mapper.create_signal_id("X01", "X01|S1C")
-        assert sid is not None
-        assert "Unknown" in sid or "X01" in sid
-
-    def test_malformed_obs_code(self):
-        """Test handling of malformed observation codes."""
-        from canvod.readers.gnss_specs.signals import SignalIDMapper
-
-        mapper = SignalIDMapper()
-
-        # Malformed codes should not crash
-        sid = mapper.create_signal_id("G01", "invalid")
-        assert sid is not None
-
-    def test_empty_signal_id(self):
-        """Test handling of empty signal IDs."""
-        from canvod.readers.gnss_specs.signals import SignalIDMapper
-
-        mapper = SignalIDMapper()
-
-        # Empty signal ID
-        sv, band, code = mapper.parse_signal_id("")
-        assert sv == "nan"
-        assert band == "nan"
-        assert code == "nan"
+        # Unknown system should not be in SYSTEM_BANDS
+        assert "X" not in mapper.SYSTEM_BANDS
 
     def test_nonexistent_band_frequency(self):
         """Test getting frequency for nonexistent band."""

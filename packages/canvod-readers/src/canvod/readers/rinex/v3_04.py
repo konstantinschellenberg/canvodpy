@@ -39,7 +39,7 @@ from pydantic import (
     model_validator,
 )
 
-from canvod.readers.base import GNSSDataReader, ReaderFactory
+from canvod.readers.base import GNSSDataReader, ReaderFactory, validate_dataset
 from canvod.readers.gnss_specs.constants import (
     EPOCH_RECORD_INDICATOR,
     UREG,
@@ -55,7 +55,6 @@ from canvod.readers.gnss_specs.metadata import (
     DTYPES,
     OBSERVABLES_METADATA,
     SNR_METADATA,
-    get_global_attrs,
 )
 from canvod.readers.gnss_specs.models import (
     Observation,
@@ -68,7 +67,6 @@ from canvod.readers.gnss_specs.models import (
     Satellite,
 )
 from canvod.readers.gnss_specs.signals import SignalIDMapper
-from canvod.readers.gnss_specs.utils import get_version_from_pyproject
 
 GLONASS_COD_PHS_MIN_COMPONENTS = 6
 PGM_RUNBY_MIN_COMPONENTS = 4
@@ -717,7 +715,7 @@ class Rnxv3Header(BaseModel):
         )
 
 
-class Rnxv3Obs(GNSSDataReader, BaseModel):
+class Rnxv3Obs(GNSSDataReader):
     """RINEX v3.04 observation reader.
 
     Attributes
@@ -732,8 +730,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
         Expected file dump interval for completeness validation.
     expected_sampling_interval : str or pint.Quantity, optional
         Expected sampling interval for completeness validation.
-    include_auxiliary : bool, default False
-        Whether to include auxiliary observations (e.g., X1).
     apply_overlap_filter : bool, default False
         Whether to filter overlapping signal groups.
     overlap_preferences : dict[str, str], optional
@@ -743,19 +739,19 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
     Notes
     -----
-    This class inherits from `GNSSDataReader` and is a Pydantic `BaseModel`
-    configured with `ConfigDict` (frozen, arbitrary_types_allowed).
+    Inherits ``fpath``, its validator, and ``arbitrary_types_allowed``
+    from :class:`GNSSDataReader`.
 
     """
 
-    fpath: Path
+    model_config = ConfigDict(frozen=True)
+
     polarization: str = "RHCP"
 
     completeness_mode: Literal["strict", "warn", "off"] = "strict"
     expected_dump_interval: str | pint.Quantity | None = None
     expected_sampling_interval: str | pint.Quantity | None = None
 
-    include_auxiliary: bool = False
     apply_overlap_filter: bool = False
     overlap_preferences: dict[str, str] | None = None
 
@@ -767,11 +763,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
     _lines: list[str] = PrivateAttr()
     _file_hash: str = PrivateAttr()
     _cached_epoch_batches: list[tuple[int, int]] | None = PrivateAttr(default=None)
-
-    model_config = ConfigDict(
-        frozen=True,
-        arbitrary_types_allowed=True,
-    )
 
     @model_validator(mode="after")
     def _post_init(self) -> Self:
@@ -1077,7 +1068,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             if start_idx >= len(data_part):
                 # No more data available - create empty observation
                 observation = Observation(
-                    observation_freq_tag=band,
                     obs_type=band.split("|")[1][0],
                     value=None,
                     lli=None,
@@ -1098,7 +1088,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             value, lli, ssi = self.parse_observation_slice(slice_data)
 
             observation = Observation(
-                observation_freq_tag=band,
                 obs_type=band.split("|")[1][0],
                 value=value,
                 lli=lli,
@@ -1413,7 +1402,8 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
         keep = []
         for sid in ds.sid.values:
-            _sv, band, _code = self._signal_mapper.parse_signal_id(str(sid))
+            parts = str(sid).split("|")
+            band = parts[1] if len(parts) >= 2 else ""
             group = self._signal_mapper.get_overlapping_group(band)
             if group and group in group_preference:
                 if band == group_preference[group]:
@@ -1434,7 +1424,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
         Returns
         -------
         sorted_sids : list[str]
-            Sorted list of signal IDs (excluding X1 auxiliary).
+            Sorted list of signal IDs.
         sid_properties : dict[str, dict[str, object]]
             Mapping of SID to its properties (sv, system, band, code,
             freq_center, freq_min, freq_max, bandwidth, overlapping_group).
@@ -1459,10 +1449,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
                 band_name = mapper.SYSTEM_BANDS.get(system, {}).get(
                     band_num, f"UnknownBand{band_num}"
                 )
-
-                # Skip X1 auxiliary observations
-                if band_name == "X1":
-                    continue
 
                 # Cache frequency arithmetic per band
                 if band_name not in band_freq_cache:
@@ -1704,7 +1690,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
                 ),
             },
             coords=coords,
-            attrs={**self._create_basic_attrs()},
+            attrs={**self._build_attrs()},
         )
 
         if self.apply_overlap_filter:
@@ -1714,272 +1700,38 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
 
     def create_rinex_netcdf_with_signal_id(
         self,
-        analyze_conflicts: bool = False,
-        analyze_systems: bool = False,
         start: datetime | None = None,
         end: datetime | None = None,
     ) -> xr.Dataset:
         """Create a NetCDF dataset with signal IDs.
 
-        Can optionally restrict to epochs within a datetime range.
+        Always uses the fast single-pass path.  Optionally restricts to
+        epochs within a datetime range via post-filtering.
+
+        Parameters
+        ----------
+        start : datetime, optional
+            Start of time range (inclusive).
+        end : datetime, optional
+            End of time range (inclusive).
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with dimensions (epoch, sid).
 
         """
-        # Use fast single-pass path when no special features are requested
-        if not (analyze_conflicts or analyze_systems or start or end):
-            return self._create_dataset_single_pass()
+        ds = self._create_dataset_single_pass()
 
-        if analyze_conflicts:
-            print("\nNote: Conflict analysis will be adapted for sid structure.")
-        if analyze_systems:
-            print("\nNote: System analysis will be adapted for sid structure.")
-
-        signal_ids = set()
-        signal_id_to_properties: dict[str, dict[str, object]] = {}
-        timestamps: list[np.datetime64] = []
-
-        # pick generator depending on range
-        if start and end:
-            epoch_iter = self.iter_epochs_in_range(start, end)
-        else:
-            epoch_iter = self.iter_epochs()
-
-        for epoch in epoch_iter:
-            dt = self.epochrecordinfo_dt_to_numpy_dt(epoch)
-            timestamps.append(np.datetime64(dt, "ns"))
-
-            for sat in epoch.data:
-                sv = sat.sv
-                for obs in sat.observations:
-                    if not self.include_auxiliary and obs.observation_freq_tag.endswith(
-                        "|X1"
-                    ):
-                        continue
-
-                    sid = self._signal_mapper.create_signal_id(
-                        sv, obs.observation_freq_tag
-                    )
-                    signal_ids.add(sid)
-
-                    if sid not in signal_id_to_properties:
-                        sv_part, band, code = self._signal_mapper.parse_signal_id(sid)
-                        system = sv_part[0]
-                        center_frequency = self._signal_mapper.get_band_frequency(band)
-                        bandwidth = self._signal_mapper.get_band_bandwidth(band)
-                        overlapping_group = self._signal_mapper.get_overlapping_group(
-                            band
-                        )
-
-                        if center_frequency is not None and bandwidth is not None:
-                            # Extract bandwidth value
-                            bw = (
-                                bandwidth[0]
-                                if isinstance(bandwidth, list)
-                                else bandwidth
-                            )
-
-                            # Ensure both are pint quantities
-                            if not hasattr(center_frequency, "m_as"):
-                                center_frequency = center_frequency * UREG.MHz
-                            if not hasattr(bw, "m_as"):
-                                bw = bw * UREG.MHz
-
-                            # Calculate frequency range
-                            freq_min = center_frequency - (bw / 2.0)
-                            freq_max = center_frequency + (bw / 2.0)
-
-                            # Extract magnitudes to ensure float64 dtype
-                            center_frequency = float(center_frequency.m_as(UREG.MHz))
-                            freq_min = float(freq_min.m_as(UREG.MHz))
-                            freq_max = float(freq_max.m_as(UREG.MHz))
-                            bw = float(bw.m_as(UREG.MHz))
-                        else:
-                            print(
-                                f"WARNING: No frequency data for sid={sid}, "
-                                f"band={band}, sv={sv_part}"
-                            )
-                            center_frequency = np.nan
-                            freq_min = np.nan
-                            freq_max = np.nan
-                            bw = np.nan
-
-                        signal_id_to_properties[sid] = {
-                            "sv": sv_part,
-                            "system": system,
-                            "band": band,
-                            "code": code,
-                            "freq_center": center_frequency,
-                            "freq_min": freq_min,
-                            "freq_max": freq_max,
-                            "bandwidth": bw,
-                            "overlapping_group": overlapping_group,
-                        }
-
-        # Inconsistent integration of the Septentrio X1 obs. code, filtering
-        # out here again.
-        signal_ids = {sid for sid in signal_ids if "|X1|" not in sid}
-        signal_id_to_properties = {
-            sid: props
-            for sid, props in signal_id_to_properties.items()
-            if "|X1|" not in sid
-        }
-
-        sorted_signal_ids = sorted(signal_ids)
-        n_epochs = len(timestamps)
-        n_signals = len(sorted_signal_ids)
-
-        data_arrays = {
-            "SNR": np.full((n_epochs, n_signals), np.nan, dtype=DTYPES["SNR"]),
-            "Pseudorange": np.full(
-                (n_epochs, n_signals), np.nan, dtype=DTYPES["Pseudorange"]
-            ),
-            "Phase": np.full((n_epochs, n_signals), np.nan, dtype=DTYPES["Phase"]),
-            "Doppler": np.full((n_epochs, n_signals), np.nan, dtype=DTYPES["Doppler"]),
-            "LLI": np.full((n_epochs, n_signals), -1, dtype=DTYPES["LLI"]),
-            "SSI": np.full((n_epochs, n_signals), -1, dtype=DTYPES["SSI"]),
-        }
-        sid_to_idx = {sid: i for i, sid in enumerate(sorted_signal_ids)}
-
-        # second pass to fill arrays
-        if start and end:
-            epoch_iter = self.iter_epochs_in_range(start, end)
-        else:
-            epoch_iter = self.iter_epochs()
-
-        for t_idx, epoch in enumerate(epoch_iter):
-            for sat in epoch.data:
-                sv = sat.sv
-                for obs in sat.observations:
-                    if not self.include_auxiliary and obs.observation_freq_tag.endswith(
-                        "|X1"
-                    ):
-                        continue
-                    if obs.value is None:
-                        continue
-                    sid = self._signal_mapper.create_signal_id(
-                        sv, obs.observation_freq_tag
-                    )
-                    if sid not in sid_to_idx:
-                        continue
-                    s_idx = sid_to_idx[sid]
-
-                    ot = obs.obs_type
-                    if ot == "S" and obs.value != 0:
-                        data_arrays["SNR"][t_idx, s_idx] = obs.value
-                    elif ot == "C":
-                        data_arrays["Pseudorange"][t_idx, s_idx] = obs.value
-                    elif ot == "L":
-                        data_arrays["Phase"][t_idx, s_idx] = obs.value
-                    elif ot == "D":
-                        data_arrays["Doppler"][t_idx, s_idx] = obs.value
-                    elif ot == "X":
-                        data_arrays.setdefault(
-                            "Auxiliary",
-                            np.full((n_epochs, n_signals), np.nan, dtype=np.float32),
-                        )
-                        data_arrays["Auxiliary"][t_idx, s_idx] = obs.value
-
-                    if obs.lli is not None:
-                        data_arrays["LLI"][t_idx, s_idx] = obs.lli
-                    if obs.ssi is not None:
-                        data_arrays["SSI"][t_idx, s_idx] = obs.ssi
-
-        signal_id_coord = xr.DataArray(
-            sorted_signal_ids, dims=["sid"], attrs=COORDS_METADATA["sid"]
-        )
-        sv_list = [signal_id_to_properties[sid]["sv"] for sid in sorted_signal_ids]
-        constellation_list = [
-            signal_id_to_properties[sid]["system"] for sid in sorted_signal_ids
-        ]
-        band_list = [signal_id_to_properties[sid]["band"] for sid in sorted_signal_ids]
-        code_list = [signal_id_to_properties[sid]["code"] for sid in sorted_signal_ids]
-        freq_center_list = [
-            signal_id_to_properties[sid]["freq_center"] for sid in sorted_signal_ids
-        ]
-        freq_min_list = [
-            signal_id_to_properties[sid]["freq_min"] for sid in sorted_signal_ids
-        ]
-        freq_max_list = [
-            signal_id_to_properties[sid]["freq_max"] for sid in sorted_signal_ids
-        ]
-
-        coords = {
-            "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
-            "sid": signal_id_coord,
-            "sv": ("sid", sv_list, COORDS_METADATA["sv"]),
-            "system": ("sid", constellation_list, COORDS_METADATA["system"]),
-            "band": ("sid", band_list, COORDS_METADATA["band"]),
-            "code": ("sid", code_list, COORDS_METADATA["code"]),
-            "freq_center": (
-                "sid",
-                np.asarray(freq_center_list, dtype=DTYPES["freq_center"]),
-                COORDS_METADATA["freq_center"],
-            ),
-            "freq_min": (
-                "sid",
-                np.asarray(freq_min_list, dtype=DTYPES["freq_min"]),
-                COORDS_METADATA["freq_min"],
-            ),
-            "freq_max": (
-                "sid",
-                np.asarray(freq_max_list, dtype=DTYPES["freq_max"]),
-                COORDS_METADATA["freq_max"],
-            ),
-        }
-
-        if self.header.signal_strength_unit == UREG.dBHz:
-            snr_meta = CN0_METADATA
-        else:
-            snr_meta = SNR_METADATA
-
-        ds = xr.Dataset(
-            data_vars={
-                "SNR": (["epoch", "sid"], data_arrays["SNR"], snr_meta),
-                "Pseudorange": (
-                    ["epoch", "sid"],
-                    data_arrays["Pseudorange"],
-                    OBSERVABLES_METADATA["Pseudorange"],
-                ),
-                "Phase": (
-                    ["epoch", "sid"],
-                    data_arrays["Phase"],
-                    OBSERVABLES_METADATA["Phase"],
-                ),
-                "Doppler": (
-                    ["epoch", "sid"],
-                    data_arrays["Doppler"],
-                    OBSERVABLES_METADATA["Doppler"],
-                ),
-                "LLI": (
-                    ["epoch", "sid"],
-                    data_arrays["LLI"],
-                    OBSERVABLES_METADATA["LLI"],
-                ),
-                "SSI": (
-                    ["epoch", "sid"],
-                    data_arrays["SSI"],
-                    OBSERVABLES_METADATA["SSI"],
-                ),
-            },
-            coords=coords,
-            attrs={**self._create_basic_attrs()},
-        )
-
-        if "Auxiliary" in data_arrays:
-            ds["Auxiliary"] = (
-                ["epoch", "sid"],
-                data_arrays["Auxiliary"],
-                OBSERVABLES_METADATA["Auxiliary"],
-            )
-
-        if self.apply_overlap_filter:
-            ds = self.filter_by_overlapping_groups(ds, self.overlap_preferences)
+        if start or end:
+            ds = ds.sel(epoch=slice(start, end))
 
         return ds
 
     def to_ds(
         self,
         outname: Path | str | None = None,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         write_global_attrs: bool = False,
         pad_global_sid: bool = True,
         strip_fillval: bool = True,
@@ -1992,7 +1744,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
         ----------
         outname : Path or str, optional
             If provided, saves dataset to this file path
-        keep_rnx_data_vars : list of str or None, optional
+        keep_data_vars : list of str or None, optional
             Data variables to include in dataset. Defaults to config value.
         write_global_attrs : bool, default False
             If True, adds comprehensive global attributes
@@ -2012,16 +1764,16 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             Dataset with dimensions (epoch, sid) and requested data variables
 
         """
-        if keep_rnx_data_vars is None:
+        if keep_data_vars is None:
             from canvod.utils.config import load_config
 
-            keep_rnx_data_vars = load_config().processing.processing.keep_rnx_vars
+            keep_data_vars = load_config().processing.processing.keep_rnx_vars
 
         ds = self.create_rinex_netcdf_with_signal_id()
 
         # drop unwanted vars
         for var in list(ds.data_vars):
-            if var not in keep_rnx_data_vars:
+            if var not in keep_data_vars:
                 ds = ds.drop_vars(var)
 
         if pad_global_sid:
@@ -2041,7 +1793,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
         if write_global_attrs:
             ds.attrs.update(self._create_comprehensive_attrs())
 
-        ds.attrs["RINEX File Hash"] = self.file_hash
+        ds.attrs.update(self._build_attrs())
 
         if outname:
             from canvod.utils.config import load_config as _load_config
@@ -2054,7 +1806,7 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             ds.to_netcdf(str(outname), encoding=encoding)
 
         # Validate output structure for pipeline compatibility
-        self.validate_output(ds, required_vars=keep_rnx_data_vars)
+        validate_dataset(ds, required_vars=keep_data_vars)
 
         return ds
 
@@ -2122,14 +1874,6 @@ class Rnxv3Obs(GNSSDataReader, BaseModel):
             RINEX304ComplianceValidator.print_validation_report(results)
 
         return results
-
-    def _create_basic_attrs(self) -> dict[str, object]:
-        attrs = get_global_attrs()
-        attrs["Created"] = datetime.now(UTC).isoformat()
-        attrs["Software"] = (
-            f"{attrs['Software']}, Version: {get_version_from_pyproject()}"
-        )
-        return attrs
 
     def _create_comprehensive_attrs(self) -> dict[str, object]:
         attrs = {
@@ -2277,7 +2021,7 @@ def adapt_existing_rnxv3obs_class(original_class_path: str | None = None) -> str
 
     # Advanced sid usage
     ds_enhanced = rnx.to_ds(
-        keep_rnx_data_vars=["SNR", "Phase"],
+        keep_data_vars=["SNR", "Phase"],
         apply_overlap_filter=True,
         overlap_preferences={'L1_E1_B1I': 'L1'}  # Prefer GPS L1 over Galileo E1
     )
@@ -2311,7 +2055,7 @@ if __name__ == "__main__":
     # Create sid based dataset
     ds_signal_id = rnx.to_ds(
         outname="enhanced_rinex_signal_id3.nc",
-        keep_rnx_data_vars=["SNR"],  # ["Pseudorange", "Phase", "Doppler", "SNR"]
+        keep_data_vars=["SNR"],  # ["Pseudorange", "Phase", "Doppler", "SNR"]
         write_global_attrs=False,
     )
 

@@ -102,12 +102,27 @@ flowchart LR
 ### Registration + Usage
 
 ```python
+from pydantic import ConfigDict
 from canvodpy import ReaderFactory
 from canvod.readers import GNSSDataReader
+from canvod.readers.builder import DatasetBuilder
 
 class MyLabReader(GNSSDataReader):
-    def to_ds(self, keep_rnx_data_vars=None) -> xr.Dataset:
-        ...
+    """GNSSDataReader is a Pydantic BaseModel + ABC — one parent is enough."""
+
+    model_config = ConfigDict(frozen=True)
+    # fpath is inherited from GNSSDataReader — no need to redeclare
+
+    def to_ds(self, keep_data_vars=None, **kwargs) -> xr.Dataset:
+        builder = DatasetBuilder(self)
+        for epoch in self.iter_epochs():
+            ei = builder.add_epoch(epoch.timestamp)
+            for obs in epoch.observations:
+                sig = builder.add_signal(sv=obs.sv, band=obs.band, code=obs.code)
+                builder.set_value(ei, sig, "SNR", obs.snr)
+        return builder.build(keep_data_vars=keep_data_vars)
+
+    # ... implement remaining abstract methods ...
 
 # Register once (at import time)
 ReaderFactory.register("mylab_v1", MyLabReader)
@@ -168,7 +183,7 @@ canvodpy exposes four API levels — all backed by the same packages:
     from canvod.vod     import TauOmegaZerothOrder
 
     reader = Rnxv3Obs(fpath=Path("station.25o"))
-    ds = reader.to_ds(keep_rnx_data_vars=["SNR"])
+    ds = reader.to_ds(keep_data_vars=["SNR"])
     ```
 
 ---
@@ -222,7 +237,7 @@ Every dataset produced by canVODpy is fully traceable:
 !!! success "Full provenance chain"
     | Field | Source |
     |-------|--------|
-    | `ds.attrs["RINEX File Hash"]` | SHA-256 of raw input file |
+    | `ds.attrs["File Hash"]` | SHA-256 of raw input file |
     | `ds.attrs["Software"]` | `canvod-readers x.y.z` |
     | `ds.attrs["Created"]` | ISO 8601 timestamp |
     | Icechunk snapshot ID | Hash-addressable, immutable |

@@ -98,7 +98,7 @@ Identical structure to `Rnxv3Obs.to_ds()` — a drop-in replacement:
 | `epoch` coordinate | `datetime64[ns]`, UTC |
 | `sid` coordinate | `"SV\|Band\|Code"` string (e.g. `G07\|L1C\|C`) |
 | Data variables | `SNR` (always), `Pseudorange`, `Phase`, `Doppler` (on request) |
-| Validation | Passes `DatasetStructureValidator` |
+| Validation | Passes `validate_dataset()` |
 
 ### Metadata dataset — `to_metadata_ds()`
 
@@ -315,7 +315,7 @@ interoperability and scientific reproducibility.
 
     # Observations only
     obs_ds = reader.to_ds(
-        keep_rnx_data_vars=["SNR", "Pseudorange", "Phase", "Doppler"],
+        keep_data_vars=["SNR", "Pseudorange", "Phase", "Doppler"],
         write_global_attrs=True,
     )
 
@@ -328,7 +328,7 @@ interoperability and scientific reproducibility.
     ```python
     # Recommended: one binary scan, two datasets
     obs_ds, aux_dict = reader.to_ds_and_auxiliary(
-        keep_rnx_data_vars=["SNR", "Pseudorange"],
+        keep_data_vars=["SNR", "Pseudorange"],
         write_global_attrs=True,
     )
     meta_ds = aux_dict["sbf_obs"]
@@ -343,7 +343,7 @@ interoperability and scientific reproducibility.
 
     obs_list, meta_list = [], []
     for r in readers:
-        obs, aux = r.to_ds_and_auxiliary(keep_rnx_data_vars=["SNR"])
+        obs, aux = r.to_ds_and_auxiliary(keep_data_vars=["SNR"])
         obs_list.append(obs)
         meta_list.append(aux["sbf_obs"])
 

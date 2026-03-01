@@ -194,7 +194,7 @@ flowchart TD
     end
 
     subgraph WRITE["Icechunk Storage"]
-        HASH_CHECK["RINEX File Hash Check\n(skip duplicates)"]
+        HASH_CHECK["File Hash Check\n(skip duplicates)"]
         APPEND["Append + Commit"]
     end
 

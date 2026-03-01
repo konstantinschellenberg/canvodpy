@@ -45,7 +45,7 @@ def _process_single_rinex(
     log.info("rinex_processing_started")
 
     try:
-        rnx = Rnxv3Obs(fpath=rnx_file, include_auxiliary=False)
+        rnx = Rnxv3Obs(fpath=rnx_file)
         ds = rnx.to_ds(write_global_attrs=True)
 
         # Filter variables if specified
@@ -86,11 +86,11 @@ def preprocess_rnx(
     log.info("preprocessing_started")
 
     try:
-        rnx = Rnxv3Obs(fpath=rnx_file, include_auxiliary=False)
+        rnx = Rnxv3Obs(fpath=rnx_file)
         ds = rnx.to_ds(write_global_attrs=True)
 
-        # ✅ Attach cached file hash
-        ds.attrs["RINEX File Hash"] = rnx.file_hash
+        # Attach cached file hash
+        ds.attrs["File Hash"] = rnx.file_hash
 
         # Filter variables if specified
         if keep_vars:
@@ -315,9 +315,7 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get(
-                        "RINEX File Hash"
-                    )
+                    rinex_hash = ds.attrs.get("File Hash")
                     if not rinex_hash:
                         log.warning("Dataset missing hash → skipping")
                         continue
@@ -506,12 +504,10 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("File Hash") or ds.attrs.get(
-                        "RINEX File Hash"
-                    )
+                    rinex_hash = ds.attrs.get("File Hash")
                     if not rinex_hash:
                         log.warning(
-                            f"No RINEX hash found in dataset from {fname}. "
+                            f"No file hash found in dataset from {fname}. "
                             "Skipping duplicate detection for this file."
                         )
                         continue

@@ -28,7 +28,7 @@ filepath = Path("path/to/rinex.25o")
 reader = Rnxv3Obs(fpath=filepath)
 
 # Convert to xarray Dataset
-dataset = reader.to_ds(keep_rnx_data_vars=["SNR"])
+dataset = reader.to_ds(keep_data_vars=["SNR"])
 
 # Filter GPS L1 signals
 gps_l1 = dataset.where(

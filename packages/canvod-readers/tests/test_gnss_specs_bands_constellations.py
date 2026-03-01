@@ -69,20 +69,6 @@ class TestGPS:
         l1_freq = GPS.BAND_PROPERTIES["L1"]["freq"]
         assert l1_freq.magnitude == pytest.approx(1575.42)
 
-    def test_freqs_lut(self):
-        gps = GPS()
-        lut = gps.freqs_lut
-        assert len(lut) > 0
-        # Should have entries for all SVs * all obs codes + X1
-        assert "G01|*1C" in lut
-        assert "G01|X1" in lut
-
-    def test_bands_freqs(self):
-        gps = GPS()
-        bf = gps.bands_freqs
-        assert "*1C" in bf
-        assert "*2C" in bf
-
 
 # ---------------------------------------------------------------------------
 # GALILEO
@@ -112,12 +98,6 @@ class TestGALILEO:
         e1 = GALILEO.BAND_PROPERTIES["E1"]
         assert e1["freq"].magnitude == pytest.approx(1575.42)
         assert e1["system"] == "E"
-
-    def test_freqs_lut(self):
-        gal = GALILEO()
-        lut = gal.freqs_lut
-        assert "E01|*1A" in lut
-        assert "E01|X1" in lut
 
 
 # ---------------------------------------------------------------------------
@@ -161,19 +141,6 @@ class TestGLONASS:
         assert isinstance(freq.magnitude, float)
         # Should be in the L2 range (1246 ± ~7 MHz)
         assert 1239 < freq.to(UREG.MHz).magnitude < 1253
-
-    def test_freqs_lut_aggregate(self):
-        glo = GLONASS(aggregate_fdma=True)
-        lut = glo.freqs_lut
-        assert len(lut) > 0
-        assert "R01|X1" in lut
-
-    def test_freqs_lut_non_aggregate(self):
-        glo = GLONASS(aggregate_fdma=False)
-        lut = glo.freqs_lut
-        assert len(lut) > 0
-        # FDMA bands should have SV-specific frequencies
-        assert "R01|*1C" in lut
 
     def test_glonass_slots_channels(self):
         glo = GLONASS()
@@ -297,7 +264,6 @@ class TestBandsRegistry:
         bands = Bands()
         assert len(bands.BAND_PROPERTIES) > 0
         assert len(bands.SYSTEM_BANDS) == 7  # G, R, E, C, I, S, J
-        assert "X1" in bands.BAND_PROPERTIES
 
     def test_system_bands_mapping(self):
         from canvod.readers.gnss_specs.bands import Bands
@@ -332,16 +298,15 @@ class TestBandsRegistry:
 
 
 # ---------------------------------------------------------------------------
-# ConstellationBase (abstract)
+# ConstellationBase
 # ---------------------------------------------------------------------------
 
 
 class TestConstellationBase:
-    """Test abstract base class behaviour."""
+    """Test base class behaviour."""
 
-    def test_cannot_instantiate_without_freqs_lut(self):
-        with pytest.raises(TypeError):
-            ConstellationBase(constellation="test")
-
-    def test_aux_freq(self):
-        assert GPS.AUX_FREQ.magnitude == pytest.approx(1575.42)
+    def test_can_instantiate_directly(self):
+        """ConstellationBase is no longer abstract after removing freqs_lut."""
+        cb = ConstellationBase(constellation="test", use_wiki=False, static_svs=["T01"])
+        assert cb.constellation == "test"
+        assert cb.svs == ["T01"]

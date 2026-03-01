@@ -1,101 +1,162 @@
 # Reader Architecture
 
-This page describes the architectural principles behind canvod-readers, with particular focus on the Abstract Base Class (ABC) pattern used to ensure extensibility and consistency across reader implementations.
+This page describes the architectural principles behind canvod-readers, with particular focus on the `GNSSDataReader` base class — a Pydantic `BaseModel` combined with Python's Abstract Base Class (ABC) pattern — which ensures extensibility, type safety, and consistency across reader implementations.
 
-## The `GNSSDataReader` Abstract Base Class
+## The `GNSSDataReader` Base Class
 
-The ABC pattern provides contract enforcement (all readers must implement required methods), type safety for static type checkers, explicit interface changes, mock implementations for testing downstream code, and self-documenting interface definitions.
+`GNSSDataReader` inherits from both `pydantic.BaseModel` and `abc.ABC`. This combination provides:
 
-The `GNSSDataReader` class is located in `canvod/readers/base.py`:
+- **Contract enforcement** — all readers must implement required abstract methods
+- **Automatic validation** — file path existence is checked at construction time via Pydantic
+- **Type safety** — for static type checkers and runtime validation
+- **Simplified inheritance** — subclasses inherit `fpath`, file validation, and `model_config` for free
+- **Self-documenting interface** — abstract methods define the exact contract
+
+The class is located in `canvod/readers/base.py`:
 
 ```python
 from abc import ABC, abstractmethod
 from pathlib import Path
+from pydantic import BaseModel, ConfigDict, field_validator
 import xarray as xr
 
-class GNSSDataReader(ABC):
+class GNSSDataReader(BaseModel, ABC):
     """Abstract base for all GNSS data format readers.
 
     All readers must:
-    1. Inherit from this class
+    1. Inherit from this class (no need for separate BaseModel)
     2. Implement all abstract methods
-    3. Return xarray.Dataset that passes DatasetStructureValidator
+    3. Return xarray.Dataset that passes validate_dataset()
     4. Provide file hash for deduplication
     """
 
-    fpath: Path  # Provided by Pydantic BaseModel in concrete classes
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    fpath: Path  # Validated at construction time
+
+    @field_validator("fpath")
+    @classmethod
+    def _validate_fpath(cls, v: Path) -> Path:
+        v = Path(v)
+        if not v.is_file():
+            raise FileNotFoundError(f"File not found: {v}")
+        return v
 
     @property
     @abstractmethod
     def file_hash(self) -> str:
         """SHA256 hash of file for deduplication."""
-        pass
 
     @abstractmethod
     def to_ds(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         **kwargs
     ) -> xr.Dataset:
         """Convert data to xarray.Dataset."""
-        pass
 
     @abstractmethod
     def iter_epochs(self):
         """Iterate over epochs in file."""
-        pass
 
     @property
     @abstractmethod
     def start_time(self) -> datetime:
         """Start time of observations."""
-        pass
 
     @property
     @abstractmethod
     def end_time(self) -> datetime:
         """End time of observations."""
-        pass
 
     @property
     @abstractmethod
     def systems(self) -> list[str]:
         """GNSS systems in file."""
-        pass
-
-    @property
-    @abstractmethod
-    def num_epochs(self) -> int:
-        """Number of epochs."""
-        pass
 
     @property
     @abstractmethod
     def num_satellites(self) -> int:
         """Number of unique satellites."""
-        pass
 
-    def validate_output(
-        self,
-        dataset: xr.Dataset,
-        required_vars: list[str] | None = None
-    ) -> None:
-        """Validate Dataset structure."""
-        validator = DatasetStructureValidator(dataset=dataset)
-        validator.validate_all(required_vars=required_vars)
-
+    def to_ds_and_auxiliary(
+        self, **kwargs
+    ) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
+        """Obs dataset + any auxiliary datasets. Default: empty aux dict."""
+        return self.to_ds(**kwargs), {}
 ```
+
+!!! info "Why `BaseModel` + `ABC`?"
+
+    Before this design, every reader needed triple inheritance
+    (`GNSSDataReader, BaseModel`), a duplicate `fpath: Path` field,
+    `model_config = ConfigDict(arbitrary_types_allowed=True)`, and
+    its own `fpath` validator. Merging these into the base class
+    means a new reader is just:
+
+    ```python
+    class MyReader(GNSSDataReader):
+        model_config = ConfigDict(frozen=True)
+        # fpath is inherited — no need to redeclare
+    ```
 
 ### Contract Guarantees
 
 Any implementation of `GNSSDataReader` guarantees the following:
 
-1. **File Access**: The `fpath` attribute contains a Path to the data file.
-2. **Hash Computation**: `file_hash` returns a deterministic identifier.
-3. **Dataset Conversion**: `to_ds()` returns a validated xarray.Dataset.
-4. **Iteration**: `iter_epochs()` yields epoch-by-epoch data.
-5. **Metadata**: Properties provide time range, systems, and counts.
-6. **Validation**: Output passes `DatasetStructureValidator`.
+1. **File Validation**: `fpath` is validated at construction time — a `FileNotFoundError` is raised if the file does not exist.
+2. **Hash Computation**: `file_hash` returns a deterministic identifier for storage deduplication.
+3. **Dataset Conversion**: `to_ds()` returns a validated xarray.Dataset with `(epoch, sid)` dimensions.
+4. **Iteration**: `iter_epochs()` yields epoch-by-epoch data for memory-bounded streaming.
+5. **Metadata**: Properties provide time range, systems, and satellite counts.
+6. **Validation**: Output passes `validate_dataset()` — checked automatically by `DatasetBuilder`.
+
+## `SignalID` — Validated Signal Identifiers
+
+Signal identifiers (`"G01|L1|C"`) are the backbone of the `sid` dimension. Instead of building them as raw f-strings, the `SignalID` Pydantic model validates each component at creation time:
+
+```python
+from canvod.readers.base import SignalID
+
+# Create from components — validated immediately
+sig = SignalID(sv="G01", band="L1", code="C")
+sig.sid        # → "G01|L1|C"
+sig.system     # → "G"
+str(sig)       # → "G01|L1|C"
+
+# Parse from string
+sig2 = SignalID.from_string("E25|E5a|I")
+
+# Invalid SVs are rejected at construction
+SignalID(sv="X01", band="L1", code="C")  # raises ValueError
+```
+
+`SignalID` is a frozen Pydantic model — immutable and hashable. It validates the SV against `SV_PATTERN` (system letter `G|R|E|C|J|S|I` + 2-digit PRN).
+
+## `DatasetBuilder` — Guided Dataset Construction
+
+The `DatasetBuilder` helper eliminates the ~30 lines of manual numpy/xarray coordinate assembly that every reader previously needed:
+
+```python
+from canvod.readers.builder import DatasetBuilder
+
+builder = DatasetBuilder(reader)
+for epoch in reader.iter_epochs():
+    ei = builder.add_epoch(epoch.timestamp)
+    for obs in epoch.observations:
+        sig = builder.add_signal(sv=obs.sv, band=obs.band, code=obs.code)
+        builder.set_value(ei, sig, "SNR", obs.snr)
+ds = builder.build()  # validated Dataset
+```
+
+The builder handles:
+
+- **Coordinate arrays** — `sid`, `sv`, `system`, `band`, `code` from registered signals
+- **Frequency resolution** — `freq_center`, `freq_min`, `freq_max` via `SignalIDMapper`
+- **Dtype enforcement** — `float32` for frequencies, correct dtypes for each variable
+- **CF-compliant metadata** — from `COORDS_METADATA`, `SNR_METADATA`, `OBSERVABLES_METADATA`
+- **Global attributes** — from `reader._build_attrs()` + optional `extra_attrs`
+- **Validation** — calls `validate_dataset()` before returning
 
 ## Layered Architecture
 
@@ -106,8 +167,13 @@ graph TB
     end
 
     subgraph "Interface Layer"
-        B[GNSSDataReader ABC]
-        C[DatasetStructureValidator]
+        B["GNSSDataReader\n(BaseModel + ABC)"]
+        B2[SignalID]
+        C[validate_dataset]
+    end
+
+    subgraph "Builder Layer"
+        BLD[DatasetBuilder]
     end
 
     subgraph "Implementation Layer"
@@ -131,15 +197,16 @@ graph TB
     D2 -.implements.-> B
     E -.implements.-> B
 
+    D --> BLD
+    D2 --> BLD
+    BLD --> B2
+    BLD --> H
+    BLD --> I
+    BLD --> C
+
     D --> J
     D --> G
-    D --> H
-    D --> I
-    D --> C
-
     D2 --> G
-    D2 --> H
-    D2 --> C
 
 ```
 
@@ -147,50 +214,62 @@ graph TB
 
 **User Layer** -- Instantiates readers, calls `to_ds()` or `iter_epochs()`, and operates on returned Datasets.
 
-**Interface Layer (ABC)** -- Defines required methods, enforces contracts, and validates output structure.
+**Interface Layer (BaseModel + ABC)** -- Defines required methods, enforces contracts via Pydantic validation, provides `SignalID` for type-safe signal identifiers, and offers `validate_dataset()` for output validation.
+
+**Builder Layer** -- `DatasetBuilder` handles coordinate assembly, frequency resolution, dtype enforcement, and validation. Readers delegate Dataset construction to the builder instead of assembling arrays manually.
 
 **Implementation Layer (Concrete Readers)** -- Parses specific formats, implements abstract methods, and handles format-specific details. `Rnxv3Obs` reads RINEX v3.04 text; `SbfReader` reads Septentrio Binary Format with embedded satellite geometry.
 
 **Support Layer** -- Provides constellation specifications (GPS, Galileo, etc.), Signal ID mapping, and metadata templates.
 
-**Model Layer (Pydantic)** -- Supplies type-safe data models with automatic validation for parsing RINEX structure.
+**Model Layer (Pydantic)** -- Supplies type-safe data models with automatic validation for parsing RINEX headers and epoch records.
 
 ## Component Interactions
 
-### Parsing Flow
+### Parsing Flow (with DatasetBuilder)
 
 ```mermaid
 sequenceDiagram
     participant User
-    participant Reader as Rnxv3Obs<br/>(Pydantic)
+    participant Reader as Rnxv3Obs<br/>(GNSSDataReader)
     participant Header as Rnxv3ObsHeader<br/>(Pydantic)
-    participant Epoch as Rnxv3ObsEpoch<br/>(Pydantic)
+    participant Builder as DatasetBuilder
+    participant SigID as SignalID
     participant Mapper as SignalIDMapper
-    participant Dataset as xr.Dataset
     participant Validator
 
     User->>Reader: Rnxv3Obs(fpath=path)
     activate Reader
+    Note right of Reader: fpath validated by<br/>BaseModel field_validator
     Reader->>Header: Parse header section
     Header-->>Reader: Validated header data
     deactivate Reader
 
     User->>Reader: to_ds()
     activate Reader
+    Reader->>Builder: DatasetBuilder(reader)
 
     loop For each epoch
-        Reader->>Epoch: Parse epoch line
-        Epoch-->>Reader: Validated epoch data
+        Reader->>Builder: add_epoch(timestamp)
+        Builder-->>Reader: epoch_idx
 
         loop For each observation
-            Reader->>Mapper: create_signal_id()
-            Mapper-->>Reader: Signal ID
+            Reader->>Builder: add_signal(sv, band, code)
+            Builder->>SigID: SignalID(sv, band, code)
+            Note right of SigID: SV validated against<br/>SV_PATTERN
+            SigID-->>Builder: validated SignalID
+            Builder-->>Reader: SignalID
+
+            Reader->>Builder: set_value(ei, sig, "SNR", val)
         end
     end
 
-    Reader->>Dataset: Build xr.Dataset
-    Reader->>Validator: validate_output()
-    Validator-->>Reader: Passes validation
+    Reader->>Builder: build()
+    Builder->>Mapper: resolve frequencies
+    Mapper-->>Builder: freq_center, freq_min, freq_max
+    Builder->>Validator: validate_dataset(ds)
+    Validator-->>Builder: passes
+    Builder-->>Reader: xr.Dataset
 
     Reader-->>User: xr.Dataset
     deactivate Reader
@@ -198,10 +277,11 @@ sequenceDiagram
 
 Key interactions in this flow:
 
-1. **Pydantic Models** parse and validate raw text.
-2. **SignalIDMapper** converts observation codes to Signal IDs.
-3. **Dataset Builder** constructs the xarray structure.
-4. **Validator** ensures output meets structural requirements.
+1. **Pydantic `field_validator`** checks file existence at construction time.
+2. **`SignalID`** validates each signal identifier (SV format, system letter).
+3. **`DatasetBuilder`** accumulates epochs, signals, and values, then constructs the xarray structure.
+4. **`SignalIDMapper`** resolves band names to center frequencies and bandwidths.
+5. **`validate_dataset()`** ensures the output meets the structural contract.
 
 ## Design Principles
 
@@ -234,8 +314,8 @@ Key interactions in this flow:
 
     ---
 
-    Every Dataset must pass `DatasetStructureValidator` before being returned.
-    The base class `validate_output()` is called at the end of every `to_ds()` —
+    Every Dataset must pass `validate_dataset()` before being returned.
+    The function is called at the end of every `to_ds()` —
     impossible to accidentally skip it.
 
 </div>
@@ -273,17 +353,23 @@ This approach catches errors at parse time with clear, structured error messages
 Once created, readers and their outputs are immutable:
 
 ```python
-class Rnxv3Obs(BaseModel):
+class Rnxv3Obs(GNSSDataReader):
     """Immutable after initialization."""
 
     model_config = ConfigDict(frozen=True)
-    fpath: Path
+    # fpath inherited from GNSSDataReader — no need to redeclare
 
     # Attempting to modify raises FrozenInstanceError
     # reader.fpath = new_path  # raises error
 ```
 
 Immutability ensures predictable behavior, thread safety, and cacheable results.
+
+!!! note "Frozen is optional"
+
+    The base class does **not** set `frozen=True` — subclasses choose.
+    `Rnxv3Obs` uses `frozen=True` (fully immutable), while `SbfReader`
+    uses `frozen=False` (allows `@cached_property` for lazy computation).
 
 ### Separation of Format and Processing
 
@@ -299,10 +385,11 @@ def _parse_epoch_line(self, line: str) -> Rnxv3ObsEpochRecord:
 Generic processing is handled by shared helpers:
 
 ```python
-# In gnss_specs
-def create_signal_id(sv: str, obs_code: str) -> str:
-    """Works for any format."""
-    ...
+# In gnss_specs — band property lookups shared across readers
+mapper = SignalIDMapper()
+freq = mapper.get_band_frequency("L1")      # 1575.42
+bw   = mapper.get_band_bandwidth("L1")      # 30.69
+grp  = mapper.get_overlapping_group("L1")   # "group_1"
 ```
 
 ### Explicit Configuration
@@ -311,7 +398,7 @@ Configuration is always explicit:
 
 ```python
 # Explicit parameter specifying which variables to retain
-ds = reader.to_ds(keep_rnx_data_vars=["SNR", "Phase"])
+ds = reader.to_ds(keep_data_vars=["SNR", "Phase"])
 ```
 
 ### Mandatory Validation
@@ -324,85 +411,33 @@ def to_ds(self, **kwargs) -> xr.Dataset:
     ds = self._build_dataset(**kwargs)
 
     # Validation is mandatory, not optional
-    self.validate_output(ds)
+    validate_dataset(ds)
 
     return ds
 ```
 
-## DatasetStructureValidator
+## `validate_dataset()` Function
 
-The validator ensures all readers produce compatible output:
+The `validate_dataset()` function ensures all readers produce compatible output.
+It collects **all** violations and raises a single `ValueError` listing every problem.
 
 ```python
-class DatasetStructureValidator(BaseModel):
-    """Validates xarray.Dataset structure."""
+from canvod.readers.base import validate_dataset
 
-    dataset: xr.Dataset
+# Checks dimensions, coordinates (with dtypes), data variables, and attributes.
+# Raises ValueError listing ALL violations at once.
+validate_dataset(ds)
 
-    def validate_dimensions(self) -> None:
-        """Check (epoch, sid) dimensions exist."""
-        required = {"epoch", "sid"}
-        missing = required - set(self.dataset.dims)
-        if missing:
-            raise ValueError(f"Missing dimensions: {missing}")
-
-    def validate_coordinates(self) -> None:
-        """Check all required coordinates with correct dtypes."""
-        required_coords = {
-            "epoch": "datetime64[ns]",
-            "sid": "object",
-            "sv": "object",
-            "system": "object",
-            "band": "object",
-            "code": "object",
-            "freq_center": "float32",
-            "freq_min": "float32",
-            "freq_max": "float32",
-        }
-
-        for coord, expected_dtype in required_coords.items():
-            if coord not in self.dataset.coords:
-                raise ValueError(f"Missing coordinate: {coord}")
-
-            actual_dtype = str(self.dataset[coord].dtype)
-            if expected_dtype not in actual_dtype:
-                raise ValueError(
-                    f"Wrong dtype for {coord}: "
-                    f"expected {expected_dtype}, got {actual_dtype}"
-                )
-
-    def validate_data_variables(
-        self, required_vars: list[str] | None = None
-    ) -> None:
-        """Check required data variables exist with correct structure."""
-        if required_vars is None:
-            required_vars = ["SNR", "Phase"]
-
-        missing = set(required_vars) - set(self.dataset.data_vars)
-        if missing:
-            raise ValueError(f"Missing variables: {missing}")
-
-        # All variables must be (epoch, sid)
-        for var in self.dataset.data_vars:
-            if self.dataset[var].dims != ("epoch", "sid"):
-                raise ValueError(
-                    f"{var} has wrong dimensions: "
-                    f"expected (epoch, sid), got {self.dataset[var].dims}"
-                )
-
-    def validate_attributes(self) -> None:
-        """Check required global attributes for storage."""
-        required = {
-            "Created",
-            "Software",
-            "Institution",
-            "RINEX File Hash",  # For MyIcechunkStore deduplication
-        }
-
-        missing = required - set(self.dataset.attrs.keys())
-        if missing:
-            raise ValueError(f"Missing attributes: {missing}")
+# Optionally specify required data variables (default: ["SNR"])
+validate_dataset(ds, required_vars=["SNR", "Phase"])
 ```
+
+The function checks:
+
+- **Dimensions**: `(epoch, sid)` must exist
+- **Coordinates**: all required coordinates with correct dtypes
+- **Data variables**: required variables exist with `(epoch, sid)` dimensions
+- **Attributes**: required global attributes (`Created`, `Software`, `Institution`, `File Hash`)
 
 ### Rationale for Structural Requirements
 
@@ -410,7 +445,7 @@ class DatasetStructureValidator(BaseModel):
 
 **Coordinates** -- `freq_*` coordinates are required for band overlap detection. `system`, `band`, and `code` enable constellation- and signal-level filtering. `sv` tracks individual satellites.
 
-**Attributes** -- `"RINEX File Hash"` prevents duplicate ingestion in storage. Other metadata attributes support provenance tracking and reproducibility.
+**Attributes** -- `"File Hash"` prevents duplicate ingestion in storage. Other metadata attributes support provenance tracking and reproducibility.
 
 ## ReaderFactory Pattern
 
@@ -474,8 +509,10 @@ reader = ReaderFactory.create("unknown_file.rnx")
 
 The canvod-readers architecture is characterized by:
 
-1. **Contract enforcement** through the ABC, ensuring consistent behavior across all readers.
-2. **Type safety** via Pydantic, catching errors during parsing.
-3. **Structural validation** through `DatasetStructureValidator`, ensuring downstream compatibility.
-4. **Extensibility** through the ABC pattern, allowing new formats to be added without modifying existing code.
-5. **Separation of concerns** between format-specific parsing, generic processing, and validation.
+1. **Unified inheritance** — `GNSSDataReader(BaseModel, ABC)` provides file validation, `fpath`, and `model_config` out of the box. New readers only need one parent class.
+2. **Validated signal identifiers** — `SignalID` catches invalid SVs and malformed signal IDs at creation time, not during analysis.
+3. **Guided Dataset construction** — `DatasetBuilder` handles coordinate arrays, frequency resolution, dtype enforcement, and validation automatically.
+4. **Contract enforcement** through the ABC, ensuring consistent behavior across all readers.
+5. **Type safety** via Pydantic, catching errors during parsing.
+6. **Structural validation** through `validate_dataset()`, ensuring downstream compatibility.
+7. **Extensibility** — new formats can be added in ~30 lines without modifying existing code. See [:octicons-arrow-right-24: Building a Reader](building-a-reader.md) for a step-by-step guide.

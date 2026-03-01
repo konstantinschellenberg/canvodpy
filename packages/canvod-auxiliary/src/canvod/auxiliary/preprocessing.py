@@ -63,7 +63,7 @@ def create_sv_to_sid_mapping(
 ) -> dict[str, list[str]]:
     """Build mapping from each SV to its possible SIDs.
 
-    Adds ``X1|X`` placeholder SIDs as well.
+    Builds all SIDs from known band/code combinations.
 
     Parameters
     ----------
@@ -100,7 +100,6 @@ def create_sv_to_sid_mapping(
             for _, band in mapper.SYSTEM_BANDS[sys_letter].items():
                 codes = system.BAND_CODES.get(band, ["X"])
                 sids.extend(f"{sv}|{band}|{code}" for code in codes)
-        sids.append(f"{sv}|X1|X")  # aux observation
 
         sv_to_sids[sv] = sorted(sids)
 

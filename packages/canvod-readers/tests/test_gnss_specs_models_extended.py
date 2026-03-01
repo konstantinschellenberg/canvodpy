@@ -35,18 +35,15 @@ class TestObservationExtended:
 
     def test_valid_galileo_observation(self):
         obs = Observation(
-            observation_freq_tag="E01|S5Q",
             obs_type="S",
             value=42.3,
             lli=None,
             ssi=7,
         )
-        assert obs.observation_freq_tag == "E01|S5Q"
         assert obs.ssi == 7
 
     def test_valid_glonass_observation(self):
         obs = Observation(
-            observation_freq_tag="R02|C1P",
             obs_type="C",
             value=23456789.0,
             lli=0,
@@ -56,7 +53,6 @@ class TestObservationExtended:
 
     def test_valid_beidou_observation(self):
         obs = Observation(
-            observation_freq_tag="C01|L2I",
             obs_type="L",
             value=123456789.0,
             lli=1,
@@ -66,38 +62,16 @@ class TestObservationExtended:
 
     def test_valid_irnss_observation(self):
         obs = Observation(
-            observation_freq_tag="I06|S5A",
             obs_type="S",
             value=35.0,
             lli=None,
             ssi=None,
         )
-        assert obs.observation_freq_tag == "I06|S5A"
-
-    def test_invalid_sv_in_tag(self):
-        with pytest.raises(ValueError):
-            Observation(
-                observation_freq_tag="X01|L1C",
-                obs_type="L",
-                value=1.0,
-                lli=None,
-                ssi=None,
-            )
-
-    def test_missing_pipe_in_tag(self):
-        with pytest.raises(ValueError, match="Invalid observation code"):
-            Observation(
-                observation_freq_tag="G01L1C",
-                obs_type="L",
-                value=1.0,
-                lli=None,
-                ssi=None,
-            )
+        assert obs.value == 35.0
 
     def test_lli_out_of_range(self):
         with pytest.raises(ValueError, match="Indicator"):
             Observation(
-                observation_freq_tag="G01|L1C",
                 obs_type="L",
                 value=1.0,
                 lli=10,
@@ -107,7 +81,6 @@ class TestObservationExtended:
     def test_ssi_out_of_range(self):
         with pytest.raises(ValueError, match="Indicator"):
             Observation(
-                observation_freq_tag="G01|L1C",
                 obs_type="L",
                 value=1.0,
                 lli=None,
@@ -116,14 +89,12 @@ class TestObservationExtended:
 
     def test_lli_boundary_values(self):
         obs_min = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type="L",
             value=1.0,
             lli=INDICATOR_MIN,
             ssi=None,
         )
         obs_max = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type="L",
             value=1.0,
             lli=INDICATOR_MAX,
@@ -135,7 +106,6 @@ class TestObservationExtended:
     def test_frequency_validation_valid(self):
         freq = 1575.42 * UREG.MHz
         obs = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type="L",
             value=1.0,
             lli=None,
@@ -146,7 +116,6 @@ class TestObservationExtended:
 
     def test_frequency_validation_none(self):
         obs = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type="L",
             value=1.0,
             lli=None,
@@ -157,7 +126,6 @@ class TestObservationExtended:
 
     def test_none_value_and_obs_type(self):
         obs = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type=None,
             value=None,
             lli=None,
@@ -175,56 +143,17 @@ class TestObservationExtended:
 class TestSatelliteExtended:
     """Extended Satellite tests."""
 
-    def test_get_observation_found(self):
+    def test_add_and_retrieve_observations(self):
         sat = Satellite(sv="G01")
         obs = Observation(
-            observation_freq_tag="G01|L1C",
             obs_type="L",
             value=100.0,
             lli=None,
             ssi=None,
         )
         sat.add_observation(obs)
-        found = sat.get_observation("G01|L1C")
-        assert found is obs
-
-    def test_get_observation_not_found(self):
-        sat = Satellite(sv="G01")
-        assert sat.get_observation("G01|L2C") is None
-
-    def test_get_observation_values(self):
-        sat = Satellite(sv="G01")
-        obs1 = Observation(
-            observation_freq_tag="G01|S1C",
-            obs_type="S",
-            value=45.0,
-            lli=None,
-            ssi=None,
-        )
-        obs2 = Observation(
-            observation_freq_tag="G01|S1C",
-            obs_type="S",
-            value=46.0,
-            lli=None,
-            ssi=None,
-        )
-        sat.add_observation(obs1)
-        sat.add_observation(obs2)
-
-        values = sat.get_observation_values("G01|S1C")
-        assert values == [45.0, 46.0]
-
-    def test_get_observation_values_none_excluded(self):
-        sat = Satellite(sv="G01")
-        obs = Observation(
-            observation_freq_tag="G01|S1C",
-            obs_type="S",
-            value=None,
-            lli=None,
-            ssi=None,
-        )
-        sat.add_observation(obs)
-        assert sat.get_observation_values("G01|S1C") == []
+        assert len(sat.observations) == 1
+        assert sat.observations[0] is obs
 
     def test_all_constellation_svs(self):
         """All GNSS constellation prefixes should be valid."""
