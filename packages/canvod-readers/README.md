@@ -79,4 +79,4 @@ just check
 
 ## License
 
-MIT License
+Apache License 2.0

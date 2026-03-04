@@ -22,7 +22,7 @@
 
 <!-- Project -->
 [![CLIMERS @ TU Wien](https://img.shields.io/badge/CLIMERS-TU_Wien-006699)](https://www.tuwien.at/en/mg/geo/climers)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 An open Python ecosystem for GNSS-Transmissometry (GNSS-T) canopy VOD retrievals. canVODpy aims to become the central community-driven software suite for deriving and analyzing Vegetation Optical Depth from GNSS signal-to-noise ratio observations.
 
@@ -171,7 +171,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
 
 ## License
 
-Licensed under the MIT License. See the [LICENSE file](https://github.com/nfb2021/canvodpy/blob/main/LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See the [LICENSE file](https://github.com/nfb2021/canvodpy/blob/main/LICENSE) for details.
 
 ## Author & Affiliation
 

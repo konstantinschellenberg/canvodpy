@@ -201,7 +201,7 @@ Contributions welcome! Please see the [main repository](https://github.com/nfb20
 
 ## License
 
-MIT License - See LICENSE file
+Apache License 2.0 - See LICENSE file
 
 ## Related Packages
 

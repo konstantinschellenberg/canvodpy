@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"}
 ]
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 
 dependencies = [
     "pydantic>=2.0",

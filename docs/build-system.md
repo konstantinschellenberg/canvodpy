@@ -76,7 +76,7 @@ name            = "canvod-readers"
 version         = "0.1.0"
 description     = "GNSS data format readers for canVODpy"
 readme          = "README.md"
-license         = {text = "MIT"}
+license         = {text = "Apache-2.0"}
 authors         = [{name = "Nicolas Bader", email = "nicolas.bader@geo.tuwien.ac.at"}]
 requires-python = ">=3.13"
 keywords        = ["gnss", "rinex", "geodesy", "vod"]
@@ -84,7 +84,7 @@ keywords        = ["gnss", "rinex", "geodesy", "vod"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
 ]
