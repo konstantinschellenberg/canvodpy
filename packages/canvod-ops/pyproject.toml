@@ -21,8 +21,10 @@ dependencies = [
     "polars>=1.0.0",
     "numpy>=1.26.0",
     "pandas>=2.1.0",
+    "zarr>=3.0.0",
     "canvod-utils>=0.1.0",
     "canvod-grids>=0.1.0",
+    "canvod-streamstats>=0.1.0",
     "loguru>=0.7.0",
 ]
 
@@ -35,6 +37,7 @@ dev = [
 [tool.uv.sources]
 canvod-utils = { workspace = true }
 canvod-grids = { workspace = true }
+canvod-streamstats = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]

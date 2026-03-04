@@ -523,3 +523,128 @@ def calculate_vod(site: str, yyyydoy: str) -> dict:
         "yyyydoy": date_obj.to_str(),
         "analyses": analyses_result,
     }
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — update_statistics
+# ---------------------------------------------------------------------------
+
+
+def update_statistics(site: str, yyyydoy: str) -> dict:
+    """Update streaming statistics for all receivers at a site.
+
+    Feeds the day's observations into Welford / GK / Histogram accumulators
+    stored in a per-site Zarr statistics store.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "receivers_updated", "total_keys",
+        "total_observations"}``
+    """
+    import zarr
+
+    from canvod.ops.statistics import ProfileRegistry, StatisticsStore, UpdateStatistics
+    from canvod.store import GnssResearchSite
+
+    config = load_config()
+    date_obj = _resolve_date(yyyydoy)
+
+    research_site = GnssResearchSite(site)
+    store_path = config.processing.storage.get_statistics_store_path(site)
+
+    # Open (or create) the statistics Zarr store
+    root = zarr.open_group(str(store_path), mode="a")
+    stats_store = StatisticsStore(root)
+
+    day_date = date_obj.date
+    start_str = str(day_date)
+    end_str = str(day_date + datetime.timedelta(days=1))
+
+    receivers_updated: list[str] = []
+    total_keys = 0
+    total_observations = 0
+
+    start_time = datetime.datetime.combine(day_date, datetime.time.min)
+    end_time = datetime.datetime.combine(day_date, datetime.time.max)
+    time_range = (start_time, end_time)
+
+    site_config = config.sites.sites[site]
+    for rx_name, rx_meta in site_config.receivers.items():
+        rx_type = rx_meta.receiver_type
+
+        # Idempotency: skip if this epoch range was already processed
+        if stats_store.is_epoch_range_processed(rx_type, start_str, end_str):
+            logger.info(
+                "update_statistics: %s/%s already processed for %s — skipping",
+                site,
+                rx_name,
+                date_obj.to_str(),
+            )
+            continue
+
+        # Load or create the registry for this receiver type
+        try:
+            registry = stats_store.load(rx_type)
+        except KeyError:
+            registry = ProfileRegistry()
+
+        # Load the day's data from the RINEX Icechunk store
+        try:
+            day_ds = research_site.load_rinex_data(
+                receiver_name=rx_name,
+                time_range=time_range,
+            )
+        except Exception:
+            logger.warning(
+                "update_statistics: no data for %s/%s on %s",
+                site,
+                rx_name,
+                date_obj.to_str(),
+            )
+            continue
+
+        # Determine variables to profile (all float data vars)
+        variables = [
+            v for v in day_ds.data_vars if np.issubdtype(day_ds[v].dtype, np.floating)
+        ]
+
+        # Run the statistics op
+        op = UpdateStatistics(
+            registry=registry,
+            receiver_type=rx_type,
+            variables=variables,
+        )
+        _, result = op(day_ds)
+
+        # Save updated registry and record epoch range
+        stats_store.save(registry, rx_type)
+        stats_store.record_epoch_range(rx_type, start_str, end_str)
+
+        receivers_updated.append(rx_name)
+        total_keys += len(registry)
+        total_observations += sum(
+            acc.welford.count for acc in registry._accumulators.values()
+        )
+
+        logger.info(
+            "update_statistics: %s/%s — %s",
+            site,
+            rx_name,
+            result.notes,
+        )
+
+    return {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "receivers_updated": receivers_updated,
+        "total_keys": total_keys,
+        "total_observations": total_observations,
+    }

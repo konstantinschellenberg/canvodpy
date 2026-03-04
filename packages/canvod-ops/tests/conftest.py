@@ -87,3 +87,28 @@ def ds_no_phi_theta() -> xr.Dataset:
         attrs={"File Hash": "ghi789"},
     )
     return ds
+
+
+@pytest.fixture
+def sample_ds_with_cell_ids() -> xr.Dataset:
+    """Dataset with cell_id coordinate for statistics testing."""
+    rng = np.random.default_rng(42)
+
+    n_epoch = 20
+    n_sid = 3
+    sids = ["G01_L1C", "G02_L1C", "G05_L1C"]
+
+    epochs = pd.date_range("2024-01-01", periods=n_epoch, freq="1s")
+    snr = rng.uniform(20.0, 50.0, size=(n_epoch, n_sid))
+    cell_ids = np.tile([1, 2, 3], (n_epoch, 1)).astype(np.float64)
+
+    ds = xr.Dataset(
+        {"SNR": (("epoch", "sid"), snr)},
+        coords={
+            "epoch": epochs.values,
+            "sid": sids,
+            "cell_id_equal_area_2.0deg": (("epoch", "sid"), cell_ids),
+        },
+        attrs={"File Hash": "stats_test"},
+    )
+    return ds

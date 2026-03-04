@@ -329,6 +329,10 @@ class StorageConfig(BaseModel):
         "vod",
         description="Name of the VOD Icechunk store directory",
     )
+    statistics_store_name: str = Field(
+        "statistics",
+        description="Name of the statistics Zarr store directory",
+    )
     aux_data_dir: Path | None = Field(
         None,
         description=(
@@ -407,6 +411,21 @@ class StorageConfig(BaseModel):
             Path to the site's VOD store.
         """
         return self.stores_root_dir / site_name / self.vod_store_name
+
+    def get_statistics_store_path(self, site_name: str) -> Path:
+        """Get the statistics store path for a site.
+
+        Parameters
+        ----------
+        site_name : str
+            Site name.
+
+        Returns
+        -------
+        Path
+            Path to the site's statistics store.
+        """
+        return self.stores_root_dir / site_name / self.statistics_store_name
 
     def get_aux_data_dir(self) -> Path:
         """Get the directory for auxiliary data files.
@@ -497,6 +516,47 @@ class GridAssignmentConfig(BaseModel):
     )
 
 
+class HistogramBinsConfig(BaseModel):
+    """Custom histogram bin specification for a variable."""
+
+    low: float = Field(..., description="Lower edge of the first bin")
+    high: float = Field(..., description="Upper edge of the last bin")
+    n_bins: int = Field(..., ge=1, description="Number of bins")
+
+
+class StatisticsConfig(BaseModel):
+    """Streaming statistics configuration."""
+
+    enabled: bool = Field(False, description="Enable streaming statistics collection")
+    variables: list[str] = Field(
+        default_factory=lambda: ["SNR"],
+        description="Variables to profile",
+    )
+    gk_epsilon: float = Field(
+        0.01, gt=0, lt=1, description="GK sketch approximation parameter"
+    )
+    quantile_probs: list[float] = Field(
+        default_factory=lambda: [
+            0.001,
+            0.01,
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            0.9,
+            0.95,
+            0.99,
+            0.999,
+        ],
+        description="Quantile probabilities to compute",
+    )
+    custom_histogram_bins: dict[str, HistogramBinsConfig] = Field(
+        default_factory=dict,
+        description="Per-variable histogram bin overrides",
+    )
+
+
 class PreprocessingConfig(BaseModel):
     """Preprocessing pipeline configuration."""
 
@@ -505,6 +565,9 @@ class PreprocessingConfig(BaseModel):
     )
     grid_assignment: GridAssignmentConfig = Field(
         default_factory=GridAssignmentConfig,
+    )
+    statistics: StatisticsConfig = Field(
+        default_factory=StatisticsConfig,
     )
 
 

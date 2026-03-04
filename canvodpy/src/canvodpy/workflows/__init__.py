@@ -6,6 +6,7 @@ from canvodpy.workflows.tasks import (
     fetch_aux_data,
     parse_sampling_interval_from_filename,
     process_rinex,
+    update_statistics,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "fetch_aux_data",
     "parse_sampling_interval_from_filename",
     "process_rinex",
+    "update_statistics",
 ]

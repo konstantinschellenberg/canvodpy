@@ -9,6 +9,10 @@
             "path": "packages/canvod-naming",
         },
         {
+            "name": "📊 canvod-ops",
+            "path": "packages/canvod-ops",
+        },
+        {
             "name": "🛠️ canvod-utils",
             "path": "packages/canvod-utils",
         },

@@ -1,9 +1,9 @@
 """Airflow DAG template — one DAG per configured GNSS research site.
 
 Each DAG runs every 6 hours and processes the **previous day**.
-The four tasks form a linear chain::
+The five tasks form a linear chain::
 
-    check_rinex ──> fetch_aux_data ──> process_rinex ──> calculate_vod
+    check_rinex ──> fetch_aux_data ──> process_rinex ──> calculate_vod ──> update_statistics
 
 ``check_rinex`` fails with RuntimeError when RINEX files are not yet
 present for both receivers — Airflow retries automatically.
@@ -113,11 +113,22 @@ def create_site_dag(site_name: str):
             _ = process_info  # dependency only
             return calculate_vod(site_name, _ds_to_yyyydoy(ds))
 
+        @task
+        def t_update_statistics(
+            vod_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            from canvodpy.workflows.tasks import update_statistics
+
+            _ = vod_info  # dependency only
+            return update_statistics(site_name, _ds_to_yyyydoy(ds))
+
         # Wire the DAG — linear chain
         rinex_info = t_check_rinex()
         aux_info = t_fetch_aux_data(rinex_info=rinex_info)
         process_info = t_process_rinex(aux_info=aux_info, rinex_info=rinex_info)
-        t_calculate_vod(process_info=process_info)
+        vod_info = t_calculate_vod(process_info=process_info)
+        t_update_statistics(vod_info=vod_info)
 
     return site_dag()
 
