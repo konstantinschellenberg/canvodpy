@@ -90,6 +90,10 @@ DEFAULT_DOY_WINDOW: int = 15  # days per DOY bin
 DEFAULT_TOD_WINDOW: int = 1  # hours per TOD bin
 DAYS_PER_YEAR: float = 365.25  # for DOY → angle conversion
 
+# EWMA / temporal smoothing defaults (§14.5)
+DEFAULT_EWMA_HALFLIFE: float = 10.0  # half-life in number of samples
+DEFAULT_RUNNING_MEDIAN_WINDOW: int = 5  # sliding window size
+
 
 class AnomalyClassification(StrEnum):
     """Anomaly severity from standardised z-score."""

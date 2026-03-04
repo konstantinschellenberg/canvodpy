@@ -8,6 +8,15 @@ plus the integration-layer symbols that remain in ``canvod.ops.statistics``.
 # Integration-layer symbols that stay in canvod-ops
 from canvod.ops.statistics.op import UpdateStatistics, update_statistics
 from canvod.ops.statistics.profile import AccumulatorSet, ProfileRegistry
+from canvod.ops.statistics.query import (
+    AnomalyTimeline,
+    ChangepointStatus,
+    ClimatologyHeatmap,
+    ConfidenceEnvelope,
+    StatisticsQuery,
+    StatisticsSnapshot,
+    VariableStats,
+)
 from canvod.ops.statistics.store import StatisticsStore
 from canvod.streamstats import (
     DAYS_PER_YEAR,
@@ -28,6 +37,7 @@ from canvod.streamstats import (
     DEFAULT_DFA_ORDER,
     DEFAULT_DOY_WINDOW,
     DEFAULT_ELEVATION_SIGMA_RAD,
+    DEFAULT_EWMA_HALFLIFE,
     DEFAULT_FADE_THRESHOLDS,
     DEFAULT_GOERTZEL_FREQUENCIES,
     DEFAULT_GOERTZEL_WINDOW,
@@ -48,6 +58,7 @@ from canvod.streamstats import (
     DEFAULT_QUANTILE_PROBS,
     DEFAULT_RLS_FORGETTING_FACTOR,
     DEFAULT_RLS_N_FEATURES,
+    DEFAULT_RUNNING_MEDIAN_WINDOW,
     DEFAULT_S4_WINDOW,
     DEFAULT_SAMPLE_ENTROPY_M,
     DEFAULT_SAMPLE_ENTROPY_R,
@@ -68,6 +79,7 @@ from canvod.streamstats import (
     ClimatologyGrid,
     DFAResult,
     EMDResult,
+    EWMAAccumulator,
     FadingAccumulator,
     GaussianMixtureResult,
     GKSketch,
@@ -81,6 +93,7 @@ from canvod.streamstats import (
     QualityFlag,
     ReceiverType,
     RecursiveLeastSquares,
+    RunningMedianFilter,
     S4Accumulator,
     SampleEntropyResult,
     SiderealFilterResult,

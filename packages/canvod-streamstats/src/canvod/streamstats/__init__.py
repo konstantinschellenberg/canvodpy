@@ -19,6 +19,7 @@ from canvod.streamstats._types import (
     DEFAULT_DFA_ORDER,
     DEFAULT_DOY_WINDOW,
     DEFAULT_ELEVATION_SIGMA_RAD,
+    DEFAULT_EWMA_HALFLIFE,
     DEFAULT_FADE_THRESHOLDS,
     DEFAULT_GOERTZEL_FREQUENCIES,
     DEFAULT_GOERTZEL_WINDOW,
@@ -39,6 +40,7 @@ from canvod.streamstats._types import (
     DEFAULT_QUANTILE_PROBS,
     DEFAULT_RLS_FORGETTING_FACTOR,
     DEFAULT_RLS_N_FEATURES,
+    DEFAULT_RUNNING_MEDIAN_WINDOW,
     DEFAULT_S4_WINDOW,
     DEFAULT_SAMPLE_ENTROPY_M,
     DEFAULT_SAMPLE_ENTROPY_R,
@@ -58,6 +60,7 @@ from canvod.streamstats._types import (
 from canvod.streamstats.accumulators.autocovariance import StreamingAutocovariance
 from canvod.streamstats.accumulators.bivariate_histogram import BivariateHistogram
 from canvod.streamstats.accumulators.circular import CircularAccumulator
+from canvod.streamstats.accumulators.ewma import EWMAAccumulator
 from canvod.streamstats.accumulators.fading import FadingAccumulator
 from canvod.streamstats.accumulators.gk_sketch import GKSketch
 from canvod.streamstats.accumulators.goertzel import GoertzelAccumulator
@@ -68,6 +71,7 @@ from canvod.streamstats.accumulators.permutation_entropy import (
     PermutationEntropyAccumulator,
 )
 from canvod.streamstats.accumulators.rls import RecursiveLeastSquares
+from canvod.streamstats.accumulators.running_median import RunningMedianFilter
 from canvod.streamstats.accumulators.scintillation import (
     S4Accumulator,
     nakagami_m_from_s4,

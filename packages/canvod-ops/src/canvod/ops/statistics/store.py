@@ -11,7 +11,9 @@ from canvod.ops.statistics.profile import AccumulatorSet, ProfileRegistry
 from canvod.streamstats import (
     DEFAULT_HISTOGRAM_BINS,
     DEFAULT_QUANTILE_PROBS,
+    BOCPDAccumulator,
     CellSignalKey,
+    ClimatologyGrid,
     GKSketch,
     StreamingAutocovariance,
     StreamingHistogram,
@@ -211,23 +213,187 @@ class StatisticsStore:
 
         return registry
 
+    # ------------------------------------------------------------------
+    # Generic idempotency helpers
+    # ------------------------------------------------------------------
+
+    def _record_range(
+        self, receiver_type: str, attr_key: str, start: str, end: str
+    ) -> None:
+        """Append a ``{start, end}`` record to *attr_key* on the receiver group."""
+        rx_group = self._group.require_group(receiver_type)
+        processed = list(rx_group.attrs.get(attr_key, []))
+        processed.append({"start": start, "end": end})
+        rx_group.attrs[attr_key] = processed
+
+    def _is_range_processed(
+        self, receiver_type: str, attr_key: str, start: str, end: str
+    ) -> bool:
+        """Return ``True`` if ``(start, end)`` already exists under *attr_key*."""
+        try:
+            rx_group = self._group[receiver_type]
+        except KeyError:
+            return False
+        processed = rx_group.attrs.get(attr_key, [])
+        return any(r["start"] == start and r["end"] == end for r in processed)
+
+    # --- profile (existing, now delegates) ---
+
     def record_epoch_range(self, receiver_type: str, start: str, end: str) -> None:
         """Record a processed epoch range for idempotency."""
-        rx_group = self._group.require_group(receiver_type)
-        processed = list(rx_group.attrs.get("processed_ranges", []))
-        processed.append({"start": start, "end": end})
-        rx_group.attrs["processed_ranges"] = processed
+        self._record_range(receiver_type, "processed_ranges", start, end)
 
     def is_epoch_range_processed(
         self, receiver_type: str, start: str, end: str
     ) -> bool:
         """Check if an epoch range was already processed."""
+        return self._is_range_processed(receiver_type, "processed_ranges", start, end)
+
+    # ------------------------------------------------------------------
+    # Climatology persistence
+    # ------------------------------------------------------------------
+
+    def save_climatology(
+        self, grids: dict[str, ClimatologyGrid], receiver_type: str
+    ) -> None:
+        """Write each ``ClimatologyGrid`` into ``<rx_type>/climatology/<var>``."""
+        rx_group = self._group.require_group(receiver_type)
+        clim_group = rx_group.require_group("climatology")
+        for var_name, grid in grids.items():
+            _write_array(clim_group, var_name, grid.to_array())
+
+    def load_climatology(self, receiver_type: str) -> dict[str, ClimatologyGrid]:
+        """Load all climatology grids for *receiver_type*."""
         try:
-            rx_group = self._group[receiver_type]
+            clim_group = self._group[receiver_type]["climatology"]
         except KeyError:
-            return False
-        processed = rx_group.attrs.get("processed_ranges", [])
-        return any(r["start"] == start and r["end"] == end for r in processed)
+            return {}
+        grids: dict[str, ClimatologyGrid] = {}
+        for name in clim_group.array_keys():
+            grids[name] = ClimatologyGrid.from_array(np.asarray(clim_group[name]))
+        return grids
+
+    def record_climatology_range(
+        self, receiver_type: str, start: str, end: str
+    ) -> None:
+        self._record_range(receiver_type, "climatology_ranges", start, end)
+
+    def is_climatology_range_processed(
+        self, receiver_type: str, start: str, end: str
+    ) -> bool:
+        return self._is_range_processed(receiver_type, "climatology_ranges", start, end)
+
+    # ------------------------------------------------------------------
+    # BOCPD persistence
+    # ------------------------------------------------------------------
+
+    def save_bocpd(
+        self, accumulators: dict[str, BOCPDAccumulator], receiver_type: str
+    ) -> None:
+        """Write each ``BOCPDAccumulator`` into ``<rx_type>/bocpd/<var>``."""
+        rx_group = self._group.require_group(receiver_type)
+        bocpd_group = rx_group.require_group("bocpd")
+        for var_name, acc in accumulators.items():
+            _write_array(bocpd_group, var_name, acc.to_array())
+
+    def load_bocpd(self, receiver_type: str) -> dict[str, BOCPDAccumulator]:
+        """Load all BOCPD accumulators for *receiver_type*."""
+        try:
+            bocpd_group = self._group[receiver_type]["bocpd"]
+        except KeyError:
+            return {}
+        accumulators: dict[str, BOCPDAccumulator] = {}
+        for name in bocpd_group.array_keys():
+            accumulators[name] = BOCPDAccumulator.from_array(
+                np.asarray(bocpd_group[name])
+            )
+        return accumulators
+
+    def record_bocpd_range(self, receiver_type: str, start: str, end: str) -> None:
+        self._record_range(receiver_type, "bocpd_ranges", start, end)
+
+    def is_bocpd_range_processed(
+        self, receiver_type: str, start: str, end: str
+    ) -> bool:
+        return self._is_range_processed(receiver_type, "bocpd_ranges", start, end)
+
+    # ------------------------------------------------------------------
+    # Anomaly summary persistence
+    # ------------------------------------------------------------------
+
+    def save_anomaly_summary(
+        self,
+        receiver_type: str,
+        date_str: str,
+        summary: dict[str, tuple],
+    ) -> None:
+        """Append one day's anomaly summary for each variable.
+
+        Each entry in *summary* maps ``variable_name`` to a 6-tuple:
+        ``(n_normal, n_mild, n_moderate, n_severe, mean_abs_z, max_abs_z)``.
+        """
+        rx_group = self._group.require_group(receiver_type)
+        anom_group = rx_group.require_group("anomalies")
+
+        variables = sorted(summary.keys())
+        row = np.array([summary[v] for v in variables], dtype=np.float64)  # (n_vars, 6)
+        row = row.reshape(1, len(variables), 6)
+
+        if "daily_summary" in anom_group:
+            existing = np.asarray(anom_group["daily_summary"])
+            combined = np.concatenate([existing, row], axis=0)
+            _write_array(anom_group, "daily_summary", combined)
+        else:
+            anom_group.create_array("daily_summary", data=row)
+
+        # Track dates and variable ordering as attributes
+        dates = list(anom_group.attrs.get("dates", []))
+        dates.append(date_str)
+        anom_group.attrs["dates"] = dates
+        anom_group.attrs["variables"] = variables
+
+    def load_anomaly_summaries(
+        self, receiver_type: str
+    ) -> tuple[list[str], list[str], np.ndarray]:
+        """Load all anomaly summaries.
+
+        Returns
+        -------
+        dates : list[str]
+        variables : list[str]
+        data : np.ndarray, shape ``(n_days, n_vars, 6)``
+        """
+        try:
+            anom_group = self._group[receiver_type]["anomalies"]
+        except KeyError:
+            return [], [], np.empty((0, 0, 6), dtype=np.float64)
+        dates = list(anom_group.attrs.get("dates", []))
+        variables = list(anom_group.attrs.get("variables", []))
+        data = np.asarray(anom_group["daily_summary"])
+        return dates, variables, data
+
+    def record_anomaly_range(self, receiver_type: str, start: str, end: str) -> None:
+        self._record_range(receiver_type, "anomaly_ranges", start, end)
+
+    def is_anomaly_range_processed(
+        self, receiver_type: str, start: str, end: str
+    ) -> bool:
+        return self._is_range_processed(receiver_type, "anomaly_ranges", start, end)
+
+    # ------------------------------------------------------------------
+    # Pipeline completion marker
+    # ------------------------------------------------------------------
+
+    def record_pipeline_completed(
+        self, receiver_type: str, start: str, end: str
+    ) -> None:
+        """Record that the full pipeline (stats → snapshot) completed."""
+        self._record_range(receiver_type, "pipeline_completed", start, end)
+
+    def is_pipeline_completed(self, receiver_type: str, start: str, end: str) -> bool:
+        return self._is_range_processed(receiver_type, "pipeline_completed", start, end)
+
+    # ------------------------------------------------------------------
 
     def list_receiver_types(self) -> list[str]:
         """Return receiver types that have been stored."""

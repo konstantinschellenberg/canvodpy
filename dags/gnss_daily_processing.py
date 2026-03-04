@@ -1,17 +1,16 @@
 """Airflow DAG template — one DAG per configured GNSS research site.
 
 Each DAG runs every 6 hours and processes the **previous day**.
-The five tasks form a linear chain::
+The nine tasks form a fork-join topology::
 
-    check_rinex ──> fetch_aux_data ──> process_rinex ──> calculate_vod ──> update_statistics
+    check_rinex → fetch_aux → process_rinex → calculate_vod → update_statistics
+      → update_climatology → detect_anomalies      ─┐
+                            → detect_changepoints   ─┤
+                                                      → snapshot_statistics
 
-``check_rinex`` fails with RuntimeError when RINEX files are not yet
-present for both receivers — Airflow retries automatically.
-
-``fetch_aux_data`` downloads SP3/CLK products from public FTP servers.
-Final products lag ~12-14 days, rapid products ~1 day.  When products
-are not yet available the FTP download raises RuntimeError, which
-Airflow retries on the next scheduled run.
+``detect_anomalies`` and ``detect_changepoints`` run in parallel (both
+depend only on ``update_climatology``).  ``snapshot_statistics`` waits for
+both.
 
 Requirements
 ------------
@@ -123,12 +122,58 @@ def create_site_dag(site_name: str):
             _ = vod_info  # dependency only
             return update_statistics(site_name, _ds_to_yyyydoy(ds))
 
-        # Wire the DAG — linear chain
+        @task
+        def t_update_climatology(
+            stats_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            from canvodpy.workflows.tasks import update_climatology
+
+            _ = stats_info  # dependency only
+            return update_climatology(site_name, _ds_to_yyyydoy(ds))
+
+        @task
+        def t_detect_anomalies(
+            clim_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            from canvodpy.workflows.tasks import detect_anomalies
+
+            _ = clim_info  # dependency only
+            return detect_anomalies(site_name, _ds_to_yyyydoy(ds))
+
+        @task
+        def t_detect_changepoints(
+            clim_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            from canvodpy.workflows.tasks import detect_changepoints
+
+            _ = clim_info  # dependency only
+            return detect_changepoints(site_name, _ds_to_yyyydoy(ds))
+
+        @task
+        def t_snapshot_statistics(
+            anomaly_info: dict,
+            cp_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            from canvodpy.workflows.tasks import snapshot_statistics
+
+            _ = anomaly_info  # dependency only
+            _ = cp_info  # dependency only
+            return snapshot_statistics(site_name, _ds_to_yyyydoy(ds))
+
+        # Wire the DAG — fork-join after update_statistics
         rinex_info = t_check_rinex()
         aux_info = t_fetch_aux_data(rinex_info=rinex_info)
         process_info = t_process_rinex(aux_info=aux_info, rinex_info=rinex_info)
         vod_info = t_calculate_vod(process_info=process_info)
-        t_update_statistics(vod_info=vod_info)
+        stats_info = t_update_statistics(vod_info=vod_info)
+        clim_info = t_update_climatology(stats_info=stats_info)
+        anomaly_info = t_detect_anomalies(clim_info=clim_info)
+        cp_info = t_detect_changepoints(clim_info=clim_info)  # parallel with anomalies
+        t_snapshot_statistics(anomaly_info=anomaly_info, cp_info=cp_info)
 
     return site_dag()
 
