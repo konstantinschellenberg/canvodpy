@@ -157,6 +157,20 @@ class ProcessingParams(BaseModel):
         True,
         description="Treat GLONASS FDMA bands as one band",
     )
+    store_radial_distance: bool = Field(
+        False,
+        description="Store radial distance (r) in the output store",
+    )
+    receiver_position_mode: Literal["shared", "per_receiver"] = Field(
+        "shared",
+        description=(
+            "'shared': all receivers use the canopy receiver position for "
+            "spherical coordinate computation (default, enables 1:1 SNR "
+            "comparison). 'per_receiver': each receiver uses its own RINEX "
+            "header position (physically correct geometry but breaks direct "
+            "SNR comparability between receivers)."
+        ),
+    )
     batch_hours: float = Field(
         24.0,
         gt=0,

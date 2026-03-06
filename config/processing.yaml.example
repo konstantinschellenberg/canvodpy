@@ -60,6 +60,8 @@ processing:
     # - Phase
     # - Doppler
   aggregate_glonass_fdma: true    # If true, GLONASS FDMA signals are aggregated into effective bands G1* and G2*, with center frequencies being the mean of the respective FDMA sub-bands and bandwidth stretching across all sub-bands incl. their respective bandwidhts
+  store_radial_distance: false   # If true, store satellite-receiver distance (r) alongside phi/theta
+  receiver_position_mode: shared  # 'shared': all receivers use canopy position (default, enables 1:1 SNR comparison). 'per_receiver': each receiver uses its own RINEX header position (⚠ breaks direct SNR comparability between receivers).
 
   # --- Batch strategy -----------------------------------------------------
   # >= 24: multi-day strategy (accumulates calendar days)

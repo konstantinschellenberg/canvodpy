@@ -23,6 +23,8 @@ processing:
     - Phase
     - Doppler
   aggregate_glonass_fdma: true
+  store_radial_distance: false
+  receiver_position_mode: shared
   batch_hours: 24
   resource_mode: auto
   # n_max_threads, max_memory_gb, cpu_affinity, nice_priority
