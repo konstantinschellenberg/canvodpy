@@ -1,5 +1,7 @@
 """RINEX processing orchestration and Icechunk writing helpers."""
 
+from __future__ import annotations
+
 import contextlib
 import json
 import os
@@ -523,7 +525,7 @@ class RinexDataProcessor:
         else:
             self.n_max_workers = None
         self._dask_client = dask_client
-        self._reader_name = reader_name
+        self._reader_name = reader_name  # fallback; prefer per-receiver reader_format
         self.use_sbf_geometry = use_sbf_geometry
         self._logger = get_logger(__name__).bind(
             site=site.site_name,
@@ -987,6 +989,7 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1013,6 +1016,8 @@ class RinexDataProcessor:
             Receiver position (computed once)
         receiver_type : str
             Receiver type
+        reader_format : str | None
+            Per-receiver reader format. Falls back to ``self._reader_name``.
 
         Returns
         -------
@@ -1021,12 +1026,23 @@ class RinexDataProcessor:
             augmented_datasets is sorted chronologically by filename.
 
         """
+        effective_reader = reader_format or self._reader_name
         if self._dask_client is not None and _HAS_DISTRIBUTED:
             return self._parallel_process_rinex_dask(
-                rinex_files, keep_vars, aux_zarr_path, receiver_position, receiver_type
+                rinex_files,
+                keep_vars,
+                aux_zarr_path,
+                receiver_position,
+                receiver_type,
+                effective_reader,
             )
         return self._parallel_process_rinex_pool(
-            rinex_files, keep_vars, aux_zarr_path, receiver_position, receiver_type
+            rinex_files,
+            keep_vars,
+            aux_zarr_path,
+            receiver_position,
+            receiver_type,
+            effective_reader,
         )
 
     def _parallel_process_rinex_dask(
@@ -1036,6 +1052,7 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1067,6 +1084,7 @@ class RinexDataProcessor:
         task_submission_start = time.time()
 
         # Submit all tasks to the Dask cluster
+        effective_reader = reader_format or self._reader_name
         future_to_file = {
             client.submit(
                 preprocess_with_hermite_aux,
@@ -1076,7 +1094,7 @@ class RinexDataProcessor:
                 receiver_position,
                 receiver_type,
                 self.keep_sids,
-                self._reader_name,
+                effective_reader,
                 self.use_sbf_geometry,
                 pure=False,
             ): rinex_file
@@ -1157,6 +1175,7 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1185,6 +1204,7 @@ class RinexDataProcessor:
         sid_issues_agg: dict[str, set] = {}
         task_submission_start = time.time()
 
+        effective_reader = reader_format or self._reader_name
         with ProcessPoolExecutor(max_workers=self.n_max_workers) as executor:
             futures = {
                 executor.submit(
@@ -1195,7 +1215,7 @@ class RinexDataProcessor:
                     receiver_position,
                     receiver_type,
                     self.keep_sids,
-                    self._reader_name,
+                    effective_reader,
                     self.use_sbf_geometry,
                 ): rinex_file
                 for rinex_file in rinex_files
@@ -2810,7 +2830,7 @@ class RinexDataProcessor:
     def prepare_batch_tasks(
         self,
         keep_vars: list[str] | None,
-        receiver_configs: list[tuple[str, str, Path, Path | None]],
+        receiver_configs: list[tuple[str, str, Path, Path | None, str]],
     ) -> tuple[list[tuple], list[tuple[str, list[Path]]]]:
         """Prepare aux Zarr and task descriptors for flat Dask submission.
 
@@ -2822,8 +2842,8 @@ class RinexDataProcessor:
         ----------
         keep_vars : list[str] | None
             Variables to keep in datasets.
-        receiver_configs : list[tuple[str, str, Path, Path | None]]
-            ``(receiver_name, receiver_type, data_dir, position_data_dir)``
+        receiver_configs : list[tuple[str, str, Path, Path | None, str]]
+            ``(receiver_name, receiver_type, data_dir, position_data_dir, reader_format)``
             tuples.
 
         Returns
@@ -2841,7 +2861,9 @@ class RinexDataProcessor:
             keep_vars = self._config.processing.processing.keep_rnx_vars
 
         # Get first receiver files to infer sampling rate for aux preprocessing
-        first_receiver_name, _first_type, first_data_dir, _ = receiver_configs[0]
+        first_receiver_name, _first_type, first_data_dir, _, _first_fmt = (
+            receiver_configs[0]
+        )
         first_files = self._get_rinex_files(first_data_dir)
 
         if not first_files:
@@ -2868,6 +2890,7 @@ class RinexDataProcessor:
             _receiver_type,
             data_dir,
             position_data_dir,
+            reader_format,
         ) in receiver_configs:
             rinex_files = self._get_rinex_files(data_dir)
             if not rinex_files:
@@ -2899,6 +2922,7 @@ class RinexDataProcessor:
 
             receiver_file_map.append((receiver_name, rinex_files))
 
+            effective_reader = reader_format or self._reader_name
             for rnx_file in rinex_files:
                 task_descriptors.append(
                     (
@@ -2908,7 +2932,7 @@ class RinexDataProcessor:
                         receiver_position,
                         receiver_name,
                         self.keep_sids,
-                        self._reader_name,
+                        effective_reader,
                         self.use_sbf_geometry,
                     )
                 )
@@ -2929,6 +2953,7 @@ class RinexDataProcessor:
         keep_vars: list[str] | None = None,
         receiver_configs: list[tuple[str, str, Path]]
         | list[tuple[str, str, Path, Path | None]]
+        | list[tuple[str, str, Path, Path | None, str]]
         | None = None,
     ) -> Generator[tuple[str, xr.Dataset, float]]:
         """Generate datasets from RINEX files and append to Icechunk stores.
@@ -2946,8 +2971,10 @@ class RinexDataProcessor:
         keep_vars : list[str], optional
             Variables to keep in datasets (default: from globals)
         receiver_configs : list[tuple], optional
-            List of (receiver_name, receiver_type, data_dir) or
-            (receiver_name, receiver_type, data_dir, position_data_dir) tuples.
+            List of (receiver_name, receiver_type, data_dir),
+            (receiver_name, receiver_type, data_dir, position_data_dir), or
+            (receiver_name, receiver_type, data_dir, position_data_dir, reader_format)
+            tuples.
             When position_data_dir is provided, the receiver position is
             computed from files in that directory instead of data_dir.
             If None, uses default behavior with matched_data_dirs.
@@ -2961,11 +2988,13 @@ class RinexDataProcessor:
         if receiver_configs is None:
             receiver_configs = self._get_default_receiver_configs()
 
-        # Normalize to 4-tuples
-        normalized_configs: list[tuple[str, str, Path, Path | None]] = []
+        # Normalize to 5-tuples
+        normalized_configs: list[tuple[str, str, Path, Path | None, str]] = []
         for cfg in receiver_configs:
             if len(cfg) == 3:
-                normalized_configs.append((*cfg, None))
+                normalized_configs.append((*cfg, None, self._reader_name))
+            elif len(cfg) == 4:
+                normalized_configs.append((*cfg, self._reader_name))
             else:
                 normalized_configs.append(cfg)
 
@@ -2984,7 +3013,7 @@ class RinexDataProcessor:
         # STEP 1: Preprocess aux data ONCE per day with Hermite splines
         # ====================================================================
         # Get first receiver files to infer sampling rate
-        first_receiver_name, _first_receiver_type, first_data_dir, _ = (
+        first_receiver_name, _first_receiver_type, first_data_dir, _, _first_fmt = (
             normalized_configs[0]
         )
         first_files = self._get_rinex_files(first_data_dir)
@@ -3019,6 +3048,7 @@ class RinexDataProcessor:
             receiver_type,
             data_dir,
             position_data_dir,
+            reader_format,
         ) in normalized_configs:
             t_rcv_start = time.perf_counter()
 
@@ -3028,6 +3058,7 @@ class RinexDataProcessor:
                 receiver_type=receiver_type,
                 data_dir=str(data_dir),
                 position_from=str(position_data_dir) if position_data_dir else "self",
+                reader_format=reader_format,
             )
 
             # Get RINEX files for this receiver
@@ -3077,6 +3108,7 @@ class RinexDataProcessor:
                         aux_zarr_path=aux_zarr_path,
                         receiver_position=receiver_position,
                         receiver_type=receiver_name,
+                        reader_format=reader_format,
                     )
                 )
 

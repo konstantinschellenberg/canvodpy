@@ -231,8 +231,12 @@ def validate(
         dir_errors: list[str] = []
 
         try:
-            from canvod.readers.gnss_specs.constants import RINEX_OBS_GLOB_PATTERNS
+            from canvod.readers.gnss_specs.constants import (
+                FORMAT_GLOB_PATTERNS,
+                RINEX_OBS_GLOB_PATTERNS,
+            )
         except ImportError:
+            FORMAT_GLOB_PATTERNS = {}
             RINEX_OBS_GLOB_PATTERNS = ()
 
         for site_name, site in config.sites.sites.items():
@@ -259,8 +263,27 @@ def validate(
                     has_data = any(True for _ in recv_dir.rglob("*") if _.is_file())
 
                 if has_data:
+                    # Detect format from files on disk
+                    detected_fmt = None
+                    if FORMAT_GLOB_PATTERNS:
+                        for fmt, patterns in FORMAT_GLOB_PATTERNS.items():
+                            if any(
+                                f
+                                for pat in patterns
+                                for f in recv_dir.rglob(pat)
+                                if f.is_file()
+                            ):
+                                detected_fmt = fmt
+                                break
+                    configured_fmt = recv.reader_format
+                    if configured_fmt == "auto" and detected_fmt:
+                        fmt_info = f"format: auto \u2192 {detected_fmt}"
+                    elif configured_fmt == "auto":
+                        fmt_info = "format: auto"
+                    else:
+                        fmt_info = f"format: {configured_fmt}"
                     console.print(
-                        f"  [green]✓ {site_name}/{recv_name}: {recv_dir}[/green]"
+                        f"  [green]\u2713 {site_name}/{recv_name}: {recv_dir} ({fmt_info})[/green]"
                     )
                 else:
                     console.print(

@@ -563,6 +563,13 @@ class ReceiverConfig(BaseModel):
             "Example keys: site_url, antenna_height, species."
         ),
     )
+    reader_format: str = Field(
+        "auto",
+        description=(
+            "GNSS data reader format: 'auto', 'rinex3', 'sbf'. "
+            "When 'auto', detected from files at pipeline start."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_scs_from(self) -> "ReceiverConfig":

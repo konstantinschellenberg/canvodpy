@@ -133,7 +133,8 @@ def diagnose_processing_new_api(
 
     # Initialize site and pipeline using NEW API
     site = Site("Rosalia")
-    pipeline = site.pipeline(keep_vars=keep_vars, dry_run=False, reader="sbf")
+    # reader_format is now per-receiver in sites.yaml (no global reader= param)
+    pipeline = site.pipeline(keep_vars=keep_vars, dry_run=False)
 
     # Get all configured receivers
     all_receivers = sorted(site.active_receivers.keys())

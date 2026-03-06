@@ -25,7 +25,14 @@ UREG: pint.UnitRegistry = pint.get_application_registry()
 if "dBHz" not in UREG:
     UREG.define("dBHz = 10 * log10(hertz)")
 
-# Glob patterns for discovering GNSS observation files on disk
+# Per-format glob patterns for detecting GNSS reader format from files on disk.
+# Used by "auto" reader_format detection and config validate.
+FORMAT_GLOB_PATTERNS: dict[str, tuple[str, ...]] = {
+    "rinex3": ("*.[0-9][0-9]o", "*.O", "*.rnx"),
+    "sbf": ("*.[0-9][0-9]_",),
+}
+
+# Glob patterns for discovering GNSS observation files on disk (union of all formats).
 # Used by PairDataDirMatcher to detect which date directories contain data.
 RINEX_OBS_GLOB_PATTERNS: tuple[str, ...] = (
     "*.[0-9][0-9]o",  # RINEX v2/v3 short-name: .24o, .25o, etc.

@@ -21,6 +21,7 @@ sites:
       reference_01:
         type: reference
         directory: 01_reference/01_GNSS/01_raw
+        reader_format: auto                  # 'auto', 'rinex3', or 'sbf'
         scs_from: all                        # 'all' or list of canopy receiver names
         description: First reference receiver (open sky)
         naming:
@@ -35,6 +36,7 @@ sites:
       canopy_01:
         type: canopy
         directory: 02_canopy/01_GNSS/01_raw
+        reader_format: auto                  # 'auto', 'rinex3', or 'sbf'
         description: First canopy receiver (under vegetation)
         naming:
           receiver_number: 1
