@@ -14,7 +14,7 @@ keywords = ["GNSS", "RINEX", "GPS", "geodesy", "remote sensing"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
@@ -29,8 +29,6 @@ dependencies = [
     "pydantic>=2.5.0",
     "pytz>=2023.3",
     "requests>=2.31.0",
-    "sbf-parser>=1.0.3",
-    "structlog>=23.0",
     "xarray>=2023.12.0",
     "tomli>=2.0.0; python_version < '3.11'",
     "ipykernel>=7.1.0",
@@ -50,13 +48,6 @@ dev = [
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = ["-v", "--tb=short", "--disable-warnings"]
 
 [tool.ty]
 extend-exclude = [

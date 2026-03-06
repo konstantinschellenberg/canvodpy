@@ -332,7 +332,7 @@ myst build --html
 
 ## License
 
-MIT License
+Apache License 2.0
 
 ## Author & Affiliation
 

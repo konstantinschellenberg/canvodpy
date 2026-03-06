@@ -15,21 +15,11 @@ signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 
 </div>
-
----
-
-!!! tip "Community-Agreed Best Practices and Principles — coming soon"
-
-    canVODpy implements community-agreed best practices and principles
-    for deriving VOD from GNSS Transmissometry — covering raw data
-    preprocessing, nomenclature, retrieval methodology, and more.
-
-    [:octicons-arrow-right-24: Community-Agreed Best Practices & Principles](principles.md)
 
 ---
 
@@ -77,7 +67,7 @@ signal-to-noise ratio observations.
 
     ---
 
-    Dask Distributed pipeline with per-file commit,
+    `ProcessPoolExecutor`-backed pipeline with per-file commit,
     hash deduplication, and cooperative distributed writing.
 
     [:octicons-arrow-right-24: Architecture](architecture.md)

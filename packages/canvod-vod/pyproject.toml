@@ -14,7 +14,7 @@ keywords = ["GNSS", "VOD", "vegetation", "tau-omega"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
 ]
@@ -39,6 +39,14 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "canvod.vod"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

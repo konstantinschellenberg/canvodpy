@@ -11,7 +11,7 @@ keywords = ["GNSS", "VOD", "vegetation", "remote sensing", "geodesy"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: GIS",
@@ -23,27 +23,23 @@ dependencies = [
     "canvod-auxiliary",
     "canvod-grids",
     "canvod-store",
-    "canvod-naming",
     "canvod-utils",
     "canvod-viz",
     "canvod-vod",
-    "canvod-ops",
     "marimo>=0.9.0",
     "matplotlib>=3.8.0",
     "pint>=0.20",
     "structlog>=23.0",
     "pydantic>=2.0",
-    "rich>=13.0",
+    "tqdm>=4.65",
     "tomli>=2.0.0",
     "natsort>=8.0.0",
-    "dask[distributed]>=2026.1.1",
+    "dask>=2026.1.1",
     "mystmd>=1.8.0",
     "docker>=7.1.0",
     "howfairis>=0.13.0",
-    "sbf-parser>=1.0.3",
     "pyarrow>=23.0.1",
     "palettable>=3.3.3",
-    "psutil>=5.9.0",
 ]
 
 [dependency-groups]
@@ -65,18 +61,9 @@ canvod-readers = { workspace = true }
 canvod-auxiliary = { workspace = true }
 canvod-grids = { workspace = true }
 canvod-store = { workspace = true }
-canvod-naming = { workspace = true }
 canvod-utils = { workspace = true }
 canvod-viz = { workspace = true }
 canvod-vod = { workspace = true }
-canvod-ops = { workspace = true }
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = ["-v", "--tb=short", "--disable-warnings"]
 
 [tool.ty]
 extend-exclude = [

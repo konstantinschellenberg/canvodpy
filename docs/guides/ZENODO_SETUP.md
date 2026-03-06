@@ -295,7 +295,7 @@ Authors: Nicolas François Bader
 Version: v0.1.0
 Publication date: 2026-02-04
 Resource type: Software
-License: MIT
+License: Apache-2.0
 
 [Download] [Cite] [Share] [Export]
 ```
@@ -330,7 +330,7 @@ For advanced metadata customization, create `.zenodo.json`:
     }
   ],
   "keywords": ["GNSS", "VOD", "vegetation", "remote sensing"],
-  "license": "MIT",
+  "license": "Apache-2.0",
   "communities": [
     {"identifier": "zenodo"}
   ]

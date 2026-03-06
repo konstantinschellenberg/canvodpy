@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"}
 ]
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 
 dependencies = [
     "pydantic>=2.0",
@@ -24,13 +24,6 @@ canvodpy = "canvod.utils.config.cli:main"
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = ["-v", "--tb=short", "--disable-warnings"]
 
 [tool.uv.build-backend]
 module-name = "canvod.utils"

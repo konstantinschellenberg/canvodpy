@@ -19,7 +19,7 @@
     "SNR"
   ],
   "license": {
-    "id": "MIT"
+    "id": "Apache-2.0"
   },
   "publication_date": "2026-02-05",
   "title": "canvodpy: GNSS Vegetation Optical Depth Analysis",
