@@ -87,6 +87,7 @@ def preprocess_with_hermite_aux(
     keep_sids: list[str] | None = None,
     reader_name: str = "rinex3",
     use_sbf_geometry: bool = False,
+    store_radial_distance: bool = False,
 ) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
     """Read RINEX and compute coordinates using Hermite-interpolated aux data from Zarr.
 
@@ -110,6 +111,8 @@ def preprocess_with_hermite_aux(
     use_sbf_geometry : bool, default False
         If True and reader_name is "sbf", skip external orbit/clock downloads
         and transfer theta/phi directly from SBF SatVisibility blocks.
+    store_radial_distance : bool, default False
+        If True, keep the radial distance variable ``r`` in the output.
 
     Returns
     -------
@@ -237,6 +240,8 @@ def preprocess_with_hermite_aux(
                 aux_slice,
                 receiver_position,
             )
+            if not store_radial_distance and "r" in ds_augmented:
+                ds_augmented = ds_augmented.drop_vars("r")
             t_coords = time.perf_counter()
 
             log.info(
@@ -632,11 +637,20 @@ class RinexDataProcessor:
         )
         return pipeline
 
-    def _make_reader(self, fpath: Path):
-        """Instantiate the configured GNSS reader for *fpath*."""
+    def _make_reader(self, fpath: Path, reader_format: str | None = None):
+        """Instantiate the configured GNSS reader for *fpath*.
+
+        Parameters
+        ----------
+        fpath : Path
+            GNSS data file.
+        reader_format : str | None
+            Reader format override.  Falls back to ``self._reader_name``.
+
+        """
         from canvodpy.factories import ReaderFactory
 
-        return ReaderFactory.create(self._reader_name, fpath=fpath)
+        return ReaderFactory.create(reader_format or self._reader_name, fpath=fpath)
 
     @staticmethod
     def _parse_sampling_interval_from_filename(filename: str) -> float | None:
@@ -678,6 +692,7 @@ class RinexDataProcessor:
         self,
         rinex_files: list[Path],
         output_path: Path,
+        reader_format: str | None = None,
     ) -> float:
         """Preprocess auxiliary data using proper interpolation strategies."""
         t0 = time.perf_counter()
@@ -705,13 +720,13 @@ class RinexDataProcessor:
                 detection_seconds=round(t1 - t0, 4),
             )
         else:
-            # Fallback: read first RINEX file (slow path)
+            # Fallback: read first GNSS file (slow path)
             self._logger.debug(
                 "sampling_detection_started",
                 sample_file=rinex_files[0].name,
                 reason="filename_parse_failed",
             )
-            first_rnx = self._make_reader(rinex_files[0])
+            first_rnx = self._make_reader(rinex_files[0], reader_format)
             first_ds = first_rnx.to_ds(
                 keep_data_vars=[],
                 write_global_attrs=True,
@@ -842,15 +857,33 @@ class RinexDataProcessor:
 
         return sampling_interval
 
-    def _get_rinex_files(self, rinex_dir: Path) -> list[Path]:
-        """Get sorted list of RINEX files from directory."""
+    def _get_rinex_files(
+        self, rinex_dir: Path, reader_format: str | None = None
+    ) -> list[Path]:
+        """Get sorted list of GNSS data files from directory.
+
+        Parameters
+        ----------
+        rinex_dir : Path
+            Directory to search.
+        reader_format : str | None
+            If provided, only return files matching the format's glob
+            patterns (from ``FORMAT_GLOB_PATTERNS``).  ``None`` returns
+            all recognized GNSS files.
+
+        """
         if not rinex_dir.exists():
             self._logger.warning("Directory does not exist: %s", rinex_dir)
             return []
 
-        patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
-        rinex_files = []
+        from canvod.readers.gnss_specs.constants import FORMAT_GLOB_PATTERNS
 
+        if reader_format and reader_format in FORMAT_GLOB_PATTERNS:
+            patterns = list(FORMAT_GLOB_PATTERNS[reader_format])
+        else:
+            patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
+
+        rinex_files = []
         for pattern in patterns:
             files = list(rinex_dir.glob(pattern))
             rinex_files.extend(files)
@@ -918,15 +951,18 @@ class RinexDataProcessor:
         self,
         canopy_files: list[Path],
         date_str: str,
+        reader_format: str | None = None,
     ) -> Path:
         """Ensure auxiliary data is preprocessed and available.
 
         Parameters
         ----------
         canopy_files : list[Path]
-            Canopy RINEX files for sampling detection
+            GNSS files for sampling detection
         date_str : str
             Date string (e.g., '2025213')
+        reader_format : str | None
+            Reader format for the files (used in sampling fallback).
 
         Returns
         -------
@@ -959,7 +995,9 @@ class RinexDataProcessor:
             rmtree_seconds=round(t1 - t0, 4) if had_cache else 0,
         )
         try:
-            self._preprocess_aux_data_with_hermite(canopy_files, aux_zarr_path)
+            self._preprocess_aux_data_with_hermite(
+                canopy_files, aux_zarr_path, reader_format=reader_format
+            )
 
             if not aux_zarr_path.exists():
                 raise RuntimeError(
@@ -1027,6 +1065,7 @@ class RinexDataProcessor:
 
         """
         effective_reader = reader_format or self._reader_name
+        store_r = self._config.processing.processing.store_radial_distance
         if self._dask_client is not None and _HAS_DISTRIBUTED:
             return self._parallel_process_rinex_dask(
                 rinex_files,
@@ -1035,6 +1074,7 @@ class RinexDataProcessor:
                 receiver_position,
                 receiver_type,
                 effective_reader,
+                store_r,
             )
         return self._parallel_process_rinex_pool(
             rinex_files,
@@ -1043,6 +1083,7 @@ class RinexDataProcessor:
             receiver_position,
             receiver_type,
             effective_reader,
+            store_r,
         )
 
     def _parallel_process_rinex_dask(
@@ -1053,6 +1094,7 @@ class RinexDataProcessor:
         receiver_position: ECEFPosition,
         receiver_type: str,
         reader_format: str | None = None,
+        store_radial_distance: bool = False,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1096,6 +1138,7 @@ class RinexDataProcessor:
                 self.keep_sids,
                 effective_reader,
                 self.use_sbf_geometry,
+                store_radial_distance,
                 pure=False,
             ): rinex_file
             for rinex_file in rinex_files
@@ -1176,6 +1219,7 @@ class RinexDataProcessor:
         receiver_position: ECEFPosition,
         receiver_type: str,
         reader_format: str | None = None,
+        store_radial_distance: bool = False,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1217,6 +1261,7 @@ class RinexDataProcessor:
                     self.keep_sids,
                     effective_reader,
                     self.use_sbf_geometry,
+                    store_radial_distance,
                 ): rinex_file
                 for rinex_file in rinex_files
             }
@@ -2749,15 +2794,24 @@ class RinexDataProcessor:
         )
 
         # ====================================================================
-        # STEP 2: Compute receiver position ONCE (same for all receivers)
+        # STEP 2: Compute receiver position
         # ====================================================================
+        position_mode = self._config.processing.processing.receiver_position_mode
         first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
-        receiver_position = ECEFPosition.from_ds_metadata(first_ds)
-        self._logger.info(
-            "Computed receiver position (shared): %s",
-            receiver_position,
-        )
+        shared_position = ECEFPosition.from_ds_metadata(first_ds)
+
+        if position_mode == "per_receiver":
+            self._logger.warning(
+                "receiver_position_mode='per_receiver': each receiver will use "
+                "its own RINEX header position. This breaks direct SNR "
+                "comparability between receivers."
+            )
+        else:
+            self._logger.info(
+                "Computed receiver position (shared): %s",
+                shared_position,
+            )
 
         # ====================================================================
         # STEP 3: Process each receiver type
@@ -2788,6 +2842,20 @@ class RinexDataProcessor:
                 "Found %s RINEX files to process",
                 len(rinex_files),
             )
+
+            # 3b'. Determine receiver position for this receiver
+            if position_mode == "per_receiver":
+                receiver_position = self._compute_receiver_position(
+                    rinex_files, receiver_name
+                )
+                if receiver_position is None:
+                    self._logger.error(
+                        "Could not compute position for %s, skipping",
+                        receiver_name,
+                    )
+                    continue
+            else:
+                receiver_position = shared_position
 
             # 3c. Parallel process via Dask (or ProcessPoolExecutor fallback)
             augmented_datasets, aux_datasets, sid_issues = self._parallel_process_rinex(
@@ -2861,10 +2929,10 @@ class RinexDataProcessor:
             keep_vars = self._config.processing.processing.keep_rnx_vars
 
         # Get first receiver files to infer sampling rate for aux preprocessing
-        first_receiver_name, _first_type, first_data_dir, _, _first_fmt = (
+        first_receiver_name, _first_type, first_data_dir, _, first_fmt = (
             receiver_configs[0]
         )
-        first_files = self._get_rinex_files(first_data_dir)
+        first_files = self._get_rinex_files(first_data_dir, first_fmt)
 
         if not first_files:
             msg = (
@@ -2879,7 +2947,9 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(first_files, date_str)
+        aux_zarr_path = self._ensure_aux_data_preprocessed(
+            first_files, date_str, reader_format=first_fmt
+        )
         t_aux_done = time.perf_counter()
 
         task_descriptors: list[tuple] = []
@@ -2892,20 +2962,30 @@ class RinexDataProcessor:
             position_data_dir,
             reader_format,
         ) in receiver_configs:
-            rinex_files = self._get_rinex_files(data_dir)
+            rinex_files = self._get_rinex_files(data_dir, reader_format)
             if not rinex_files:
                 self._logger.warning(
                     "no_rinex_files_found",
                     receiver=receiver_name,
                     data_dir=str(data_dir),
+                    reader_format=reader_format,
                 )
                 continue
 
-            position_files = (
-                self._get_rinex_files(position_data_dir)
-                if position_data_dir
-                else rinex_files
-            )
+            position_mode = self._config.processing.processing.receiver_position_mode
+            if position_mode == "per_receiver":
+                position_files = rinex_files
+                self._logger.warning(
+                    "receiver_position_mode='per_receiver': using %s's own "
+                    "position (breaks direct SNR comparability)",
+                    receiver_name,
+                )
+            else:
+                position_files = (
+                    self._get_rinex_files(position_data_dir)
+                    if position_data_dir
+                    else rinex_files
+                )
             t_pos_start = time.perf_counter()
             receiver_position = self._compute_receiver_position(
                 position_files, receiver_name
@@ -3013,10 +3093,10 @@ class RinexDataProcessor:
         # STEP 1: Preprocess aux data ONCE per day with Hermite splines
         # ====================================================================
         # Get first receiver files to infer sampling rate
-        first_receiver_name, _first_receiver_type, first_data_dir, _, _first_fmt = (
+        first_receiver_name, _first_receiver_type, first_data_dir, _, first_fmt = (
             normalized_configs[0]
         )
-        first_files = self._get_rinex_files(first_data_dir)
+        first_files = self._get_rinex_files(first_data_dir, first_fmt)
 
         if not first_files:
             msg = (
@@ -3031,7 +3111,9 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(first_files, date_str)
+        aux_zarr_path = self._ensure_aux_data_preprocessed(
+            first_files, date_str, reader_format=first_fmt
+        )
 
         # ====================================================================
         # STEP 2: Process each receiver, reusing RINEX parsing for
@@ -3061,24 +3143,33 @@ class RinexDataProcessor:
                 reader_format=reader_format,
             )
 
-            # Get RINEX files for this receiver
-            rinex_files = self._get_rinex_files(data_dir)
+            # Get GNSS files for this receiver (filtered by reader_format)
+            rinex_files = self._get_rinex_files(data_dir, reader_format)
             if not rinex_files:
                 self._logger.warning(
                     "no_rinex_files_found",
                     receiver=receiver_name,
                     data_dir=str(data_dir),
+                    reader_format=reader_format,
                 )
                 continue
 
-            # Compute receiver position: from position_data_dir if set,
-            # otherwise from this receiver's own first file
+            # Compute receiver position
             t_pos_start = time.perf_counter()
-            position_files = (
-                self._get_rinex_files(position_data_dir)
-                if position_data_dir
-                else rinex_files
-            )
+            position_mode = self._config.processing.processing.receiver_position_mode
+            if position_mode == "per_receiver":
+                position_files = rinex_files
+                self._logger.warning(
+                    "receiver_position_mode='per_receiver': using %s's own "
+                    "position (breaks direct SNR comparability)",
+                    receiver_name,
+                )
+            else:
+                position_files = (
+                    self._get_rinex_files(position_data_dir)
+                    if position_data_dir
+                    else rinex_files
+                )
             receiver_position = self._compute_receiver_position(
                 position_files, receiver_name
             )
@@ -4026,15 +4117,24 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         )
 
         # ====================================================================
-        # STEP 2: Compute receiver position ONCE (same for all receivers)
+        # STEP 2: Compute receiver position
         # ====================================================================
+        position_mode = self._config.processing.processing.receiver_position_mode
         first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
-        receiver_position = ECEFPosition.from_ds_metadata(first_ds)
-        self._logger.info(
-            "Computed receiver position (shared): %s",
-            receiver_position,
-        )
+        shared_position = ECEFPosition.from_ds_metadata(first_ds)
+
+        if position_mode == "per_receiver":
+            self._logger.warning(
+                "receiver_position_mode='per_receiver': each receiver will use "
+                "its own RINEX header position. This breaks direct SNR "
+                "comparability between receivers."
+            )
+        else:
+            self._logger.info(
+                "Computed receiver position (shared): %s",
+                shared_position,
+            )
 
         # ====================================================================
         # STEP 3: Process each receiver type
@@ -4065,6 +4165,20 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                 "Found %s RINEX files to process",
                 len(rinex_files),
             )
+
+            # 3b'. Determine receiver position for this receiver
+            if position_mode == "per_receiver":
+                receiver_position = self._compute_receiver_position(
+                    rinex_files, receiver_name
+                )
+                if receiver_position is None:
+                    self._logger.error(
+                        "Could not compute position for %s, skipping",
+                        receiver_name,
+                    )
+                    continue
+            else:
+                receiver_position = shared_position
 
             # 3c. Parallel process via Dask (or ProcessPoolExecutor fallback)
             _ = self._cooperative_distributed_writing(
