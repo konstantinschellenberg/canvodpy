@@ -894,18 +894,24 @@ class RinexDataProcessor:
         self,
         position_files: list[Path],
         receiver_name: str,
+        reader_format: str | None = None,
     ) -> ECEFPosition | None:
-        """Compute ECEF position from the first valid RINEX file header.
+        """Compute ECEF position from the first valid GNSS file.
 
-        Uses header-only parsing (``Rnxv3Header.from_file``) to avoid reading
-        the full RINEX observation data.
+        Uses the ``ReaderFactory`` to create a minimal dataset (header-only)
+        and extracts the ECEF position from its attributes.  This works for
+        any registered reader format (RINEX, SBF, …) without format-specific
+        logic.
 
         Parameters
         ----------
         position_files : list[Path]
-            RINEX files to try (first valid one wins).
+            GNSS files to try (first valid one wins).
         receiver_name : str
             Receiver name for logging.
+        reader_format : str | None
+            Reader format name (e.g. ``"rinex3"``, ``"sbf"``).
+            Falls back to ``self._reader_name`` when *None*.
 
         Returns
         -------
@@ -913,15 +919,13 @@ class RinexDataProcessor:
             Computed position, or None if no valid file found.
 
         """
-        from canvod.readers.rinex.v3_04 import Rnxv3Header
+        fmt = reader_format or self._reader_name
 
         for ff in position_files:
             try:
-                header = Rnxv3Header.from_file(ff)
-                x = header.approx_position[0].magnitude
-                y = header.approx_position[1].magnitude
-                z = header.approx_position[2].magnitude
-                receiver_position = ECEFPosition(x=x, y=y, z=z)
+                reader = self._make_reader(ff, reader_format=fmt)
+                ds = reader.to_ds(keep_data_vars=[], write_global_attrs=True)
+                receiver_position = ECEFPosition.from_ds_metadata(ds)
                 self._logger.info(
                     "Computed receiver position for %s: %s",
                     receiver_name,
@@ -934,15 +938,15 @@ class RinexDataProcessor:
                     ff.name,
                     e,
                 )
-            except (OSError, RuntimeError, ValueError) as e:
+            except (KeyError, OSError, RuntimeError, ValueError) as e:
                 self._logger.warning(
-                    "Unexpected error for %s: %s",
+                    "Could not extract position from %s: %s",
                     ff.name,
                     e,
                 )
 
         self._logger.error(
-            "No valid RINEX files found for %s",
+            "No valid GNSS files found for position extraction for %s",
             receiver_name,
         )
         return None
@@ -2982,13 +2986,13 @@ class RinexDataProcessor:
                 )
             else:
                 position_files = (
-                    self._get_rinex_files(position_data_dir)
+                    self._get_rinex_files(position_data_dir, reader_format)
                     if position_data_dir
                     else rinex_files
                 )
             t_pos_start = time.perf_counter()
             receiver_position = self._compute_receiver_position(
-                position_files, receiver_name
+                position_files, receiver_name, reader_format=reader_format
             )
             t_pos_end = time.perf_counter()
             self._logger.info(
@@ -3166,12 +3170,12 @@ class RinexDataProcessor:
                 )
             else:
                 position_files = (
-                    self._get_rinex_files(position_data_dir)
+                    self._get_rinex_files(position_data_dir, reader_format)
                     if position_data_dir
                     else rinex_files
                 )
             receiver_position = self._compute_receiver_position(
-                position_files, receiver_name
+                position_files, receiver_name, reader_format=reader_format
             )
             t_pos_end = time.perf_counter()
             if receiver_position is None:

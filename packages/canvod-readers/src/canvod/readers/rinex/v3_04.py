@@ -1125,7 +1125,13 @@ class Rnxv3Obs(GNSSDataReader):
         for start, end in self.get_epoch_record_batches():
             try:
                 info = Rnxv3ObsEpochRecordLineModel(epoch=self._lines[start])
-                data = self._lines[start + 1 : end]
+
+                # Skip event epochs (flag 2-6: special records, not observations)
+                if info.epoch_flag > 1:
+                    continue
+
+                # Filter out blank/whitespace-only lines from data slice
+                data = [line for line in self._lines[start + 1 : end] if line.strip()]
                 epoch = Rnxv3ObsEpochRecord(
                     info=info,
                     data=(
@@ -1133,8 +1139,9 @@ class Rnxv3Obs(GNSSDataReader):
                     ),  # generator here too
                 )
                 yield epoch
-            except (InvalidEpochError, IncompleteEpochError):
-                # Skip unexpected errors silently
+            except (InvalidEpochError, IncompleteEpochError, ValueError):
+                # Skip epochs with validation errors (invalid SV, malformed data,
+                # pydantic ValidationError inherits from ValueError)
                 pass
 
     def iter_epochs_in_range(

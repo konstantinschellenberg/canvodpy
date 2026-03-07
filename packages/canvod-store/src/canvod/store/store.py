@@ -13,13 +13,13 @@ import numpy as np
 import polars as pl
 import xarray as xr
 import zarr
+from canvod.utils.config import load_config
+from canvod.utils.tools import get_version_from_pyproject
 from canvodpy.logging import get_logger
 from icechunk.xarray import to_icechunk
 from zarr.dtype import VariableLengthUTF8
 
 from canvod.store.viewer import add_rich_display_to_store
-from canvod.utils.config import load_config
-from canvod.utils.tools import get_version_from_pyproject
 
 if TYPE_CHECKING:
     from plotly.graph_objects import Figure
@@ -1093,19 +1093,19 @@ class MyIcechunkStore:
     def write_sbf_metadata(
         self, meta_ds: xr.Dataset, group_name: str, branch: str = "main"
     ) -> str:
-        """Write SBF metadata dataset (alias for ``write_metadata_dataset(..., "sbf_obs")``)."""
+        """Write SBF metadata dataset."""
         return self.write_metadata_dataset(meta_ds, group_name, "sbf_obs", branch)
 
     def read_sbf_metadata(
         self, group_name: str, branch: str = "main", chunks: dict | None = None
     ) -> xr.Dataset:
-        """Read SBF metadata dataset (alias for ``read_metadata_dataset(..., "sbf_obs")``)."""
+        """Read SBF metadata dataset."""
         return self.read_metadata_dataset(group_name, "sbf_obs", branch, chunks)
 
     def get_sbf_metadata_info(
         self, group_name: str, branch: str = "main"
     ) -> dict[str, Any]:
-        """Get SBF metadata info (alias for ``get_metadata_dataset_info(..., "sbf_obs")``)."""
+        """Get SBF metadata info."""
         return self.get_metadata_dataset_info(group_name, "sbf_obs", branch)
 
     def rel_path_for_commit(self, file_path: Path) -> str:
@@ -1503,35 +1503,36 @@ class MyIcechunkStore:
         branch: str = "main",
     ) -> tuple[bool, pl.DataFrame]:
         """
-        Check whether a (start, end) interval exists in group metadata.
+        Check whether a file already exists or temporally overlaps existing data.
+
+        Performs two checks in order:
+
+        1. **Hash match** — if ``rinex_hash`` already appears in the metadata
+           table, the file was previously ingested (exact duplicate).
+        2. **Temporal overlap** — if the incoming ``[start, end]`` interval
+           overlaps any existing metadata interval, the file covers a time
+           range that is already (partially) present in the store.  This
+           catches cases like a daily concatenation file coexisting with the
+           sub-daily files it was built from.
 
         Parameters
         ----------
         group_name : str
             Icechunk group name.
         rinex_hash : str
-            Hash of the current RINEX dataset.
+            Hash of the current GNSS dataset.
         start : np.datetime64
-            Start time for the interval.
+            Start epoch of the incoming file.
         end : np.datetime64
-            End time for the interval.
+            End epoch of the incoming file.
         branch : str, default "main"
             Branch name in the Icechunk repository.
 
         Returns
         -------
         tuple[bool, pl.DataFrame]
-            Existence flag and the matching metadata rows.
-
-        Raises
-        ------
-        ValueError
-            If a conflicting hash is found for the same interval.
-
-        Notes
-        -----
-        The metadata table is cast to `Datetime("ns")` for `start` and `end`
-        before filtering.
+            ``(True, overlapping_rows)`` when the file should be skipped,
+            ``(False, empty_df)`` when it is safe to ingest.
         """
         with self.readonly_session(branch) as session:
             try:
@@ -1541,11 +1542,9 @@ class MyIcechunkStore:
             except Exception:
                 return False, pl.DataFrame()
 
-            # Load all arrays into a dict
             data = {col: zmeta[col][:] for col in zmeta.array_keys()}
             df = pl.DataFrame(data)
 
-            # Ensure datetime dtypes
             df = df.with_columns(
                 [
                     pl.col("start").cast(pl.Datetime("ns")),
@@ -1553,30 +1552,35 @@ class MyIcechunkStore:
                 ]
             )
 
-            # Step 1: filter by start+end
-            matches = df.filter(
-                (pl.col("start") == np.datetime64(start, "ns"))
-                & (pl.col("end") == np.datetime64(end, "ns"))
+            # --- Check 1: exact hash match (file already ingested) ---
+            hash_matches = df.filter(pl.col("rinex_hash") == rinex_hash)
+            if not hash_matches.is_empty():
+                return True, hash_matches
+
+            # --- Check 2: temporal overlap ---
+            # Two intervals [A.start, A.end] and [B.start, B.end] overlap
+            # iff A.start <= B.end AND A.end >= B.start
+            start_ns = np.datetime64(start, "ns")
+            end_ns = np.datetime64(end, "ns")
+
+            overlaps = df.filter(
+                (pl.col("start") <= end_ns) & (pl.col("end") >= start_ns)
             )
 
-            if matches.is_empty():
-                return False, matches
-
-            # Step 2: check hash consistency
-            unique_hashes = matches.select("rinex_hash").unique()
-
-            if (
-                unique_hashes.height > 1
-                or unique_hashes.item(0, "rinex_hash") != rinex_hash
-            ):
-                existing_hashes = unique_hashes.to_series().to_list()
-                raise ValueError(
-                    "Metadata conflict: rows with start="
-                    f"{start}, end={end} exist but hash differs "
-                    f"(existing={existing_hashes}, new={rinex_hash})"
+            if not overlaps.is_empty():
+                n = overlaps.height
+                existing_range = f"{overlaps['start'].min()} → {overlaps['end'].max()}"
+                self._logger.warning(
+                    "temporal_overlap_detected",
+                    group=group_name,
+                    incoming_hash=rinex_hash,
+                    incoming_range=f"{start} → {end}",
+                    existing_range=existing_range,
+                    overlapping_files=n,
                 )
+                return True, overlaps
 
-            return True, matches
+            return False, pl.DataFrame()
 
     def batch_check_existing(self, group_name: str, file_hashes: list[str]) -> set[str]:
         """Check which file hashes already exist in metadata."""
@@ -1778,8 +1782,8 @@ class MyIcechunkStore:
         str
             Representation string.
         """
-        _DISPLAY = {"rinex_store": "GNSS Store", "vod_store": "VOD Store"}
-        display = _DISPLAY.get(self.store_type, self.store_type)
+        display_names = {"rinex_store": "GNSS Store", "vod_store": "VOD Store"}
+        display = display_names.get(self.store_type, self.store_type)
         return f"MyIcechunkStore(store_path={self.store_path}, store_type={display})"
 
     def __str__(self) -> str:
