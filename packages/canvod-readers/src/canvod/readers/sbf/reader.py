@@ -570,6 +570,10 @@ class SbfReader(GNSSDataReader):
 
     model_config = ConfigDict(extra="ignore")
 
+    @property
+    def source_format(self) -> str:
+        return "sbf"
+
     # ------------------------------------------------------------------
     # Pre-scan caches
     # ------------------------------------------------------------------

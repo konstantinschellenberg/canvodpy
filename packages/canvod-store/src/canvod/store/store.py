@@ -41,6 +41,18 @@ class MyIcechunkStore:
     - Integrated logging with file contexts
     - Configurable compression and chunking
 
+    Note on "metadata"
+    ------------------
+    This class manages two distinct things both historically called "metadata":
+
+    - **File registry** (``{group}/metadata/table``): per-file ingest ledger
+      tracking hashes, temporal ranges, filenames, and paths. Managed by
+      ``append_metadata()``, ``load_metadata()``, ``backup_metadata_table()``, etc.
+
+    - **Store metadata** (``canvod.store_metadata`` package): store-level
+      provenance (identity, creator, environment, compliance). Written to
+      Zarr root attrs by the orchestrator. See ``canvod-store-metadata``.
+
     Parameters
     ----------
     store_path : Path
@@ -240,6 +252,51 @@ class MyIcechunkStore:
             yield session
         finally:
             self._logger.debug(f"Closed writable session for branch '{branch}'")
+
+    # ── Root-level store attributes ────────────────────────────────────────────
+
+    def set_root_attrs(self, attrs: dict[str, Any], branch: str = "main") -> str:
+        """Set root-level Zarr attributes on the store.
+
+        Parameters
+        ----------
+        attrs : dict[str, Any]
+            Key-value pairs to merge into root attrs.
+        branch : str, default "main"
+            Branch to write to.
+
+        Returns
+        -------
+        str
+            Snapshot ID from the commit.
+        """
+        with self.writable_session(branch) as session:
+            try:
+                root = zarr.open_group(session.store, mode="r+")
+            except zarr.errors.GroupNotFoundError:
+                root = zarr.open_group(session.store, mode="w")
+            root.attrs.update(attrs)
+            return session.commit(f"Set root attrs: {list(attrs.keys())}")
+
+    def get_root_attrs(self, branch: str = "main") -> dict[str, Any]:
+        """Read root-level Zarr attributes from the store.
+
+        Returns
+        -------
+        dict[str, Any]
+            Root attributes (empty dict if none set).
+        """
+        try:
+            with self.readonly_session(branch) as session:
+                root = zarr.open_group(session.store, mode="r")
+                return dict(root.attrs)
+        except Exception:
+            return {}
+
+    @property
+    def source_format(self) -> str | None:
+        """Return the ``source_format`` root attribute, or None."""
+        return self.get_root_attrs().get("source_format")
 
     def get_branch_names(self) -> list[str]:
         """
@@ -1183,6 +1240,21 @@ class MyIcechunkStore:
         start = dataset.epoch.min().values
         end = dataset.epoch.max().values
 
+        # Guard: check hash + temporal overlap before appending
+        exists, matches = self.metadata_row_exists(
+            group_name, rinex_hash, start, end, branch
+        )
+        if exists and action != "overwrite":
+            self._logger.warning(
+                "append_blocked_by_guardrail",
+                group=group_name,
+                hash=rinex_hash[:16],
+                range=f"{start} → {end}",
+                reason="hash_or_temporal_overlap",
+                matching_files=matches.height if not matches.is_empty() else 0,
+            )
+            return
+
         with self.writable_session(branch) as session:
             to_icechunk(dataset, session, group=group_name, append_dim=append_dim)
 
@@ -1600,6 +1672,67 @@ class MyIcechunkStore:
         except (KeyError, zarr.errors.GroupNotFoundError, Exception):
             # Branch/group/metadata doesn't exist yet (fresh store)
             return set()
+
+    def check_temporal_overlaps(
+        self,
+        group_name: str,
+        file_intervals: list[tuple[str, np.datetime64, np.datetime64]],
+        branch: str = "main",
+    ) -> set[str]:
+        """Check which files temporally overlap existing metadata intervals.
+
+        Parameters
+        ----------
+        group_name : str
+            Icechunk group name.
+        file_intervals : list[tuple[str, np.datetime64, np.datetime64]]
+            List of ``(rinex_hash, start, end)`` tuples for incoming files.
+        branch : str, default "main"
+            Branch name in the Icechunk repository.
+
+        Returns
+        -------
+        set[str]
+            Hashes of files whose ``[start, end]`` overlaps any existing
+            metadata interval.  Files whose hash already exists in the store
+            are NOT included (use ``batch_check_existing`` for those).
+        """
+        if not file_intervals:
+            return set()
+
+        try:
+            with self.readonly_session(branch) as session:
+                df = self.load_metadata(session.store, group_name)
+        except (KeyError, zarr.errors.GroupNotFoundError, Exception):
+            return set()
+
+        if df.is_empty():
+            return set()
+
+        df = df.with_columns(
+            [
+                pl.col("start").cast(pl.Datetime("ns")),
+                pl.col("end").cast(pl.Datetime("ns")),
+            ]
+        )
+
+        overlapping: set[str] = set()
+        for rinex_hash, start, end in file_intervals:
+            start_ns = np.datetime64(start, "ns")
+            end_ns = np.datetime64(end, "ns")
+
+            hits = df.filter((pl.col("start") <= end_ns) & (pl.col("end") >= start_ns))
+            if not hits.is_empty():
+                self._logger.warning(
+                    "temporal_overlap_detected",
+                    group=group_name,
+                    incoming_hash=rinex_hash[:16],
+                    incoming_range=f"{start} → {end}",
+                    existing_files=hits.height,
+                )
+                overlapping.add(rinex_hash)
+
+        return overlapping
 
     def append_metadata_bulk_store(
         self,

@@ -154,3 +154,110 @@ class TestTemporalOverlap:
         )
         assert exists is False
         assert matches.is_empty()
+
+
+class TestBatchTemporalOverlap:
+    """Test check_temporal_overlaps (batch temporal overlap detection)."""
+
+    def test_daily_file_detected_in_batch(self, rinex_store) -> None:
+        """Daily file overlapping existing 15-min files is flagged."""
+        intervals = [
+            (
+                "hash_daily",
+                np.datetime64("2025-01-01T00:00:00", "ns"),
+                np.datetime64("2025-01-01T23:59:55", "ns"),
+            ),
+        ]
+        overlaps = rinex_store.check_temporal_overlaps("canopy_01", intervals)
+        assert "hash_daily" in overlaps
+
+    def test_non_overlapping_passes_batch(self, rinex_store) -> None:
+        """File after existing intervals is not flagged."""
+        intervals = [
+            (
+                "hash_new",
+                np.datetime64("2025-01-01T00:30:00", "ns"),
+                np.datetime64("2025-01-01T00:44:55", "ns"),
+            ),
+        ]
+        overlaps = rinex_store.check_temporal_overlaps("canopy_01", intervals)
+        assert len(overlaps) == 0
+
+    def test_mixed_batch(self, rinex_store) -> None:
+        """Batch with one overlapping and one clean file."""
+        intervals = [
+            (
+                "hash_overlap",
+                np.datetime64("2025-01-01T00:10:00", "ns"),
+                np.datetime64("2025-01-01T00:20:00", "ns"),
+            ),
+            (
+                "hash_clean",
+                np.datetime64("2025-01-02T00:00:00", "ns"),
+                np.datetime64("2025-01-02T00:14:55", "ns"),
+            ),
+        ]
+        overlaps = rinex_store.check_temporal_overlaps("canopy_01", intervals)
+        assert "hash_overlap" in overlaps
+        assert "hash_clean" not in overlaps
+
+    def test_empty_intervals(self, rinex_store) -> None:
+        """Empty interval list returns empty set."""
+        overlaps = rinex_store.check_temporal_overlaps("canopy_01", [])
+        assert len(overlaps) == 0
+
+    def test_nonexistent_group_batch(self, rinex_store) -> None:
+        """Non-existent group returns empty set."""
+        intervals = [
+            (
+                "hash_x",
+                np.datetime64("2025-01-01T00:00:00", "ns"),
+                np.datetime64("2025-01-01T23:59:55", "ns"),
+            ),
+        ]
+        overlaps = rinex_store.check_temporal_overlaps("no_group", intervals)
+        assert len(overlaps) == 0
+
+
+class TestAppendToGroupGuardrail:
+    """Test that append_to_group blocks overlapping data."""
+
+    def test_append_blocked_when_overlapping(self, rinex_store) -> None:
+        """Appending a dataset that overlaps existing data is silently skipped."""
+        ds = _make_dataset("2025-01-01T00:00:00", "2025-01-01T00:14:55")
+        ds.attrs["File Hash"] = "hash_new_but_overlapping"
+
+        # Should not raise, but should be silently skipped
+        rinex_store.append_to_group(dataset=ds, group_name="canopy_01", action="write")
+
+        # Verify no extra data was appended (epoch count unchanged)
+        result = rinex_store.read_group("canopy_01")
+        assert result.dims["epoch"] == 10  # same as fixture
+
+    def test_append_allowed_when_no_overlap(self, rinex_store) -> None:
+        """Appending a dataset with no overlap succeeds."""
+        ds = _make_dataset("2025-01-02T00:00:00", "2025-01-02T00:14:55")
+        ds.attrs["File Hash"] = "hash_day2"
+
+        rinex_store.append_to_group(dataset=ds, group_name="canopy_01", action="write")
+
+        result = rinex_store.read_group("canopy_01")
+        assert result.dims["epoch"] == 20  # 10 + 10
+
+
+class TestRootAttrs:
+    """Test root-level store attributes."""
+
+    def test_set_and_get_root_attrs(self, tmp_path: Path) -> None:
+        store = create_rinex_store(tmp_path / "test_attrs")
+        assert store.get_root_attrs() == {}
+        assert store.source_format is None
+
+        store.set_root_attrs({"source_format": "sbf", "version": "1.0"})
+        assert store.get_root_attrs() == {"source_format": "sbf", "version": "1.0"}
+        assert store.source_format == "sbf"
+
+    def test_source_format_property(self, tmp_path: Path) -> None:
+        store = create_rinex_store(tmp_path / "test_fmt")
+        store.set_root_attrs({"source_format": "rinex3"})
+        assert store.source_format == "rinex3"

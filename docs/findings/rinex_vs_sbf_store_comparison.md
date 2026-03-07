@@ -11,6 +11,7 @@
 | canvodpy RINEX | `/Volumes/ExtremePro/comparison_stores_readers_packages/Rosalia/canvodpy_Rinex_Icechunk_Store` |
 | canvodpy VOD | `/Volumes/ExtremePro/comparison_stores_readers_packages/Rosalia/canvodpy_Rinex_VOD_Icechunk_Store` |
 | canvodpy SBF | `/Volumes/ExtremePro/comparison_stores_readers_packages/Rosalia/canvodpy_SBF_Icechunk_Store` |
+| canvodpy RINEX (readers pkg) | `/Volumes/ExtremePro/comparison_stores_readers_packages/Rosalia/canvodpy_RINEX_Icechunk_Store` |
 
 **Source data**: Same Septentrio receivers, same 7-day period (2025-01-01 to 2025-01-07),
 5-second logging interval. Each day has 96 x 15-min files in both `.25o` (RINEX) and `.25_` (SBF) formats.
@@ -56,7 +57,45 @@ because the VOD calculator (`calculator.py:232-239`) uses `canopy_ds["phi"]` and
 
 ## Layer 2: canvodpy RINEX vs SBF — Format Comparison
 
-See [detailed SBF findings](#sbf-specific-findings) below.
+Both stores processed with canvodpy from the same Septentrio receivers, same 7-day period.
+
+**Alignment method**: SBF epochs are systematically offset by +2 seconds (`:02, :07, :12...`
+vs RINEX `:00, :05, :10...`). SBF epochs rounded to nearest 5s for alignment. After
+deduplication (see Issue #1) and rounding, 120,956 of 120,960 epochs match.
+
+### canopy_01
+
+| Variable | Both valid | Mean diff | Std diff | Max |diff| |
+|---|---|---|---|---|
+| SNR | 7,585,239 | 0.202 dB | 3.174 dB | 30.545 dB |
+| phi | 5,296,428 | -0.461 deg | 2.384 deg | 6.109 deg |
+| theta | 5,296,428 | 0.024 deg | 0.570 deg | 1.545 deg |
+
+### reference_01_canopy_01
+
+| Variable | Both valid | Mean diff | Std diff | Max |diff| |
+|---|---|---|---|---|
+| SNR | 11,374,870 | 0.135 dB | 0.533 dB | 18.202 dB |
+| phi | 5,296,428 | -0.461 deg | 2.384 deg | 6.109 deg |
+| theta | 5,296,428 | 0.024 deg | 0.570 deg | 1.545 deg |
+
+### Interpretation
+
+The differences are **dominated by the 2-second epoch offset**, not reader errors:
+
+1. **phi/theta differences are identical** for canopy and reference groups — consistent
+   with comparing satellite positions 2 seconds apart (satellites move ~0.5 deg/s at
+   low elevations)
+2. **SNR canopy has higher variance** (std 3.17 dB) than reference (std 0.53 dB) because
+   canopy signals are weaker and more variable due to vegetation attenuation; a 2-second
+   shift during rapid fading events causes larger mismatches
+3. **SNR mean offset ~0.13-0.20 dB** is consistent with the 0.25 dB SBF quantization
+   (see Issue #3)
+4. **Max SNR diff of 30.5 dB** occurs at signal acquisition/loss edges where one format
+   records a measurement and the other records NaN (shifted by 2 seconds)
+
+**Conclusion**: No evidence of reader bugs. All differences are explained by the 2-second
+epoch offset (Issue #4) and SNR quantization (Issue #3).
 
 ---
 
@@ -291,14 +330,22 @@ SBF:   2024-12-31T23:59:42.000 to 2025-01-07T23:59:37.000
 ```
 
 The SBF file starts ~18 seconds before midnight and epochs are spaced exactly 5 seconds
-apart, but offset by 2 seconds from the RINEX grid.
+apart, but offset by +2 seconds from the RINEX grid:
 
-### Impact
+```
+RINEX seconds: :00, :05, :10, :15, :20, :25, :30, :35, :40, :45, :50, :55
+SBF seconds:   :02, :07, :12, :17, :22, :27, :32, :37, :42, :47, :52, :57
+```
 
-- Direct epoch matching between stores yields 0 common epochs
-- Nearest-neighbor matching with 3-second tolerance matches all epochs
-- phi/theta (satellite angles) differ by ~0.02 rad due to satellite motion in the 2-second gap
-- **This is expected behavior** -- SBF and RINEX use different epoch timestamp conventions
+100% of SBF epochs have `second % 5 == 2`. Zero SBF epochs fall on round 5-second boundaries.
+
+### Verified Store-Level Impact
+
+After deduplication and rounding SBF to nearest 5s:
+- 120,956 of 120,960 unique epochs align (99.997%)
+- phi/theta diffs (std ~0.5-2.4 deg) are consistent with 2s of satellite motion
+- SNR diffs (mean ~0.1-0.2 dB) are consistent with 0.25 dB quantization + 2s temporal shift
+- **This is expected behavior** -- SBF records actual receiver clock time, RINEX uses nominal epoch
 
 ---
 

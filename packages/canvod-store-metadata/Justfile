@@ -1,0 +1,31 @@
+# Justfile for canvod-store-metadata
+
+# Test this package
+test:
+    uv run pytest
+
+# Lint this package
+lint:
+    uv run ruff check .
+
+# Format this package
+format:
+    uv run ruff format .
+
+# Auto-fix linting
+fix:
+    uv run ruff check --fix .
+    uv run ruff format .
+
+# Type check this package
+typecheck:
+    uv run ty check src/
+
+# Build this package
+build:
+    uv build
+
+# Clean artifacts
+clean:
+    rm -rf dist/ build/ *.egg-info
+    find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

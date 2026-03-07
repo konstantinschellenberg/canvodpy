@@ -23,6 +23,7 @@ dependencies = [
     "canvod-auxiliary",
     "canvod-grids",
     "canvod-store",
+    "canvod-store-metadata",
     "canvod-utils",
     "canvod-viz",
     "canvod-vod",
@@ -61,6 +62,7 @@ canvod-readers = { workspace = true }
 canvod-auxiliary = { workspace = true }
 canvod-grids = { workspace = true }
 canvod-store = { workspace = true }
+canvod-store-metadata = { workspace = true }
 canvod-utils = { workspace = true }
 canvod-viz = { workspace = true }
 canvod-vod = { workspace = true }

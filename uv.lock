@@ -19,6 +19,7 @@ members = [
     "canvod-ops",
     "canvod-readers",
     "canvod-store",
+    "canvod-store-metadata",
     "canvod-utils",
     "canvod-virtualiconvname",
     "canvod-viz",
@@ -438,6 +439,43 @@ dev = [
 ]
 
 [[package]]
+name = "canvod-store-metadata"
+version = "0.1.0"
+source = { editable = "packages/canvod-store-metadata" }
+dependencies = [
+    { name = "canvod-utils" },
+    { name = "icechunk" },
+    { name = "polars" },
+    { name = "pydantic" },
+    { name = "zarr" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "canvod-utils", editable = "packages/canvod-utils" },
+    { name = "icechunk", specifier = ">=1.1.5" },
+    { name = "polars", specifier = ">=1.0.0" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "zarr", specifier = ">=3.1.2" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-cov", specifier = ">=5.0" },
+    { name = "ruff", specifier = ">=0.14" },
+    { name = "ty", specifier = ">=0.0.9" },
+]
+
+[[package]]
 name = "canvod-utils"
 version = "0.1.0"
 source = { editable = "packages/canvod-utils" }
@@ -540,6 +578,7 @@ dependencies = [
     { name = "canvod-grids" },
     { name = "canvod-readers" },
     { name = "canvod-store" },
+    { name = "canvod-store-metadata" },
     { name = "canvod-utils" },
     { name = "canvod-viz" },
     { name = "canvod-vod" },
@@ -573,6 +612,7 @@ requires-dist = [
     { name = "canvod-grids", editable = "packages/canvod-grids" },
     { name = "canvod-readers", editable = "packages/canvod-readers" },
     { name = "canvod-store", editable = "packages/canvod-store" },
+    { name = "canvod-store-metadata", editable = "packages/canvod-store-metadata" },
     { name = "canvod-utils", editable = "packages/canvod-utils" },
     { name = "canvod-viz", editable = "packages/canvod-viz" },
     { name = "canvod-vod", editable = "packages/canvod-vod" },

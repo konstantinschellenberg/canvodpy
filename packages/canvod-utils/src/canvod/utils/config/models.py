@@ -35,7 +35,9 @@ class MetadataConfig(BaseModel):
 
     author: str = Field(..., description="Author name")
     email: EmailStr = Field(..., description="Author email")
+    orcid: str | None = Field(None, description="ORCID identifier")
     institution: str = Field(..., description="Institution name")
+    institution_ror: str | None = Field(None, description="ROR identifier")
     department: str | None = Field(None, description="Department name")
     research_group: str | None = Field(
         None,
@@ -45,6 +47,10 @@ class MetadataConfig(BaseModel):
         None,
         description="Institution/group website",
     )
+    license: str | None = Field(None, description="SPDX license identifier")
+    publisher: str | None = Field(None, description="Publisher name")
+    publisher_url: str | None = Field(None, description="Publisher URL")
+    naming_authority: str | None = Field(None, description="Naming authority URI")
 
     def to_attrs_dict(self) -> dict[str, str]:
         """Convert to a dictionary for xarray attributes.
@@ -529,6 +535,29 @@ class PreprocessingConfig(BaseModel):
     )
 
 
+class PublicationRef(BaseModel):
+    """A publication reference."""
+
+    doi: str
+    citation: str | None = None
+
+
+class FundingRef(BaseModel):
+    """A funding reference."""
+
+    funder: str
+    funder_ror: str | None = None
+    grant_number: str | None = None
+    award_title: str | None = None
+
+
+class ReferencesConfig(BaseModel):
+    """Publications and funding references."""
+
+    publications: list[PublicationRef] = Field(default_factory=list)
+    funding: list[FundingRef] = Field(default_factory=list)
+
+
 class ProcessingConfig(BaseModel):
     """Complete processing configuration."""
 
@@ -545,6 +574,10 @@ class ProcessingConfig(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     preprocessing: PreprocessingConfig = Field(
         default_factory=PreprocessingConfig,
+    )
+    references: ReferencesConfig = Field(
+        default_factory=ReferencesConfig,
+        description="Publication and funding references",
     )
 
 
@@ -626,6 +659,11 @@ class SiteConfig(BaseModel):
     gnss_site_data_root: str = Field(
         ..., description="Root directory for site GNSS data"
     )
+    description: str | None = Field(None, description="Site description")
+    country: str | None = Field(None, description="Country code (ISO 3166-1)")
+    latitude: float | None = Field(None, description="WGS84 latitude")
+    longitude: float | None = Field(None, description="WGS84 longitude")
+    altitude_m: float | None = Field(None, description="Altitude in meters")
     receivers: dict[str, ReceiverConfig] = Field(..., description="Site receivers")
     vod_analyses: dict[str, VodAnalysisConfig] | None = Field(
         None,

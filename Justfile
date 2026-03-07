@@ -79,6 +79,7 @@ test-all-packages:
     uv run pytest packages/canvod-virtualiconvname/tests/ --verbose --color=yes
     uv run pytest packages/canvod-vod/tests/ --verbose --color=yes
     uv run pytest packages/canvod-ops/tests/ --verbose --color=yes
+    uv run pytest packages/canvod-store-metadata/tests/ --verbose --color=yes
 
 # run tests with coverage report
 test-coverage:
@@ -114,6 +115,42 @@ config-init:
 # edit a configuration file (processing, sites, sids)
 config-edit FILE:
     uv run canvodpy config edit {{ FILE }}
+
+# ============================================================================
+# Store Metadata
+# ============================================================================
+
+# show full metadata report for a store
+metadata-show STORE_PATH:
+    uv run python -m canvod.store_metadata.show {{ STORE_PATH }}
+
+# show a specific metadata section (identity, creator, temporal, spatial, env, processing, summaries, validation, reproduce, uv, toml)
+metadata-section STORE_PATH SECTION:
+    uv run python -m canvod.store_metadata.show {{ STORE_PATH }} {{ SECTION }}
+
+# validate store metadata against FAIR, DataCite, ACDD, STAC
+metadata-validate STORE_PATH:
+    uv run python -c "from pathlib import Path; from canvod.store_metadata import read_metadata, validate_all; meta = read_metadata(Path('{{ STORE_PATH }}')); results = validate_all(meta); [print(f'{std}: {\"PASS\" if not issues else f\"{len(issues)} issues\"}') for std, issues in results.items()]; [print(f'  - {i}') for issues in results.values() for i in issues]"
+
+# export STAC Collection JSON for a single store
+metadata-stac STORE_PATH:
+    uv run python -c "from pathlib import Path; from canvod.store_metadata import write_stac_collection; p = write_stac_collection(Path('{{ STORE_PATH }}')); print(f'Written: {p}')"
+
+# export STAC Catalog JSON for all stores under a directory
+metadata-stac-catalog ROOT_DIR:
+    uv run python -c "from pathlib import Path; from canvod.store_metadata import write_stac_catalog; p = write_stac_catalog(Path('{{ ROOT_DIR }}')); print(f'Written: {p}')"
+
+# scan a directory for stores and print inventory table
+metadata-inventory ROOT_DIR:
+    uv run python -c "from pathlib import Path; from canvod.store_metadata import scan_stores; df = scan_stores(Path('{{ ROOT_DIR }}')); print(df)"
+
+# extract pyproject.toml + uv.lock from a store for environment reproduction
+metadata-extract-env STORE_PATH OUTPUT_DIR:
+    uv run python -c "from pathlib import Path; from canvod.store_metadata import extract_env; p = extract_env(Path('{{ STORE_PATH }}'), Path('{{ OUTPUT_DIR }}')); print(f'Extracted to {p}. Run: cd {p} && uv sync --frozen')"
+
+# run canvod-store-metadata tests
+metadata-test:
+    uv run pytest packages/canvod-store-metadata/tests/ -v
 
 # ============================================================================
 # Utilities
@@ -175,20 +212,21 @@ release VERSION: test
 
 # Build all packages (outputs to workspace root dist/)
 build-all:
-    @echo "🔨 Building all 10 packages..."
+    @echo "🔨 Building all 11 packages..."
     @rm -rf dist/
     @mkdir -p dist/
     cd packages/canvod-readers && uv build
     cd packages/canvod-auxiliary && uv build
     cd packages/canvod-grids && uv build
     cd packages/canvod-store && uv build
+    cd packages/canvod-store-metadata && uv build
     cd packages/canvod-utils && uv build
     cd packages/canvod-viz && uv build
     cd packages/canvod-virtualiconvname && uv build
     cd packages/canvod-vod && uv build
     cd packages/canvod-ops && uv build
     cd canvodpy && uv build
-    @echo "✅ Built 10 packages to dist/"
+    @echo "✅ Built 11 packages to dist/"
     @ls -lh dist/*.whl
 
 # Publish all packages to TestPyPI (requires credentials)

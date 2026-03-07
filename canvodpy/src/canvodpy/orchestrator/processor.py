@@ -882,7 +882,16 @@ class RinexDataProcessor:
 
         if reader_format == "sbf":
             globs = set(BUILTIN_PATTERNS["septentrio_sbf"].file_globs)
+        elif reader_format in ("rinex3", "rinex"):
+            # Only RINEX patterns — exclude SBF globs
+            rinex_pattern_names = [
+                n for n in auto_match_order() if n != "septentrio_sbf"
+            ]
+            globs: set[str] = set()
+            for name in rinex_pattern_names:
+                globs.update(BUILTIN_PATTERNS[name].file_globs)
         else:
+            # "auto" or unknown — use all patterns
             globs: set[str] = set()
             for name in auto_match_order():
                 globs.update(BUILTIN_PATTERNS[name].file_globs)
@@ -1705,7 +1714,7 @@ class RinexDataProcessor:
 
                 # Handle different strategies based on self._rinex_store_strategy
                 match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups and idx == 0:
+                    case (False, _) if receiver_name not in groups:
                         # Initial commit
                         log.debug("performing_initial_write", group=receiver_name)
                         msg = f"[v{version}] Initial commit: {rel_path}"
@@ -1877,6 +1886,89 @@ class RinexDataProcessor:
             total_files=len(augmented_datasets),
         )
 
+    def _check_existing_with_temporal_overlap(
+        self,
+        receiver_name: str,
+        augmented_datasets: list[tuple[Path, xr.Dataset]],
+        file_hash_map: dict[Path, str | None],
+    ) -> set[str]:
+        """Check for existing files by hash AND temporal overlap.
+
+        Performs three checks:
+        1. Hash match against store metadata (exact duplicate)
+        2. Temporal overlap against store metadata (e.g. re-run)
+        3. Intra-batch overlap (e.g. daily concat + 15-min sub-files
+           in the same batch)
+
+        Returns the union of all flagged hashes so the caller can treat
+        them as ``exists=True``.
+        """
+        valid_hashes = [h for h in file_hash_map.values() if h]
+        existing_hashes = self.site.rinex_store.batch_check_existing(
+            receiver_name, valid_hashes
+        )
+
+        # Check 2: temporal overlap against store metadata
+        new_hashes = [h for h in valid_hashes if h not in existing_hashes]
+        if new_hashes:
+            file_intervals = []
+            for fname, ds in augmented_datasets:
+                h = file_hash_map[fname]
+                if h and h not in existing_hashes:
+                    file_intervals.append(
+                        (
+                            h,
+                            np.datetime64(ds.epoch.min().values),
+                            np.datetime64(ds.epoch.max().values),
+                        )
+                    )
+            if file_intervals:
+                temporal_overlaps = self.site.rinex_store.check_temporal_overlaps(
+                    receiver_name, file_intervals
+                )
+                existing_hashes |= temporal_overlaps
+
+        # Check 3: intra-batch overlap detection
+        # If a file's time range fully contains other files' ranges,
+        # it's a concatenation file — flag it as redundant.
+        intervals = []
+        for fname, ds in augmented_datasets:
+            h = file_hash_map[fname]
+            if h and h not in existing_hashes:
+                intervals.append(
+                    (
+                        h,
+                        np.datetime64(ds.epoch.min().values),
+                        np.datetime64(ds.epoch.max().values),
+                        len(ds.epoch),
+                    )
+                )
+
+        if len(intervals) > 1:
+            intra_overlaps: set[str] = set()
+            for i, (h_i, s_i, e_i, n_i) in enumerate(intervals):
+                for j, (h_j, s_j, e_j, n_j) in enumerate(intervals):
+                    if i == j:
+                        continue
+                    # Check if file i fully contains file j
+                    if s_i <= s_j and e_i >= e_j:
+                        # File i contains file j — flag the larger file
+                        # (prefer keeping the smaller sub-files)
+                        intra_overlaps.add(h_i)
+                        self._logger.warning(
+                            "intra_batch_overlap",
+                            container_hash=h_i[:16],
+                            container_epochs=n_i,
+                            contained_hash=h_j[:16],
+                            contained_epochs=n_j,
+                            message="Skipping concatenation file that "
+                            "contains sub-files in same batch",
+                        )
+                        break  # Once flagged, no need to check more
+            existing_hashes |= intra_overlaps
+
+        return existing_hashes
+
     def _append_to_icechunk_incrementally(
         self,
         augmented_datasets: list[tuple[Path, xr.Dataset]],
@@ -1905,9 +1997,8 @@ class RinexDataProcessor:
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -2028,7 +2119,7 @@ class RinexDataProcessor:
 
                         # Handle data writes using ONLY to_icechunk() with our session
                         match (exists, self._rinex_store_strategy):
-                            case (False, _) if receiver_name not in groups and idx == 0:
+                            case (False, _) if receiver_name not in groups:
                                 # Initial group creation
                                 size_mb = ds_clean.nbytes / (1024 * 1024)
                                 with trace_icechunk_write(
@@ -2247,9 +2338,8 @@ class RinexDataProcessor:
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -2382,8 +2472,8 @@ class RinexDataProcessor:
 
                         # Handle data writes using ONLY to_icechunk() with our session
                         match (exists, self._rinex_store_strategy):
-                            case (False, _) if receiver_name not in groups and idx == 0:
-                                # Initial group creation
+                            case (False, _) if receiver_name not in groups:
+                                # Initial group creation (first non-skipped file)
                                 to_icechunk(ds_clean, session, group=receiver_name)
                                 groups.append(receiver_name)
                                 actions["initial"] += 1
@@ -2518,6 +2608,98 @@ class RinexDataProcessor:
                 log.exception("Batch append failed")
                 raise
 
+        # STEP 5: Set source_format root attr (once, idempotent)
+        if self.site.rinex_store.source_format is None:
+            reader_fmt = self._reader_name
+            try:
+                self.site.rinex_store.set_root_attrs(
+                    {"source_format": reader_fmt}, branch=branch
+                )
+                log.info("Set store source_format='%s'", reader_fmt)
+            except Exception:
+                log.warning("Failed to set source_format root attr")
+
+        # STEP 5b: Write rich store metadata (once, on first ingest)
+        try:
+            from canvod.store_metadata import (
+                collect_metadata,
+                metadata_exists,
+                update_metadata,
+                write_metadata,
+            )
+
+            store_path = self.site.rinex_store.store_path
+            site_name = self.site.site_name
+
+            # Find site config from CanvodConfig
+            sites_cfg = self._config.sites
+            site_cfg = None
+            for sn, sc in sites_cfg.sites.items():
+                if sn == site_name:
+                    site_cfg = sc
+                    break
+
+            if site_cfg is not None:
+                reader_fmt = self._reader_name
+                if not metadata_exists(store_path, branch=branch):
+                    resources = self._config.processing.processing.resolve_resources()
+                    meta = collect_metadata(
+                        config=self._config,
+                        site_name=site_name,
+                        site_config=site_cfg,
+                        store_type="rinex_store",
+                        source_format=reader_fmt,
+                        store_path=store_path,
+                        dask_workers=resources.get("n_workers"),
+                        dask_threads_per_worker=resources.get("threads_per_worker"),
+                    )
+                    write_metadata(store_path, meta, branch=branch)
+                    log.info("Wrote rich store metadata")
+                else:
+                    now = datetime.now(UTC).isoformat()
+                    update_metadata(
+                        store_path,
+                        {
+                            "temporal.updated": now,
+                            "summaries.history": [
+                                f"{now}: Ingested {len(augmented_datasets)}"
+                                f" files for {receiver_name}"
+                            ],
+                        },
+                        branch=branch,
+                    )
+                    log.info("Updated store metadata timestamp")
+        except Exception:
+            log.debug(
+                "canvod-store-metadata not available or write failed",
+                exc_info=True,
+            )
+
+        # STEP 6: Write SBF metadata datasets (sbf_obs) per receiver
+        if aux_datasets:
+            sbf_parts = [
+                aux_dict["sbf_obs"]
+                for aux_dict in aux_datasets.values()
+                if "sbf_obs" in aux_dict
+            ]
+            if sbf_parts:
+                try:
+                    combined_sbf = xr.concat(sbf_parts, dim="epoch")
+                    self.site.rinex_store.write_sbf_metadata(
+                        combined_sbf, receiver_name, branch
+                    )
+                    log.info(
+                        "Wrote sbf_obs metadata for %s (%d epochs)",
+                        receiver_name,
+                        len(combined_sbf.epoch),
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to write sbf_obs for %s",
+                        receiver_name,
+                        exc_info=True,
+                    )
+
         # Promote temp branch to main after successful commit
         if is_overwrite and temp_branch:
             try:
@@ -2562,9 +2744,8 @@ class RinexDataProcessor:
         file_hash_map = {
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
         t2 = time.time()
         log.info(
@@ -2659,7 +2840,7 @@ class RinexDataProcessor:
 
                 # Decide write strategy
                 match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups and idx == 0:
+                    case (False, _) if receiver_name not in groups:
                         to_icechunk(ds_clean, session, group=receiver_name)
                         groups.append(receiver_name)
                         return "initial"
@@ -3748,9 +3929,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         file_hash_map = {
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         actions = {
@@ -3894,9 +4074,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -4012,7 +4191,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
                     # Handle data writes using ONLY to_icechunk() with our session
                     match (exists, self._rinex_store_strategy):
-                        case (False, _) if receiver_name not in groups and idx == 0:
+                        case (False, _) if receiver_name not in groups:
                             # Initial group creation
                             to_icechunk(ds_clean, session, group=receiver_name)
                             groups.append(receiver_name)
