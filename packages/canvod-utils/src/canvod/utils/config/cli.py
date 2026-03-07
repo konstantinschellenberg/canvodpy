@@ -103,6 +103,7 @@ def init(
       - config/processing.yaml
       - config/sites.yaml
       - config/sids.yaml
+      - config/recipes/*.yaml (example naming recipes)
 
     Parameters
     ----------
@@ -160,6 +161,19 @@ def init(
         else:
             console.print(f"[yellow]⚠️  Template not found: {template_path}[/yellow]")
 
+    # Copy example recipe files
+    recipes_src = template_dir / "recipes"
+    recipes_dest = config_dir / "recipes"
+    if recipes_src.exists():
+        recipes_dest.mkdir(parents=True, exist_ok=True)
+        for recipe_file in sorted(recipes_src.glob("*.yaml")):
+            dest = recipes_dest / recipe_file.name
+            if dest.exists() and not force:
+                files_skipped.append(dest)
+            else:
+                shutil.copy(recipe_file, dest)
+                files_created.append(dest)
+
     # Show results
     if files_created:
         console.print("[green]✓ Created:[/green]")
@@ -178,7 +192,10 @@ def init(
     console.print("     - Set nasa_earthdata_acc_mail (optional, for NASA CDDIS)")
     console.print("  2. Edit config/sites.yaml with your research sites")
     console.print("     - Set gnss_site_data_root for each site")
-    console.print("  3. Run: just config-validate\n")
+    console.print("     - Set recipe: <name> for each receiver")
+    console.print("  3. Edit config/recipes/*.yaml to match your filename format")
+    console.print("     - See existing recipes for examples")
+    console.print("  4. Run: just config-validate\n")
 
 
 @config_app.command()
@@ -547,6 +564,8 @@ def _show_sites(config: SitesConfig) -> None:
                 f"[{type_color}]({recv.type})[/{type_color}]"
             )
             console.print(f"        dir: {abs_dir}")
+            if recv.recipe:
+                console.print(f"        recipe: {recv.recipe}")
             if recv.scs_from is not None:
                 if recv.scs_from == "all":
                     console.print(f"        scs_from: all -> {canopy_names}")

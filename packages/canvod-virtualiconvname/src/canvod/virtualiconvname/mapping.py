@@ -206,6 +206,16 @@ class FilenameMapper:
         pat, m = result
         groups = m.groupdict()
 
+        # Validate station code if configured
+        expected_station = self.receiver_naming.source_station
+        if expected_station and "station" in groups:
+            actual_station = groups["station"]
+            if actual_station.lower() != expected_station.lower():
+                raise ValueError(
+                    f"Station code mismatch for {filename!r}: "
+                    f"expected {expected_station!r}, got {actual_station!r}"
+                )
+
         # Extract year
         if year is None:
             if "year" in groups and groups["year"] is not None:
@@ -242,11 +252,14 @@ class FilenameMapper:
             or self.receiver_naming.sampling
             or self.site_naming.default_sampling
         )
-        period = (
-            groups.get("period")
-            or self.receiver_naming.period
-            or self.site_naming.default_period
-        )
+        period = groups.get("period")
+        if not period:
+            # For RINEX v2 / SBF: hour_letter='0' means daily file
+            hour_letter = groups.get("hour_letter")
+            if hour_letter == "0" and hour == 0 and minute == 0:
+                period = "01D"
+            else:
+                period = self.receiver_naming.period or self.site_naming.default_period
 
         # Content from config
         content = self.receiver_naming.content or self.site_naming.default_content

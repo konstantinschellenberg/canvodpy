@@ -79,27 +79,58 @@ def _build_rinex_v3_long_pattern() -> SourcePattern:
 
 
 def _build_rinex_v2_short_pattern() -> SourcePattern:
-    """RINEX v2 short-name convention.
+    """RINEX v2 short-name convention (observation files only).
 
     Example: ``rosl001a.25o``
     Format:  ``{ssss}{ddd}{h}.{yy}{t}``
     where ssss=4-char station, ddd=DOY, h=hour letter (a-x or 0),
-    yy=2-digit year, t=file type (o=obs, n=nav, etc.)
+    yy=2-digit year, t=file type (o/O=obs, d/D=Hatanaka compressed obs)
     """
     return SourcePattern(
         name="rinex_v2_short",
         file_globs=(
-            "*.[0-9][0-9][oOdDnNmMgGlLpPhHbBcC]",
-            "*.[0-9][0-9][oOdDnNmMgGlLpPhHbBcC].gz",
-            "*.[0-9][0-9][oOdDnNmMgGlLpPhHbBcC].zip",
-            "*.[0-9][0-9][oOdDnNmMgGlLpPhHbBcC].Z",
+            "*.[0-9][0-9][oOdD]",
+            "*.[0-9][0-9][oOdD].gz",
+            "*.[0-9][0-9][oOdD].zip",
+            "*.[0-9][0-9][oOdD].Z",
         ),
         regex=re.compile(
             r"^(?P<station>[a-zA-Z0-9]{4})"
             r"(?P<doy>\d{3})"
             r"(?P<hour_letter>[a-x0])"
             r"\.(?P<yy>\d{2})"
-            r"(?P<type_char>[oOdDnNmMgGlLpPhHbBcC])"
+            r"(?P<type_char>[oOdD])"
+            r"(?:\.[a-zA-Z0-9]+)?$"
+        ),
+    )
+
+
+def _build_septentrio_rinex_v2_pattern() -> SourcePattern:
+    """Septentrio RINEX v2 with minute field (observation files only).
+
+    Example: ``ract001a15.25o``
+    Format:  ``{ssss}{ddd}{h}{mm}.{yy}{t}``
+    where ssss=4-char station, ddd=DOY, h=hour letter (a-x),
+    mm=minute, yy=2-digit year, t=file type (o/O/d/D)
+
+    Septentrio receivers add a 2-digit minute to the standard RINEX v2
+    short name when logging sub-hourly files.
+    """
+    return SourcePattern(
+        name="septentrio_rinex_v2",
+        file_globs=(
+            "*.[0-9][0-9][oOdD]",
+            "*.[0-9][0-9][oOdD].gz",
+            "*.[0-9][0-9][oOdD].zip",
+            "*.[0-9][0-9][oOdD].Z",
+        ),
+        regex=re.compile(
+            r"^(?P<station>[a-zA-Z0-9]{4})"
+            r"(?P<doy>\d{3})"
+            r"(?P<hour_letter>[a-x])"
+            r"(?P<minute>\d{2})"
+            r"\.(?P<yy>\d{2})"
+            r"(?P<type_char>[oOdD])"
             r"(?:\.[a-zA-Z0-9]+)?$"
         ),
     )
@@ -132,15 +163,20 @@ def _build_septentrio_sbf_pattern() -> SourcePattern:
 BUILTIN_PATTERNS: dict[str, SourcePattern] = {
     "canvod": _build_canvod_pattern(),
     "rinex_v3_long": _build_rinex_v3_long_pattern(),
+    "septentrio_rinex_v2": _build_septentrio_rinex_v2_pattern(),
     "rinex_v2_short": _build_rinex_v2_short_pattern(),
     "septentrio_sbf": _build_septentrio_sbf_pattern(),
 }
 
-# Order for "auto" mode: most specific first
+# Order for "auto" mode: most specific first.
+# septentrio_rinex_v2 must come before rinex_v2_short because both share
+# the same globs but the Septentrio variant has a minute field (10 chars
+# before the dot vs 8).
 AUTO_PATTERN_ORDER: tuple[str, ...] = (
     "canvod",
     "rinex_v3_long",
     "septentrio_sbf",
+    "septentrio_rinex_v2",
     "rinex_v2_short",
 )
 

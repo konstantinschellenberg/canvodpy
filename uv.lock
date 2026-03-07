@@ -468,6 +468,7 @@ dependencies = [
     { name = "duckdb" },
     { name = "natsort" },
     { name = "pydantic" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -475,6 +476,7 @@ requires-dist = [
     { name = "duckdb", specifier = ">=1.0" },
     { name = "natsort", specifier = ">=8.4.0" },
     { name = "pydantic", specifier = ">=2.5.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
 ]
 
 [[package]]

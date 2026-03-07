@@ -15,6 +15,7 @@ from .convention import (
 )
 from .mapping import FilenameMapper, VirtualFile
 from .patterns import BUILTIN_PATTERNS, SourcePattern, match_pattern
+from .recipe import NamingRecipe
 from .validator import DataDirectoryValidator, ValidationReport
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "FileType",
     "FilenameCatalog",
     "FilenameMapper",
+    "NamingRecipe",
     "ReceiverNamingConfig",
     "ReceiverType",
     "SiteId",

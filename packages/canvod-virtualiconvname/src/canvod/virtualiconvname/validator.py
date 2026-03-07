@@ -13,7 +13,15 @@ from pathlib import Path
 from typing import Literal
 
 from .config_models import ReceiverNamingConfig, SiteNamingConfig
+from .convention import FileType
 from .mapping import FilenameMapper, VirtualFile
+
+# Map reader_format config values to accepted FileType(s)
+_READER_FORMAT_FILETYPES: dict[str, set[FileType]] = {
+    "rinex3": {FileType.RNX},
+    "rinex": {FileType.RNX},
+    "sbf": {FileType.SBF},
+}
 
 
 @dataclass
@@ -24,6 +32,7 @@ class ValidationReport:
     unmatched: list[Path] = field(default_factory=list)
     overlaps: list[tuple[VirtualFile, VirtualFile]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    skipped_format: list[VirtualFile] = field(default_factory=list)
 
     @property
     def is_valid(self) -> bool:
@@ -40,6 +49,7 @@ class DataDirectoryValidator:
         receiver_naming: ReceiverNamingConfig,
         receiver_type: Literal["reference", "canopy"],
         receiver_base_dir: Path,
+        reader_format: str | None = None,
     ) -> ValidationReport:
         """Validate all files in a receiver directory.
 
@@ -53,6 +63,11 @@ class DataDirectoryValidator:
             ``"reference"`` or ``"canopy"``.
         receiver_base_dir
             Absolute path to the receiver's data directory.
+        reader_format
+            If set (e.g. ``"rinex3"``, ``"sbf"``), only validate files
+            matching that format.  Files of other formats are skipped
+            (reported in ``skipped_format``).  ``"auto"`` or ``None``
+            validates all formats.
 
         Returns
         -------
@@ -76,13 +91,25 @@ class DataDirectoryValidator:
         # Discover all physical files
         all_physical = mapper._discover_files()
 
+        # Determine which file types to accept
+        accepted_types: set[FileType] | None = None
+        if reader_format and reader_format != "auto":
+            accepted_types = _READER_FORMAT_FILETYPES.get(reader_format)
+
         # Try to map each file
         for path in all_physical:
             try:
                 vf = mapper.map_single_file(path)
-                report.matched.append(vf)
             except (ValueError, KeyError):
                 report.unmatched.append(path)
+                continue
+
+            # Filter by reader_format
+            if accepted_types and vf.conventional_name.file_type not in accepted_types:
+                report.skipped_format.append(vf)
+                continue
+
+            report.matched.append(vf)
 
         # Check for duplicate canonical names
         seen_names: dict[str, VirtualFile] = {}
@@ -111,7 +138,8 @@ def _format_validation_error(report: ValidationReport, base_dir: Path) -> str:
 
     if report.unmatched:
         lines.append(
-            f"\n  {len(report.unmatched)} file(s) could not be mapped to canonical names:"
+            f"\n  {len(report.unmatched)} file(s) could not be mapped"
+            " to canonical names:"
         )
         for p in report.unmatched[:20]:
             lines.append(f"    - {p.name}")

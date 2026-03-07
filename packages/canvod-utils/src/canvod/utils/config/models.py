@@ -591,6 +591,14 @@ class ReceiverConfig(BaseModel):
             "When 'auto', detected from files at pipeline start."
         ),
     )
+    recipe: str | None = Field(
+        None,
+        description=(
+            "Name of a naming recipe (e.g. 'rosalia_reference'). "
+            "Resolved from config/recipes/{recipe}.yaml. "
+            "When set, replaces the 'naming' block for file discovery."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_scs_from(self) -> "ReceiverConfig":

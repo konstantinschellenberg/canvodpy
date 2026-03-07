@@ -1,8 +1,12 @@
 # =============================================================================
 # Research Sites Configuration Template
 # =============================================================================
-# Copy this file to config/sites.yaml and customize for your setup
+# Copy this file to config/sites.yaml and customize for your setup.
 # Run: just config-init
+#
+# Each receiver needs a "recipe" — a small YAML file that describes how to
+# extract date/time fields from your filenames. Recipes live in
+# config/recipes/{recipe_name}.yaml. See config/recipes/ for examples.
 
 sites:
   # Example site configuration
@@ -10,55 +14,40 @@ sites:
     # Absolute path to site data directory
     gnss_site_data_root: /path/to/your/gnss/data/01_Rosalia
 
-    # Naming convention defaults (validated by canvod-virtualiconvname)
-    naming:
-      site_id: ROS
-      agency: TUW
-      default_sampling: "05S"
-
     # Receiver definitions
     receivers:
       reference_01:
         type: reference
-        directory: 01_reference/01_GNSS/01_raw
-        reader_format: auto                  # 'auto', 'rinex3', or 'sbf'
-        scs_from: all                        # 'all' or list of canopy receiver names
+        directory: 01_reference             # subdirectory under gnss_site_data_root
+        reader_format: auto                 # 'auto', 'rinex3', or 'sbf'
+        scs_from: all                       # 'all' or list of canopy receiver names
         description: First reference receiver (open sky)
-        naming:
-          receiver_number: 1
-          source_pattern: auto
-          directory_layout: yyddd_subdirs
-        # Freeform metadata written to dataset global attrs
+        recipe: rosalia_reference           # → config/recipes/rosalia_reference.yaml
+
+        # Optional freeform metadata written to dataset global attrs
         metadata:
           site_url: https://forschung.boku.ac.at/rosalia
           antenna_height: 2.0
 
       canopy_01:
         type: canopy
-        directory: 02_canopy/01_GNSS/01_raw
-        reader_format: auto                  # 'auto', 'rinex3', or 'sbf'
+        directory: 02_canopy
+        reader_format: auto
         description: First canopy receiver (under vegetation)
-        naming:
-          receiver_number: 1
-          source_pattern: auto
-          directory_layout: yyddd_subdirs
+        recipe: rosalia_canopy              # → config/recipes/rosalia_canopy.yaml
+
         metadata:
           site_url: https://forschung.boku.ac.at/rosalia
           antenna_height: 1.5
           species: Fagus sylvatica
 
-      canopy_02:
-        type: canopy
-        directory: 03_canopy_ext1/01_GNSS/01_raw
-        description: Second canopy receiver (under vegetation)
-        naming:
-          receiver_number: 2
-          source_pattern: auto
-          directory_layout: yyddd_subdirs
-        metadata:
-          site_url: https://forschung.boku.ac.at/rosalia
-          antenna_height: 1.5
-          species: Picea abies
+      # canopy_02:
+      #   type: canopy
+      #   directory: 03_canopy_ext1
+      #   description: Second canopy receiver
+      #   recipe: rosalia_canopy_02         # → config/recipes/rosalia_canopy_02.yaml
+      #   metadata:
+      #     species: Picea abies
 
     # VOD analysis pairs
     vod_analyses:
@@ -67,10 +56,10 @@ sites:
         reference_receiver: reference_01
         description: VOD analysis canopy_01 vs reference_01
 
-      canopy_02_vs_reference_01:
-        canopy_receiver: canopy_02
-        reference_receiver: reference_01
-        description: VOD analysis canopy_02 vs reference_01
+      # canopy_02_vs_reference_01:
+      #   canopy_receiver: canopy_02
+      #   reference_receiver: reference_01
+      #   description: VOD analysis canopy_02 vs reference_01
 
   # Add more sites as needed
   # tuw:
@@ -78,13 +67,13 @@ sites:
   #   receivers:
   #     reference_01:
   #       type: reference
-  #       directory: 01_reference/01_GNSS/01_raw
+  #       directory: 01_reference
   #       scs_from: all
-  #       description: TU Wien reference receiver
+  #       recipe: tuw_reference
   #     canopy_01:
   #       type: canopy
-  #       directory: 02_canopy/01_GNSS/01_raw
-  #       description: TU Wien canopy receiver
+  #       directory: 02_canopy
+  #       recipe: tuw_canopy
   #   vod_analyses:
   #     canopy_01_vs_reference_01:
   #       canopy_receiver: canopy_01

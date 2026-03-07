@@ -33,10 +33,20 @@ class SiteNamingConfig(BaseModel):
 
 
 class ReceiverNamingConfig(BaseModel):
-    """Receiver-level naming overrides (``sites.<name>.receivers.<rx>.naming``)."""
+    """Receiver-level naming overrides (``sites.<name>.receivers.<rx>.naming``).
+
+    The ``source_station`` field specifies the 4-character station code used
+    in RINEX v2 / SBF filenames (e.g. ``ract``, ``rref``).  When set, only
+    files whose station code matches are accepted during discovery and
+    validation.  When ``None``, any station code is accepted.
+    """
 
     receiver_number: int = Field(ge=1, le=99)
     source_pattern: str = "auto"
+    source_station: str | None = Field(
+        default=None,
+        description="4-char station code in source filenames (e.g. 'ract')",
+    )
     directory_layout: DirectoryLayout = DirectoryLayout.YYDDD_SUBDIRS
     agency: AgencyId | None = None
     sampling: Duration | None = None
