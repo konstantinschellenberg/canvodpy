@@ -230,6 +230,10 @@ def validate_data_dirs(site: str) -> dict:
     )
 
     config = load_config()
+    available = list(config.sites.sites.keys())
+    if site not in config.sites.sites:
+        msg = f"Unknown site '{site}'. Available sites: {', '.join(available) or '(none)'}"
+        raise KeyError(msg)
     site_cfg = config.sites.sites[site]
     base = site_cfg.get_base_path()
 
