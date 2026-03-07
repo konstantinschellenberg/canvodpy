@@ -76,7 +76,7 @@ test-all-packages:
     uv run pytest packages/canvod-store/tests/ --verbose --color=yes
     uv run pytest packages/canvod-grids/tests/ --verbose --color=yes
     uv run pytest packages/canvod-viz/tests/ --verbose --color=yes
-    uv run pytest packages/canvod-naming/tests/ --verbose --color=yes
+    uv run pytest packages/canvod-virtualiconvname/tests/ --verbose --color=yes
     uv run pytest packages/canvod-vod/tests/ --verbose --color=yes
     uv run pytest packages/canvod-ops/tests/ --verbose --color=yes
 
@@ -184,7 +184,7 @@ build-all:
     cd packages/canvod-store && uv build
     cd packages/canvod-utils && uv build
     cd packages/canvod-viz && uv build
-    cd packages/canvod-naming && uv build
+    cd packages/canvod-virtualiconvname && uv build
     cd packages/canvod-vod && uv build
     cd packages/canvod-ops && uv build
     cd canvodpy && uv build
