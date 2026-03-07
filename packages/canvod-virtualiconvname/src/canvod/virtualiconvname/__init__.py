@@ -1,4 +1,4 @@
-"""canvod-naming: Filename convention, mapping engine, and catalog for canVODpy."""
+"""canvod-virtualiconvname: Filename convention, mapping engine, and catalog for canVODpy."""
 
 __version__ = "0.1.0"
 
@@ -15,12 +15,14 @@ from .convention import (
 )
 from .mapping import FilenameMapper, VirtualFile
 from .patterns import BUILTIN_PATTERNS, SourcePattern, match_pattern
+from .validator import DataDirectoryValidator, ValidationReport
 
 __all__ = [
     "BUILTIN_PATTERNS",
     "AgencyId",
     "CanVODFilename",
     "ContentCode",
+    "DataDirectoryValidator",
     "DirectoryLayout",
     "Duration",
     "FileType",
@@ -31,6 +33,7 @@ __all__ = [
     "SiteId",
     "SiteNamingConfig",
     "SourcePattern",
+    "ValidationReport",
     "VirtualFile",
     "match_pattern",
 ]

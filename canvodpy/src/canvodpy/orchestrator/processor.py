@@ -862,33 +862,122 @@ class RinexDataProcessor:
     ) -> list[Path]:
         """Get sorted list of GNSS data files from directory.
 
+        Uses ``BUILTIN_PATTERNS`` from canvod-virtualiconvname as the
+        single source of truth for file discovery globs.
+
         Parameters
         ----------
         rinex_dir : Path
             Directory to search.
         reader_format : str | None
-            If provided, only return files matching the format's glob
-            patterns (from ``FORMAT_GLOB_PATTERNS``).  ``None`` returns
-            all recognized GNSS files.
+            If ``"sbf"``, restrict to SBF glob patterns only.
+            Otherwise discovers all recognized GNSS file types.
 
         """
         if not rinex_dir.exists():
             self._logger.warning("Directory does not exist: %s", rinex_dir)
             return []
 
-        from canvod.readers.gnss_specs.constants import FORMAT_GLOB_PATTERNS
+        from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
 
-        if reader_format and reader_format in FORMAT_GLOB_PATTERNS:
-            patterns = list(FORMAT_GLOB_PATTERNS[reader_format])
+        if reader_format == "sbf":
+            globs = set(BUILTIN_PATTERNS["septentrio_sbf"].file_globs)
         else:
-            patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
+            globs: set[str] = set()
+            for name in auto_match_order():
+                globs.update(BUILTIN_PATTERNS[name].file_globs)
 
-        rinex_files = []
-        for pattern in patterns:
-            files = list(rinex_dir.glob(pattern))
-            rinex_files.extend(files)
+        rinex_files: list[Path] = []
+        seen: set[Path] = set()
+        for g in sorted(globs):
+            for path in rinex_dir.glob(g):
+                if path.is_file() and path not in seen:
+                    seen.add(path)
+                    rinex_files.append(path)
 
         return natsorted(rinex_files)
+
+    def _get_virtual_files(
+        self,
+        receiver_name: str,
+        receiver_base_dir: Path,
+        year: int,
+        doy: int,
+    ) -> list:
+        """Discover and validate files using FilenameMapper.
+
+        Parameters
+        ----------
+        receiver_name : str
+            Receiver name from config.
+        receiver_base_dir : Path
+            Root directory for this receiver's data.
+        year, doy : int
+            Date to discover files for.
+
+        Returns
+        -------
+        list[VirtualFile]
+            Sorted virtual files for the given date.
+
+        Raises
+        ------
+        ValueError
+            If validation fails (unmatched files or overlaps).
+        """
+        from canvod.virtualiconvname import (
+            FilenameMapper,
+            ReceiverNamingConfig,
+            SiteNamingConfig,
+        )
+
+        # Resolve site and receiver naming config
+        site_config = self._get_site_config()
+        receiver_cfg = site_config.receivers[receiver_name]
+
+        if not site_config.naming or not receiver_cfg.naming:
+            self._logger.warning(
+                "naming_config_missing, falling back to _get_rinex_files",
+                receiver=receiver_name,
+            )
+            return []
+
+        site_naming = SiteNamingConfig(**site_config.naming)
+        receiver_naming = ReceiverNamingConfig(**receiver_cfg.naming)
+        receiver_type = receiver_cfg.type
+
+        mapper = FilenameMapper(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type=receiver_type,
+            receiver_base_dir=receiver_base_dir,
+        )
+
+        vfs = mapper.discover_for_date(year, doy)
+
+        # Validate: detect overlaps
+        overlaps = FilenameMapper.detect_overlaps(vfs)
+        if overlaps:
+            overlap_msgs = [
+                f"  {a.canonical_str} <-> {b.canonical_str}" for a, b in overlaps[:10]
+            ]
+            msg = (
+                f"Temporal overlaps detected for {receiver_name} "
+                f"on {year}/{doy:03d}:\n" + "\n".join(overlap_msgs)
+            )
+            raise ValueError(msg)
+
+        return vfs
+
+    def _get_site_config(self):
+        """Get the SiteConfig for the current site."""
+        sites_cfg = self._config.sites
+        # Find our site by matching site name
+        for site_name, site_cfg in sites_cfg.sites.items():
+            if site_name == self.site.site_name:
+                return site_cfg
+        msg = f"Site '{self.site.site_name}' not found in config"
+        raise ValueError(msg)
 
     def _compute_receiver_position(
         self,
@@ -1930,6 +2019,10 @@ class RinexDataProcessor:
                                 "dataset_attrs": ds.attrs.copy(),
                                 "exists": exists,
                                 "rel_path": rel_path,
+                                "canonical_name": ds.attrs.get("canonical_name", ""),
+                                "physical_path": ds.attrs.get(
+                                    "physical_path", str(fname)
+                                ),
                             }
                         )
 
@@ -2280,6 +2373,10 @@ class RinexDataProcessor:
                                 "dataset_attrs": ds.attrs.copy(),
                                 "exists": exists,
                                 "rel_path": rel_path,
+                                "canonical_name": ds.attrs.get("canonical_name", ""),
+                                "physical_path": ds.attrs.get(
+                                    "physical_path", str(fname)
+                                ),
                             }
                         )
 

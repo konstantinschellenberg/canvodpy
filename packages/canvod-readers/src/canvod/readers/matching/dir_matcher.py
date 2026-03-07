@@ -82,6 +82,14 @@ class DataDirMatcher:
         canopy_pattern: Path = Path("02_canopy/01_GNSS/01_raw"),
     ) -> None:
         """Initialize matcher with directory structure."""
+        import warnings
+
+        warnings.warn(
+            "DataDirMatcher is deprecated. Use canvod.virtualiconvname.FilenameMapper "
+            "with DataDirectoryValidator instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.root = Path(root)
         self.reference_dir = self.root / reference_pattern
         self.canopy_dir = self.root / canopy_pattern
@@ -257,6 +265,14 @@ class PairDataDirMatcher:
         analysis_pairs: dict[str, dict[str, str]],
     ) -> None:
         """Initialize pair matcher with receiver configuration."""
+        import warnings
+
+        warnings.warn(
+            "PairDataDirMatcher is deprecated. Use canvod.virtualiconvname.FilenameMapper "
+            "with DataDirectoryValidator instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.base_dir = Path(base_dir)
         self.receivers = receivers
         self.analysis_pairs = analysis_pairs

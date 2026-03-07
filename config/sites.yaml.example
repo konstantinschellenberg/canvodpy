@@ -10,7 +10,7 @@ sites:
     # Absolute path to site data directory
     gnss_site_data_root: /path/to/your/gnss/data/01_Rosalia
 
-    # Naming convention defaults (validated by canvod-naming)
+    # Naming convention defaults (validated by canvod-virtualiconvname)
     naming:
       site_id: ROS
       agency: TUW

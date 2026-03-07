@@ -1,10 +1,10 @@
-"""Tests for canvod.naming.catalog."""
+"""Tests for canvod.virtualiconvname.catalog."""
 
 import pytest
 
-from canvod.naming.catalog import FilenameCatalog
-from canvod.naming.convention import CanVODFilename, FileType, ReceiverType
-from canvod.naming.mapping import VirtualFile
+from canvod.virtualiconvname.catalog import FilenameCatalog
+from canvod.virtualiconvname.convention import CanVODFilename, FileType, ReceiverType
+from canvod.virtualiconvname.mapping import VirtualFile
 
 
 @pytest.fixture

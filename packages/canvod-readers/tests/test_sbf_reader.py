@@ -24,7 +24,10 @@ from canvod.readers.sbf.reader import SbfReader
 
 _TEST_DATA_DIR = Path(__file__).parent / "test_data"
 # Reference station SBF file — DOY 001/2025, 00:00–00:15 UTC, 5-second sampling → 180 epochs
-SBF_FILE = _TEST_DATA_DIR / "valid/sbf/01_Rosalia/01_reference/25001/rref001a00.25_"
+SBF_FILE = (
+    _TEST_DATA_DIR
+    / "valid/sbf/01_Rosalia/01_reference/25001/ROSR01TUW_R_20250010000_15M_05S_AA.sbf"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +125,7 @@ class TestSbfReaderABC:
         assert st.tzinfo == UTC
 
     def test_start_time_near_midnight(self, reader: SbfReader) -> None:
-        """rref001a00.25_ straddles the 2024-12-31/2025-01-01 GPS midnight.
+        """ROSR01TUW_R_20250010000_15M_05S_AA.sbf straddles the 2024-12-31/2025-01-01 GPS midnight.
 
         GPS time precedes UTC by 18 leap seconds, so the first epoch of the
         GPS slot starting at 2025-01-01 00:00:00 GPS falls at

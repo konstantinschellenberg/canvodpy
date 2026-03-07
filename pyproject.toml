@@ -107,7 +107,7 @@ testpaths = [
     "packages/canvod-grids/tests",
     "packages/canvod-readers/tests",
     "packages/canvod-store/tests",
-    "packages/canvod-naming/tests",
+    "packages/canvod-virtualiconvname/tests",
     "packages/canvod-utils/tests",
     "packages/canvod-viz/tests",
     "packages/canvod-vod/tests",
@@ -137,7 +137,7 @@ version_files = [
     "packages/canvod-store/pyproject.toml:version",
     "packages/canvod-viz/pyproject.toml:version",
     "packages/canvod-utils/pyproject.toml:version",
-    "packages/canvod-naming/pyproject.toml:version",
+    "packages/canvod-virtualiconvname/pyproject.toml:version",
     "packages/canvod-ops/pyproject.toml:version",
 ]
 tag_format = "v$version"

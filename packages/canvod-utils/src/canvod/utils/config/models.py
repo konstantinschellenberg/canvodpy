@@ -171,6 +171,13 @@ class ProcessingParams(BaseModel):
             "SNR comparability between receivers)."
         ),
     )
+    file_pairing: Literal["complete", "paired"] = Field(
+        "complete",
+        description=(
+            "'complete': discover files per-receiver independently (all data ingested). "
+            "'paired': only process dates where both receivers in an analysis pair have data."
+        ),
+    )
     batch_hours: float = Field(
         24.0,
         gt=0,
@@ -568,7 +575,7 @@ class ReceiverConfig(BaseModel):
     )
     naming: dict | None = Field(
         None,
-        description="Naming configuration (validated by canvod-naming package)",
+        description="Naming configuration (validated by canvod-virtualiconvname package)",
     )
     metadata: dict[str, str | int | float | bool] | None = Field(
         None,
@@ -618,7 +625,7 @@ class SiteConfig(BaseModel):
     )
     naming: dict | None = Field(
         None,
-        description="Naming configuration (validated by canvod-naming package)",
+        description="Naming configuration (validated by canvod-virtualiconvname package)",
     )
 
     @model_validator(mode="after")

@@ -41,8 +41,15 @@ from canvodpy.orchestrator.interpolator import (
 
 logger = logging.getLogger(__name__)
 
-# RINEX glob patterns (mirrored from processor._get_rinex_files)
-_RINEX_PATTERNS: list[str] = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
+
+# GNSS file glob patterns — sourced from canvod-virtualiconvname BUILTIN_PATTERNS
+def _get_gnss_globs() -> list[str]:
+    from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
+
+    globs: set[str] = set()
+    for name in auto_match_order():
+        globs.update(BUILTIN_PATTERNS[name].file_globs)
+    return sorted(globs)
 
 
 # ---------------------------------------------------------------------------
@@ -91,14 +98,19 @@ def _resolve_date(yyyydoy: str) -> YYYYDOY:
 
 
 def _get_rinex_files(directory: Path) -> list[Path]:
-    """Glob RINEX files from *directory* using standard patterns."""
+    """Glob GNSS data files from *directory* using BUILTIN_PATTERNS globs."""
     from natsort import natsorted
 
-    files: list[Path] = []
     if not directory.exists():
-        return files
-    for pattern in _RINEX_PATTERNS:
-        files.extend(directory.glob(pattern))
+        return []
+
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in _get_gnss_globs():
+        for path in directory.glob(pattern):
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                files.append(path)
     return natsorted(files)
 
 
@@ -171,6 +183,127 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
         raise RuntimeError(msg)
 
     logger.info("check_rinex: %s %s — all receivers ready", site, date_obj.to_str())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Task 1b — validate_data_dirs
+# ---------------------------------------------------------------------------
+
+
+def validate_data_dirs(site: str) -> dict:
+    """Pre-flight validation of all receiver data directories for a site.
+
+    Checks every receiver's data directory against the naming convention:
+    - All files must map to a canonical ``CanVODFilename``
+    - No temporal overlaps (e.g. daily + sub-daily files for the same day)
+    - Duplicate canonical names are flagged
+
+    Run this **before** starting a processing campaign to catch data
+    quality issues early. Example usage::
+
+        from canvodpy.workflows.tasks import validate_data_dirs
+        result = validate_data_dirs("rosalia")
+        # or from the shell:
+        # uv run python -c "from canvodpy.workflows.tasks import validate_data_dirs; print(validate_data_dirs('rosalia'))"
+
+    Parameters
+    ----------
+    site : str
+        Research site name (must exist in config).
+
+    Returns
+    -------
+    dict
+        ``{"site": str, "valid": bool, "receivers": {name: {status, matched, unmatched, overlaps, warnings}}}``
+
+    Raises
+    ------
+    ValueError
+        If any receiver directory has validation errors, with a full
+        diagnostic report listing every problem file.
+    """
+    from canvod.virtualiconvname import (
+        DataDirectoryValidator,
+        ReceiverNamingConfig,
+        SiteNamingConfig,
+    )
+
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    base = site_cfg.get_base_path()
+
+    if not site_cfg.naming:
+        msg = (
+            f"Site '{site}' has no naming config in sites.yaml. "
+            "Add a 'naming:' section with site_id, agency, etc."
+        )
+        raise ValueError(msg)
+
+    site_naming = SiteNamingConfig(**site_cfg.naming)
+    validator = DataDirectoryValidator()
+
+    receivers_result: dict[str, dict] = {}
+    all_valid = True
+    errors: list[str] = []
+
+    for name, rcfg in site_cfg.receivers.items():
+        if not rcfg.naming:
+            receivers_result[name] = {
+                "status": "skipped",
+                "reason": "no naming config",
+            }
+            logger.warning("Receiver '%s' has no naming config, skipping", name)
+            continue
+
+        receiver_naming = ReceiverNamingConfig(**rcfg.naming)
+        receiver_base_dir = base / rcfg.directory
+
+        try:
+            report = validator.validate_receiver(
+                site_naming=site_naming,
+                receiver_naming=receiver_naming,
+                receiver_type=rcfg.type,
+                receiver_base_dir=receiver_base_dir,
+            )
+            receivers_result[name] = {
+                "status": "valid",
+                "matched": len(report.matched),
+                "unmatched": 0,
+                "overlaps": 0,
+                "warnings": report.warnings,
+                "sample_canonical_names": [
+                    vf.canonical_str for vf in report.matched[:5]
+                ],
+            }
+            logger.info(
+                "validate_data_dirs: %s/%s — %d files, all valid",
+                site,
+                name,
+                len(report.matched),
+            )
+        except ValueError as exc:
+            all_valid = False
+            errors.append(f"[{name}] {exc}")
+            receivers_result[name] = {
+                "status": "invalid",
+                "error": str(exc),
+            }
+            logger.error("validate_data_dirs: %s/%s — FAILED: %s", site, name, exc)
+
+    result = {
+        "site": site,
+        "valid": all_valid,
+        "receivers": receivers_result,
+    }
+
+    if not all_valid:
+        full_report = "\n\n".join(errors)
+        raise ValueError(
+            f"Data directory validation failed for site '{site}':\n\n{full_report}"
+        )
+
+    logger.info("validate_data_dirs: %s — all receivers valid", site)
     return result
 
 

@@ -1,14 +1,18 @@
-"""Tests for canvod.naming.mapping."""
+"""Tests for canvod.virtualiconvname.mapping."""
 
 import pytest
 
-from canvod.naming.config_models import (
+from canvod.virtualiconvname.config_models import (
     DirectoryLayout,
     ReceiverNamingConfig,
     SiteNamingConfig,
 )
-from canvod.naming.convention import FileType, ReceiverType
-from canvod.naming.mapping import FilenameMapper, VirtualFile, _detect_file_type
+from canvod.virtualiconvname.convention import FileType, ReceiverType
+from canvod.virtualiconvname.mapping import (
+    FilenameMapper,
+    VirtualFile,
+    _detect_file_type,
+)
 
 # -- Fixtures -----------------------------------------------------------------
 
@@ -127,7 +131,7 @@ class TestVirtualFile:
         p = tmp_path / "test.rnx"
         p.write_bytes(b"data")
 
-        from canvod.naming.convention import CanVODFilename
+        from canvod.virtualiconvname.convention import CanVODFilename
 
         cn = CanVODFilename(
             site="ROS",
@@ -144,7 +148,7 @@ class TestVirtualFile:
         p = tmp_path / "test.rnx"
         p.write_bytes(b"hello")
 
-        from canvod.naming.convention import CanVODFilename
+        from canvod.virtualiconvname.convention import CanVODFilename
 
         cn = CanVODFilename(
             site="ROS",

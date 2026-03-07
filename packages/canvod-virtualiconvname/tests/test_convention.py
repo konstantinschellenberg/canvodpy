@@ -1,11 +1,11 @@
-"""Tests for canvod.naming.convention."""
+"""Tests for canvod.virtualiconvname.convention."""
 
 from datetime import timedelta
 
 import pytest
 from pydantic import ValidationError
 
-from canvod.naming.convention import (
+from canvod.virtualiconvname.convention import (
     CanVODFilename,
     FileType,
     ReceiverType,

@@ -275,6 +275,51 @@ class FilenameMapper:
 
         return VirtualFile(physical_path=file_path, conventional_name=conventional)
 
+    @staticmethod
+    def detect_overlaps(
+        vfs: list[VirtualFile],
+    ) -> list[tuple[VirtualFile, VirtualFile]]:
+        """Detect temporal overlaps among virtual files.
+
+        Groups files by ``(year, doy)`` and checks whether any file's time
+        range contains or overlaps another's.  A ``01D`` file alongside
+        ``15M`` files for the same day is the canonical overlap case.
+
+        Returns
+        -------
+        list[tuple[VirtualFile, VirtualFile]]
+            Pairs of overlapping files.
+        """
+        from collections import defaultdict
+
+        by_date: dict[tuple[int, int], list[VirtualFile]] = defaultdict(list)
+        for vf in vfs:
+            cn = vf.conventional_name
+            by_date[(cn.year, cn.doy)].append(vf)
+
+        overlaps: list[tuple[VirtualFile, VirtualFile]] = []
+        for group in by_date.values():
+            if len(group) < 2:
+                continue
+            # Compute (start_minutes, end_minutes) for each file
+            ranges: list[tuple[int, int, VirtualFile]] = []
+            for vf in group:
+                cn = vf.conventional_name
+                start_min = cn.hour * 60 + cn.minute
+                duration_sec = int(cn.batch_duration.total_seconds())
+                end_min = start_min + duration_sec // 60
+                ranges.append((start_min, end_min, vf))
+
+            # O(n^2) pairwise check — fine for <100 files per day
+            for i in range(len(ranges)):
+                for j in range(i + 1, len(ranges)):
+                    s_i, e_i, vf_i = ranges[i]
+                    s_j, e_j, vf_j = ranges[j]
+                    # Overlap if intervals intersect
+                    if s_i < e_j and s_j < e_i:
+                        overlaps.append((vf_i, vf_j))
+        return overlaps
+
     # -- Private helpers ------------------------------------------------------
 
     def _discover_files(self) -> list[Path]:

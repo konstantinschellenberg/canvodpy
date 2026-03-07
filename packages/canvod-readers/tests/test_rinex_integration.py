@@ -12,7 +12,7 @@ from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
 RINEX_FILE = (
     TEST_DATA_DIR
-    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ROSA01TUW_R_20250010000_15M_05S_AA.rnx"
 )
 
 

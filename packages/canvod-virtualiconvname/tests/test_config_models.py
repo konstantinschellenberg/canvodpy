@@ -1,9 +1,9 @@
-"""Tests for canvod.naming.config_models."""
+"""Tests for canvod.virtualiconvname.config_models."""
 
 import pytest
 from pydantic import ValidationError
 
-from canvod.naming.config_models import (
+from canvod.virtualiconvname.config_models import (
     DirectoryLayout,
     ReceiverNamingConfig,
     SiteNamingConfig,

@@ -25,7 +25,7 @@ def rinex_files(test_data_dir):
     rinex_dir = test_data_dir / "01_Rosalia/02_canopy/01_GNSS/01_raw/25001"
     if not rinex_dir.exists():
         return []
-    return sorted(rinex_dir.glob("*.25o"))
+    return sorted(rinex_dir.glob("*.rnx"))
 
 
 @pytest.fixture

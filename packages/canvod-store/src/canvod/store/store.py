@@ -1233,6 +1233,8 @@ class MyIcechunkStore:
         commit_msg: str,
         dataset_attrs: dict,
         branch: str = "main",
+        canonical_name: str | None = None,
+        physical_path: str | None = None,
     ) -> None:
         """
         Append a metadata row into the group_name/metadata/table.
@@ -1263,6 +1265,8 @@ class MyIcechunkStore:
             if self.store_type == "rinex_store"
             else str(self._vod_store_strategy),
             "attrs": json.dumps(dataset_attrs, default=str),
+            "canonical_name": str(canonical_name) if canonical_name else "",
+            "physical_path": str(physical_path) if physical_path else "",
         }
         df_row = pl.DataFrame([row])
 

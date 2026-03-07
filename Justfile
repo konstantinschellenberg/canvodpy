@@ -99,6 +99,10 @@ ci PYTHON="3.13":
 config-validate:
     uv run canvodpy config validate
 
+# validate data directories against naming convention (pre-flight check)
+config-check-data SITE:
+    uv run python -c "from canvodpy.workflows.tasks import validate_data_dirs; import json; print(json.dumps(validate_data_dirs('{{ SITE }}'), indent=2))"
+
 # show the current configuration
 config-show:
     uv run canvodpy config show
@@ -341,6 +345,34 @@ deps-report:
 # generate dependency graph (Mermaid format)
 deps-mermaid:
     python3 scripts/analyze_dependencies.py --format mermaid
+
+# ============================================================================
+# Initialization
+# ============================================================================
+
+# ============================================================================
+# Danger Zone (destructive operations with confirmation)
+# ============================================================================
+
+# delete all log files
+[confirm("This will delete ALL log files. Continue? (y/n)")]
+danger-delete-logs:
+    uv run python scripts/danger_zone.py delete-logs
+
+# delete downloaded auxiliary data (SP3, CLK) and Zarr caches
+[confirm("This will delete auxiliary data. Continue? (y/n)")]
+danger-delete-aux:
+    uv run python scripts/danger_zone.py delete-aux
+
+# delete a specific Icechunk store (rinex or vod) for a site
+[confirm("This will PERMANENTLY delete store data. Continue? (y/n)")]
+danger-delete-store SITE STORE:
+    uv run python scripts/danger_zone.py delete-store {{ SITE }} {{ STORE }}
+
+# delete ALL Icechunk stores for a site
+[confirm("This will PERMANENTLY delete ALL stores. Continue? (y/n)")]
+danger-delete-all-stores SITE:
+    uv run python scripts/danger_zone.py delete-all-stores {{ SITE }}
 
 # ============================================================================
 # Initialization

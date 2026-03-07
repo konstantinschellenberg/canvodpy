@@ -31,7 +31,7 @@ VALID_DIR = (
     TEST_DATA_DIR / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001"
 )
 INVALID_DIR = TEST_DATA_DIR / "invalid"
-REAL_FILE = VALID_DIR / "ract001a00.25o"
+REAL_FILE = VALID_DIR / "ROSA01TUW_R_20250010000_15M_05S_AA.rnx"
 
 
 def _skip_if_missing(fpath: Path):

@@ -16,11 +16,11 @@ resolution-markers = [
 members = [
     "canvod-auxiliary",
     "canvod-grids",
-    "canvod-naming",
     "canvod-ops",
     "canvod-readers",
     "canvod-store",
     "canvod-utils",
+    "canvod-virtualiconvname",
     "canvod-viz",
     "canvod-vod",
     "canvodpy",
@@ -302,23 +302,6 @@ dev = [
 optional = [{ name = "healpy", specifier = ">=1.16.0" }]
 
 [[package]]
-name = "canvod-naming"
-version = "0.1.0"
-source = { editable = "packages/canvod-naming" }
-dependencies = [
-    { name = "duckdb" },
-    { name = "natsort" },
-    { name = "pydantic" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "duckdb", specifier = ">=1.0" },
-    { name = "natsort", specifier = ">=8.4.0" },
-    { name = "pydantic", specifier = ">=2.5.0" },
-]
-
-[[package]]
 name = "canvod-ops"
 version = "0.1.0"
 source = { editable = "packages/canvod-ops" }
@@ -475,6 +458,23 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },
     { name = "typer", specifier = ">=0.9" },
+]
+
+[[package]]
+name = "canvod-virtualiconvname"
+version = "0.1.0"
+source = { editable = "packages/canvod-virtualiconvname" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "natsort" },
+    { name = "pydantic" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "duckdb", specifier = ">=1.0" },
+    { name = "natsort", specifier = ">=8.4.0" },
+    { name = "pydantic", specifier = ">=2.5.0" },
 ]
 
 [[package]]

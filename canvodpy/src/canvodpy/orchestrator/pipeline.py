@@ -15,9 +15,10 @@ import pint
 import xarray as xr
 
 from canvod.readers import MatchedDirs, PairDataDirMatcher
-from canvod.readers.gnss_specs.constants import FORMAT_GLOB_PATTERNS, UREG
+from canvod.readers.gnss_specs.constants import UREG
 from canvod.store import GnssResearchSite
 from canvod.utils.tools import YYYYDOY
+from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
 
 try:
     from dask.distributed import as_completed as dask_as_completed
@@ -185,9 +186,19 @@ class PipelineOrchestrator:
             Falls back to ``"rinex3"`` if nothing matches.
 
         """
-        for fmt, patterns in FORMAT_GLOB_PATTERNS.items():
-            if any(f for pat in patterns for f in data_dir.glob(pat) if f.is_file()):
-                return fmt
+        # Map source pattern names to reader format names
+        _PATTERN_TO_READER = {
+            "septentrio_sbf": "sbf",
+            "rinex_v2_short": "rinex3",
+            "rinex_v3_long": "rinex3",
+            "canvod": "rinex3",
+        }
+        for name in auto_match_order():
+            pat = BUILTIN_PATTERNS[name]
+            if any(
+                f for glob in pat.file_globs for f in data_dir.glob(glob) if f.is_file()
+            ):
+                return _PATTERN_TO_READER.get(name, "rinex3")
         return "rinex3"
 
     def _group_by_date_and_receiver(
@@ -1199,8 +1210,19 @@ class SingleReceiverProcessor:
         )
 
     def _get_rinex_files(self) -> list[Path]:
-        """Get sorted list of RINEX files."""
-        return sorted(self.data_dir.glob("*.2*o"))
+        """Get sorted list of GNSS data files using BUILTIN_PATTERNS globs."""
+        globs: set[str] = set()
+        for name in auto_match_order():
+            globs.update(BUILTIN_PATTERNS[name].file_globs)
+
+        files: list[Path] = []
+        seen: set[Path] = set()
+        for g in sorted(globs):
+            for path in self.data_dir.glob(g):
+                if path.is_file() and path not in seen:
+                    seen.add(path)
+                    files.append(path)
+        return sorted(files)
 
     def process(self, keep_vars: list[str] | None = None) -> xr.Dataset:
         """Process all RINEX files for this receiver and write to Icechunk.
