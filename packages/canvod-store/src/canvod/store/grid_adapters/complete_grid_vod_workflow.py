@@ -899,9 +899,8 @@ def store_grid(
     str
         Icechunk snapshot ID.
     """
-    from icechunk.xarray import to_icechunk as _to_icechunk
-
     from canvod.grids.operations import grid_to_dataset
+    from icechunk.xarray import to_icechunk as _to_icechunk
 
     print(f"\nStoring grid '{grid_name}'...")
 

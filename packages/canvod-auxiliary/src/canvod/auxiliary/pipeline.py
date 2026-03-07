@@ -10,11 +10,11 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from canvod.readers.matching import MatchedDirs
 
 from canvod.auxiliary._internal import get_logger
 from canvod.auxiliary.core.base import AuxFile
 from canvod.auxiliary.preprocessing import prep_aux_ds
-from canvod.readers.matching import MatchedDirs
 
 _SP3_SUBDIR = Path("01_SP3")
 _CLK_SUBDIR = Path("02_CLK")
@@ -393,9 +393,10 @@ class AuxDataPipeline:
         >>> pipeline.load_all()
         >>> ephem_ds = pipeline.get_ephemerides()
         """
+        from canvod.utils.config import load_config
+
         from canvod.auxiliary.clock import ClkFile
         from canvod.auxiliary.ephemeris import Sp3File
-        from canvod.utils.config import load_config
 
         cfg = load_config()
         aux_cfg = cfg.processing.aux_data

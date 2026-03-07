@@ -275,7 +275,8 @@ class GnssResearchSite:
                 ref_type = self.receivers[ref_rx]["type"]
                 if ref_type != "reference":
                     raise ValueError(
-                        f"Receiver '{ref_rx}' used as reference but type is '{ref_type}'"
+                        f"Receiver '{ref_rx}' used as reference"
+                        f" but type is '{ref_type}'"
                     )
 
         self._logger.debug("Site configuration validation passed")

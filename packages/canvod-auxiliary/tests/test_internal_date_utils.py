@@ -8,7 +8,6 @@ import datetime
 from pathlib import Path
 
 import pytest
-
 from canvod.utils.tools import YYYYDOY, get_gps_week_from_filename
 
 

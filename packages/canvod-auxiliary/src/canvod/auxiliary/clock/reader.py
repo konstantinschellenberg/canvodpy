@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from canvod.utils.tools import get_gps_week_from_filename
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 
@@ -21,7 +22,6 @@ from canvod.auxiliary.interpolation import (
     Interpolator,
 )
 from canvod.auxiliary.products.registry_config import get_product_spec
-from canvod.utils.tools import get_gps_week_from_filename
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))

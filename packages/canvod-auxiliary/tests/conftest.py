@@ -40,23 +40,23 @@ def sample_sp3_data():
     svs = ["G01", "G02", "E01", "R01"]
 
     # Realistic satellite positions (ECEF, meters)
-    X = np.random.uniform(2e7, 3e7, size=(96, 4))
-    Y = np.random.uniform(1e6, 5e6, size=(96, 4))
-    Z = np.random.uniform(1e7, 2e7, size=(96, 4))
+    pos_x = np.random.uniform(2e7, 3e7, size=(96, 4))
+    pos_y = np.random.uniform(1e6, 5e6, size=(96, 4))
+    pos_z = np.random.uniform(1e7, 2e7, size=(96, 4))
 
     # Velocities (m/s)
-    VX = np.random.uniform(-3000, 3000, size=(96, 4))
-    VY = np.random.uniform(-3000, 3000, size=(96, 4))
-    VZ = np.random.uniform(-3000, 3000, size=(96, 4))
+    vel_x = np.random.uniform(-3000, 3000, size=(96, 4))
+    vel_y = np.random.uniform(-3000, 3000, size=(96, 4))
+    vel_z = np.random.uniform(-3000, 3000, size=(96, 4))
 
     ds = xr.Dataset(
         {
-            "X": (["epoch", "sv"], X),
-            "Y": (["epoch", "sv"], Y),
-            "Z": (["epoch", "sv"], Z),
-            "VX": (["epoch", "sv"], VX),
-            "VY": (["epoch", "sv"], VY),
-            "VZ": (["epoch", "sv"], VZ),
+            "X": (["epoch", "sv"], pos_x),
+            "Y": (["epoch", "sv"], pos_y),
+            "Z": (["epoch", "sv"], pos_z),
+            "VX": (["epoch", "sv"], vel_x),
+            "VY": (["epoch", "sv"], vel_y),
+            "VZ": (["epoch", "sv"], vel_z),
         },
         coords={
             "epoch": epochs,
@@ -174,11 +174,11 @@ def sample_rinex_data():
     assert len(set(sids)) == 48, "sids must be unique"
 
     # SNR data
-    SNR = np.random.uniform(30, 55, size=(2880, 48))
+    snr_data = np.random.uniform(30, 55, size=(2880, 48))
 
     ds = xr.Dataset(
         {
-            "SNR": (["epoch", "sid"], SNR),
+            "SNR": (["epoch", "sid"], snr_data),
         },
         coords={
             "epoch": epochs,
@@ -269,15 +269,15 @@ def sample_preprocessed_sp3():
     assert len(sids) == 48
     assert len(set(sids)) == 48, "sids must be unique"
 
-    X = np.random.uniform(2e7, 3e7, size=(96, 48))
-    Y = np.random.uniform(1e6, 5e6, size=(96, 48))
-    Z = np.random.uniform(1e7, 2e7, size=(96, 48))
+    pos_x = np.random.uniform(2e7, 3e7, size=(96, 48))
+    pos_y = np.random.uniform(1e6, 5e6, size=(96, 48))
+    pos_z = np.random.uniform(1e7, 2e7, size=(96, 48))
 
     ds = xr.Dataset(
         {
-            "X": (["epoch", "sid"], X),
-            "Y": (["epoch", "sid"], Y),
-            "Z": (["epoch", "sid"], Z),
+            "X": (["epoch", "sid"], pos_x),
+            "Y": (["epoch", "sid"], pos_y),
+            "Z": (["epoch", "sid"], pos_z),
         },
         coords={
             "epoch": epochs,
