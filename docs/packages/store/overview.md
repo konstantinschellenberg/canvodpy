@@ -42,10 +42,15 @@ The `canvod-store` package provides versioned storage management for GNSS vegeta
 ## Architecture
 
 ```mermaid
-graph LR
-    A1["RINEX + Aux\n(epoch × sid)"] --> B["Preprocessing\n(encoding, padding)"]
+graph TD
+    A1["`**RINEX + Aux**
+    epoch x sid`"]
+    A1 --> B["`**Preprocessing**
+    encoding, padding`"]
     B --> C["Icechunk Repository"]
-    C --> D1["obs group\n{receiver}/obs/\n(epoch × sid)"]
+    C --> D1["`**obs group**
+    receiver/obs/
+    epoch x sid`"]
     D1 --> E["VOD Analysis"]
 ```
 

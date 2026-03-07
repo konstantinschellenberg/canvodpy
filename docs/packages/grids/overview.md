@@ -189,9 +189,15 @@ The `GridData` object returned by all builders provides:
 ## Role in the VOD Pipeline
 
 ```mermaid
-flowchart LR
-    A["Augmented Dataset\n(epoch × sid, with θ, φ)"] --> B["Grid Assignment\nadd_cell_ids_to_ds_fast"]
-    B --> C["Gridded Dataset\n+ cell_id coordinate"]
-    C --> D["VOD per cell\nTau-Omega inversion"]
-    D --> E["Hemispherical Map\ncanvod-viz"]
+flowchart TD
+    A["`**Augmented Dataset**
+    epoch x sid, with theta, phi`"]
+    A --> B["`**Grid Assignment**
+    add_cell_ids_to_ds_fast`"]
+    B --> C["`**Gridded Dataset**
+    + cell_id coordinate`"]
+    C --> D["`**VOD per cell**
+    Tau-Omega inversion`"]
+    D --> E["`**Hemispherical Map**
+    canvod-viz`"]
 ```

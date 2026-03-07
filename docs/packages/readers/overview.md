@@ -58,8 +58,10 @@ graph TD
     A2["SBF File (.XX_)"] --> B2["SbfReader"]
     B1 --> C["validate_dataset()"]
     B2 --> C
-    C --> D["xarray.Dataset\n(epoch × sid)"]
-    B2 --> E["Metadata Dataset\n(DOP · PVT · θ · φ)"]
+    C --> D["`**xarray.Dataset**
+    epoch x sid`"]
+    B2 --> E["`**Metadata Dataset**
+    DOP, PVT, theta, phi`"]
     D --> F["Downstream Analysis"]
     E --> F
 ```
@@ -281,9 +283,10 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 !!! tip "Batch processing"
 
     For many files, the orchestrator uses **Dask Distributed** with a
-    `LocalCluster` for parallel RINEX processing (falls back to
-    `ProcessPoolExecutor` if Dask is unavailable).  See
-    `canvodpy.orchestrator` for batch pipeline details.
+    `LocalCluster` for parallel processing. Each worker handles one file
+    at a time. Falls back to `ProcessPoolExecutor` if Dask is unavailable.
+    See the [Dask & Resource Management](../../guides/dask-resources.md)
+    guide for configuration and monitoring.
 
 !!! tip "Storage"
 

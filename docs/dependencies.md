@@ -7,7 +7,15 @@ Inter-package dependency relationships and independence metrics for the canVODpy
 ## Dependency Graph
 
 ```mermaid
-graph LR
+graph TD
+    subgraph CONSUMERS["Consumer Layer (1 dep each)"]
+        AUX["canvod-auxiliary"]
+        VIZ["canvod-viz"]
+        STORE["canvod-store"]
+        OPS["canvod-ops"]
+        NAMING["canvod-virtualiconvname"]
+    end
+
     subgraph FOUNDATION["Foundation Layer (0 deps)"]
         READERS["canvod-readers"]
         GRIDS["canvod-grids"]
@@ -15,15 +23,12 @@ graph LR
         UTILS["canvod-utils"]
     end
 
-    subgraph CONSUMERS["Consumer Layer (1 dep each)"]
-        AUX["canvod-auxiliary"]
-        VIZ["canvod-viz"]
-        STORE["canvod-store"]
-    end
-
     AUX   --> READERS
     VIZ   --> GRIDS
     STORE --> GRIDS
+    OPS   --> GRIDS
+    OPS   --> UTILS
+    NAMING --> UTILS
 ```
 
 ---

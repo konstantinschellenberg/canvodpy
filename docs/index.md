@@ -67,10 +67,10 @@ signal-to-noise ratio observations.
 
     ---
 
-    `ProcessPoolExecutor`-backed pipeline with per-file commit,
+    Dask Distributed parallel pipeline with per-file commit,
     hash deduplication, and cooperative distributed writing.
 
-    [:octicons-arrow-right-24: Architecture](architecture.md)
+    [:octicons-arrow-right-24: Architecture](architecture.md) · [Dask & Resources](guides/dask-resources.md)
 
 </div>
 
@@ -141,7 +141,7 @@ pip install canvodpy
 ## Processing Pipeline
 
 ```mermaid
-flowchart LR
+flowchart TD
     RINEX["RINEX 3.04"] --> PARSE["Parse & Hermite interpolation"]
     SP3["SP3 / CLK"] --> PARSE
     PARSE --> STORE["Icechunk store"]
@@ -202,6 +202,20 @@ flowchart LR
     ---
 
     Pydantic configuration, YYYYDOY date utilities, shared tooling.
+
+-   :fontawesome-solid-tag: &nbsp; **canvod-virtualiconvname**
+
+    ---
+
+    Maps arbitrary filenames to canonical canVOD names.
+    NamingRecipe system, pre-flight validation, DuckDB catalog.
+
+-   :fontawesome-solid-wand-magic-sparkles: &nbsp; **canvod-ops**
+
+    ---
+
+    Configurable preprocessing pipeline: temporal aggregation,
+    grid assignment, extensible Op chain.
 
 -   :fontawesome-solid-circle-nodes: &nbsp; **canvodpy**
 

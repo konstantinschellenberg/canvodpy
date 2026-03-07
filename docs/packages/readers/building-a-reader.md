@@ -21,13 +21,15 @@ If you are unfamiliar with any of these, the [xarray docs](https://docs.xarray.d
 ## Architecture Overview
 
 ```mermaid
-graph LR
+graph TD
     subgraph "Your Reader"
-        A["MyFormatReader\n(GNSSDataReader)"]
+        A["`**MyFormatReader**
+        GNSSDataReader`"]
     end
 
     subgraph "Base Class"
-        B["GNSSDataReader\n(BaseModel + ABC)"]
+        B["`**GNSSDataReader**
+        BaseModel + ABC`"]
     end
 
     subgraph "Builder"

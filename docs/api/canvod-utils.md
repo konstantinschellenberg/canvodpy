@@ -14,6 +14,11 @@ Shared utilities: configuration management, date handling, and CLI tools.
         - SiteConfig
         - SitesConfig
         - SidsConfig
+        - ProcessingParams
+        - ReceiverConfig
+        - PreprocessingConfig
+        - TemporalAggregationConfig
+        - GridAssignmentConfig
 
 ## Tools
 

@@ -1,19 +1,13 @@
 ---
-title: Community-Agreed Best Practices and Principles
-description: Community-agreed best practices and principles for deriving Vegetation Optical Depth from GNSS Transmissometry
+title: Conventions and Defaults
+description: Default conventions and processing defaults used by canVODpy
 ---
 
-# Community-Agreed Best Practices and Principles
+# Conventions and Defaults
 
-GNSS-Transmissometry is a young technique with growing adoption across
-research groups worldwide. As the community expands, a shared set of
-agreed-upon practices — covering raw data preprocessing, signal selection,
-nomenclature, quality control, and retrieval methodology — is essential
-for producing comparable, reproducible, and trustworthy VOD products.
-
-canVODpy implements these community-agreed practices as its default
-processing pipeline, so that results are consistent across sites,
-receivers, and research groups.
+This page documents the default conventions and processing choices built into
+canVODpy. These defaults ensure consistent, reproducible results across sites
+and receivers. All defaults can be overridden via configuration.
 
 ---
 
@@ -110,59 +104,13 @@ HAIA01GFZ_R_20250010000_01D_01S_AA.rnx.zip
 Hainich                                zip compressed
 ```
 
-### Known sites
-
-| Site ID | Site name | Country |
-|---------|-----------|---------|
-| `ROS` | Rosalia | Austria |
-| `HAI` | Hainich | Germany |
-| `FON` | Fontainebleau | France |
-| `LBS` | Leibstadt | Switzerland |
-
-### Known agencies
-
-| Agency ID | Institution |
-|-----------|-------------|
-| `TUW` | TU Wien |
-| `GFZ` | GFZ Potsdam |
-| `TUD` | TU Dresden |
-| `MPI` | Max Planck Institute |
 
 ### SP3 and CLK files
 
 SP3 orbit and CLK clock product files already follow the
 IGS long-name convention and **do not** need renaming under this scheme.
 
----
 
-## Planned sections
 
-<div class="grid cards" markdown>
-
--   :fontawesome-solid-satellite-dish: &nbsp; **Raw Data Preprocessing**
-
-    ---
-
-    Agreed procedures for SNR extraction, signal filtering,
-    elevation masking, and quality flagging of GNSS observations.
-
--   :fontawesome-solid-flask: &nbsp; **Retrieval Methodology**
-
-    ---
-
-    Reference procedures for the tau-omega inversion, canopy vs.
-    reference pairing, and hemispheric gridding strategies.
-
--   :fontawesome-solid-scale-balanced: &nbsp; **Comparability & Reproducibility**
-
-    ---
-
-    Guidelines ensuring that VOD products from different sites,
-    receivers, and software implementations can be meaningfully compared.
-
-</div>
-
----
-
-*Want to contribute to shaping these practices? Open a discussion on
+*Questions or suggestions? Open a discussion on
 [GitHub](https://github.com/nfb2021/canvodpy/discussions).*

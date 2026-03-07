@@ -34,11 +34,17 @@ Combining these requires:
 4. **Physically correct interpolation** per data type
 
 ```mermaid
-graph LR
-    A["SP3 File\n(sv dimension)"] -->|Download| B["Raw Dataset\n96 epochs · 32 svs"]
-    B -->|Preprocess| C["Preprocessed\n96 epochs · 384 sids"]
-    C -->|Interpolate| D["Interpolated\n2880 epochs · 384 sids"]
-    D -->|Augment| E["RINEX Dataset\n2880 epochs · 384 sids"]
+graph TD
+    A["`**SP3 File**
+    sv dimension`"]
+    A -->|Download| B["`**Raw Dataset**
+    96 epochs, 32 svs`"]
+    B -->|Preprocess| C["`**Preprocessed**
+    96 epochs, 384 sids`"]
+    C -->|Interpolate| D["`**Interpolated**
+    2880 epochs, 384 sids`"]
+    D -->|Augment| E["`**RINEX Dataset**
+    2880 epochs, 384 sids`"]
 ```
 
 ---

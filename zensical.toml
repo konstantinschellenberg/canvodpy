@@ -35,7 +35,7 @@ extra_javascript = [
 # Paths are relative to docs_dir (default: "docs/").
 nav = [
   { "Home" = "index.md" },
-  { "Community-Agreed Best Practices & Principles" = "principles.md" },
+  { "Conventions & Defaults" = "principles.md" },
 
   { "Architecture" = [
     { "Monorepo Structure" = "architecture.md" },
@@ -75,6 +75,12 @@ nav = [
     { "canvod-utils" = [
       { "Overview" = "packages/utils/overview.md" },
     ]},
+    { "canvod-ops" = [
+      { "Overview" = "packages/ops/overview.md" },
+    ]},
+    { "canvod-virtualiconvname" = [
+      { "Overview" = "packages/naming/overview.md" },
+    ]},
   ]},
 
   { "Development" = [
@@ -84,6 +90,8 @@ nav = [
     { "Architecture & Design Patterns" = "guides/architecture-design.md" },
     { "Build System" = "build-system.md" },
     { "Tooling" = "tooling.md" },
+    { "Configuration Guide" = "guides/configuration.md" },
+    { "Dask & Resource Management" = "guides/dask-resources.md" },
     { "Airflow Integration" = "guides/airflow.md" },
   ]},
 
@@ -105,6 +113,8 @@ nav = [
     { "canvod.store" = "api/canvod-store.md" },
     { "canvod.viz" = "api/canvod-viz.md" },
     { "canvod.utils" = "api/canvod-utils.md" },
+    { "canvod.ops" = "api/canvod-ops.md" },
+    { "canvod.virtualiconvname" = "api/canvod-virtualiconvname.md" },
   ]},
 ]
 

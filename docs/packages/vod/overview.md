@@ -92,16 +92,21 @@ When a single reference receiver serves multiple canopy positions, satellite geo
 ```mermaid
 flowchart TD
     subgraph FIELD["Field Setup"]
-        C1["Canopy 1\n(NE position)"]
-        C2["Canopy 2\n(SW position)"]
-        R1["Reference\n(open sky)"]
+        C1["`**Canopy 1**
+        NE position`"]
+        C2["`**Canopy 2**
+        SW position`"]
+        R1["`**Reference**
+        open sky`"]
     end
 
     subgraph STORE["RINEX Store Groups"]
         SG1["canopy_01"]
         SG2["canopy_02"]
-        SG3["reference_01_canopy_01\n(geometry at canopy_01 pos.)"]
-        SG4["reference_01_canopy_02\n(geometry at canopy_02 pos.)"]
+        SG3["`**reference_01_canopy_01**
+        geometry at canopy_01 pos.`"]
+        SG4["`**reference_01_canopy_02**
+        geometry at canopy_02 pos.`"]
     end
 
     subgraph VOD["VOD Analysis Pairs"]

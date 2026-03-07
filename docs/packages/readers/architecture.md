@@ -167,7 +167,8 @@ graph TB
     end
 
     subgraph "Interface Layer"
-        B["GNSSDataReader\n(BaseModel + ABC)"]
+        B["`**GNSSDataReader**
+        BaseModel + ABC`"]
         B2[SignalID]
         C[validate_dataset]
     end
