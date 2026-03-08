@@ -383,20 +383,124 @@ If both commands complete without errors, your environment is ready.
 
 ---
 
-## 12. Working in teams
+## 12. Keeping your fork up to date
 
-During a hackathon or collaborative sprint, each team works on its own topic (often aligned with a package like `canvod-grids` or `canvod-readers`). A shared **develop branch** (e.g. `develop/hackathon2026`) acts as the integration point — no one commits to it directly. Instead, each team gets its own **team branch**.
+The upstream repository (`nfb2021/canvodpy`) receives regular updates. To incorporate these into your fork, you need to **fetch from upstream and merge into your local branch**. This section explains every step.
+
+### Why this is necessary
+
+When you forked the repository, GitHub created a snapshot of `main` at that moment. Any commits pushed to the upstream `main` after your fork was created are **not** automatically reflected in your fork. If you work on a feature branch for several days, the upstream `main` may have moved ahead — your branch will be "behind." Merging upstream changes prevents conflicts from accumulating and ensures you are building on the latest codebase.
+
+### One-time setup (already done if you followed step 7)
+
+Verify that you have the `upstream` remote configured:
+
+```bash
+git remote -v
+```
+
+You should see two remotes:
+
+```
+origin    git@github.com:YOUR_USERNAME/canvodpy.git (fetch)
+origin    git@github.com:YOUR_USERNAME/canvodpy.git (push)
+upstream  git@github.com:nfb2021/canvodpy.git (fetch)
+upstream  git@github.com:nfb2021/canvodpy.git (push)
+```
+
+If `upstream` is missing, add it:
+
+```bash
+git remote add upstream git@github.com:nfb2021/canvodpy.git
+```
+
+### Update your local `main` branch
+
+Every time you want to sync with the latest upstream changes:
+
+```bash
+# 1. Switch to your local main branch
+git checkout main
+
+# 2. Fetch all new commits from the upstream repository
+git fetch upstream
+
+# 3. Merge upstream/main into your local main
+#    This is a fast-forward merge (no merge commit) if you have not
+#    committed directly to your local main — which you should not do.
+git merge upstream/main
+
+# 4. Push the updated main to your fork on GitHub
+git push origin main
+```
+
+After these four commands, your fork's `main` branch on GitHub is identical to the upstream `main`.
+
+### Update your feature branch
+
+If you are working on a feature branch, incorporate the freshly updated `main`:
+
+```bash
+# Switch to your feature branch
+git checkout feature/my-feature
+
+# Rebase your feature branch onto the updated main
+git rebase main
+```
+
+Rebasing replays your commits on top of the latest `main`, producing a linear history. If Git reports a **merge conflict** during rebase, it will pause and show you which files conflict. Resolve each conflict by editing the file, then:
+
+```bash
+git add <resolved-file>
+git rebase --continue
+```
+
+If you want to abort the rebase and return to the state before:
+
+```bash
+git rebase --abort
+```
+
+!!! warning "Force push after rebase"
+
+    Rebasing rewrites commit history. If you have already pushed your feature
+    branch to your fork, you will need to force-push after rebasing:
+
+    ```bash
+    git push --force-with-lease origin feature/my-feature
+    ```
+
+    `--force-with-lease` is safer than `--force` because it refuses to
+    overwrite commits that someone else may have pushed to the same branch.
+
+### Quick reference
+
+```bash
+# Full sync sequence (run periodically):
+git checkout main
+git fetch upstream
+git merge upstream/main
+git push origin main
+git checkout feature/my-feature
+git rebase main
+```
+
+---
+
+## 12b. Working in teams
+
+During collaborative sprints, each team works on its own topic (often aligned with a package such as `canvod-grids` or `canvod-readers`). A shared **develop branch** acts as the integration point — no one commits to it directly. Instead, each team gets its own **team branch**.
 
 ### Branch structure
 
 ```
 main
-└── develop/hackathon2026              ← integration branch (shared by all teams)
-    ├── team-grids/                    ← Team A
-    │   ├── (direct commits)           ← Workflow A
-    │   └── team-grids/add-healpix     ← Workflow B feature branches
-    ├── team-readers/                  ← Team B
-    └── team-vod/                      ← Team C
+└── develop/sprint-2026              ← integration branch (shared by all teams)
+    ├── team-grids/                  ← Team A
+    │   ├── (direct commits)         ← Workflow A
+    │   └── team-grids/add-healpix   ← Workflow B feature branches
+    ├── team-readers/                ← Team B
+    └── team-vod/                    ← Team C
 ```
 
 ### Set up the team branch
@@ -404,7 +508,7 @@ main
 The **team lead** creates the branch once:
 
 ```bash
-git checkout develop/hackathon2026
+git checkout develop/sprint-2026
 git checkout -b team-grids
 git push -u origin team-grids
 ```
@@ -470,7 +574,7 @@ From here, choose the workflow that fits your team:
 
 ### Merge the team's work into the develop branch
 
-When your team's feature is ready, open **one pull request** from `team-grids` into `develop/hackathon2026` on GitHub. This is where the maintainer reviews the team's combined work.
+When your team's feature is ready, open **one pull request** from `team-grids` into the develop branch on GitHub. This is where the maintainer reviews the team's combined work.
 
 ---
 
@@ -498,7 +602,7 @@ Commit messages follow the [Conventional Commits](https://www.conventionalcommit
 
 ### Push
 
-Push to your team branch or feature branch (see [Working in teams](#10-working-in-teams) above).
+Push to your team branch or feature branch (see [Working in teams](#12b-working-in-teams) above).
 
 ### Open a pull request
 
@@ -509,7 +613,156 @@ Push to your team branch or feature branch (see [Working in teams](#10-working-i
 
 ---
 
-## 14. Common commands cheat sheet
+## 14. Pre-commit hooks and why your commit may be rejected
+
+When you ran `just hooks` in [step 9](#9-set-up-the-development-environment), a set of **pre-commit hooks** was installed into your local `.git/hooks/` directory. These hooks run automatically every time you execute `git commit`. If any hook fails, **the commit is aborted** — your changes remain staged but no commit is created.
+
+This is intentional: it prevents code that does not meet the project's quality standards from entering the Git history. The hooks are defined in `.pre-commit-config.yaml` at the repository root.
+
+### What runs on every commit
+
+The following checks execute automatically in sequence. If any one fails, the commit is rejected.
+
+| Hook | When it runs | What it checks | Typical failure reason |
+|------|-------------|----------------|----------------------|
+| **ruff check** | `pre-commit` (before commit is created) | Python linting — unused imports, undefined names, style violations, type annotation issues | You have an unused import or a linting rule violation |
+| **ruff format** | `pre-commit` | Python formatting — consistent code style (indentation, line length, quote style, trailing commas) | Your code is not formatted according to the project style |
+| **uv-lock** | `pre-commit` | Lockfile consistency — verifies `uv.lock` matches `pyproject.toml` | You changed a dependency in `pyproject.toml` but did not run `uv sync` |
+| **trailing-whitespace** | `pre-commit` | Removes trailing whitespace from all files | A line ends with invisible spaces or tabs |
+| **check-added-large-files** | `pre-commit` | Blocks files larger than the threshold from being committed | You are trying to commit a large binary, dataset, or log file |
+| **detect-private-key** | `pre-commit` | Scans for accidentally staged private keys (SSH, PGP) | You are about to commit a secret — **do not override this** |
+| **end-of-file-fixer** | `pre-commit` | Ensures every file ends with exactly one newline | A file is missing its final newline or has extra blank lines at the end |
+| **commitizen** | `commit-msg` (after you write the message) | Validates that your commit message follows the [Conventional Commits](https://www.conventionalcommits.org/) specification | Your message does not match the `type(scope): subject` format |
+
+### How to fix a rejected commit
+
+When a hook fails, read the error output carefully. The most common scenarios:
+
+=== "ruff linting or formatting failure"
+
+    ruff will often **auto-fix** the issue. After the commit is rejected:
+
+    ```bash
+    # The hook already ran ruff --fix, so files may have been modified.
+    # Check what changed:
+    git diff
+
+    # If the changes look correct, stage them and commit again:
+    git add -u
+    git commit -m "feat(readers): your original message"
+    ```
+
+    If ruff cannot auto-fix (e.g., an undefined variable), you must edit the code manually, then stage and commit again.
+
+=== "commitizen message validation failure"
+
+    Your commit message does not follow the Conventional Commits format. The error will say something like:
+
+    ```
+    commit validation: failed!
+    please enter a commit message in the commitizen format.
+    ```
+
+    The required format is:
+
+    ```
+    type(scope): subject
+    ```
+
+    Where `type` is one of: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`, `style`
+
+    And `scope` is one of: `readers`, `aux`, `grids`, `vod`, `store`, `viz`, `utils`, `naming`, `ops`, `docs`, `ci`, `deps`
+
+    Examples of **valid** messages:
+
+    ```bash
+    git commit -m "feat(readers): add RINEX 4.0 parser"
+    git commit -m "fix(store): handle empty epoch arrays"
+    git commit -m "docs: update installation guide"
+    git commit -m "test(vod): add tau-omega edge cases"
+    ```
+
+    Examples of **invalid** messages (will be rejected):
+
+    ```bash
+    git commit -m "added new feature"           # no type prefix
+    git commit -m "feat: add stuff"              # too vague (but technically valid)
+    git commit -m "FEAT(readers): add parser"    # type must be lowercase
+    git commit -m "feat(readers) add parser"     # missing colon after scope
+    ```
+
+=== "uv-lock mismatch"
+
+    You modified a `pyproject.toml` (added or changed a dependency) but the lockfile is out of date:
+
+    ```bash
+    uv sync          # regenerates uv.lock
+    git add uv.lock
+    git commit -m "feat(readers): your original message"
+    ```
+
+=== "Large file blocked"
+
+    You are trying to commit a file that exceeds the size threshold (typically data files, `.zarr` stores, or log files). These should not be in the Git repository. Remove the file from staging:
+
+    ```bash
+    git reset HEAD <large-file>
+    echo "<large-file>" >> .gitignore
+    git add .gitignore
+    git commit -m "chore: update gitignore"
+    ```
+
+### Bypassing hooks (emergency only)
+
+In rare situations where you need to commit despite a hook failure (e.g., you are certain the failure is a false positive), you can skip hooks:
+
+```bash
+git commit --no-verify -m "fix(store): emergency hotfix"
+```
+
+!!! danger "Use `--no-verify` with extreme caution"
+
+    Skipping hooks defeats their purpose. The CI pipeline on GitHub runs the
+    same checks — your pull request will fail if the code does not pass ruff,
+    formatting, and commit message validation. Only use `--no-verify` when you
+    fully understand why the hook is failing and are certain the failure is not
+    a genuine code quality issue.
+
+---
+
+## 15. Continuous integration and test coverage
+
+Every push to a branch and every pull request triggers automated checks on GitHub Actions. These are the same checks that run locally via `just check` and `just test`, but they execute in a clean environment to ensure reproducibility.
+
+### CI pipelines
+
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| **Code Quality** | Every push | Checks lockfile consistency, runs ruff linting, checks formatting, runs type checking with ty |
+| **Test with Coverage** | Push to `main` and all PRs | Runs `just test-coverage` (pytest with coverage measurement), uploads results to Coveralls, posts a coverage summary comment on the PR |
+| **Platform Tests** | PRs | Runs the test suite across multiple operating systems and Python versions |
+| **Deploy Docs** | Push to `main` | Builds and deploys the documentation site |
+
+### Test coverage with Coveralls
+
+The project uses [Coveralls](https://coveralls.io/) to track test coverage over time. After each test run in CI:
+
+1. pytest generates a coverage report in LCOV format (`coverage.lcov`)
+2. The report is uploaded to [coveralls.io/github/nfb2021/canvodpy](https://coveralls.io/github/nfb2021/canvodpy)
+3. A coverage summary is posted as a comment on the pull request, showing which lines are covered and which are not
+
+Coverage is **not** a gate (your PR will not be blocked by low coverage), but it is visible to reviewers. When adding new code, include tests — this is both good scientific practice (every computation should be verifiable) and a courtesy to future contributors who need to understand what the code does.
+
+To measure coverage locally before pushing:
+
+```bash
+just test-coverage
+# Opens an HTML report in your browser showing line-by-line coverage
+```
+
+---
+
+## 16. Common commands cheat sheet
 
 !!! tip "Print this"
 
@@ -529,7 +782,7 @@ Push to your team branch or feature branch (see [Working in teams](#10-working-i
 
 ---
 
-??? question "15. Troubleshooting"
+??? question "17. Troubleshooting"
 
     **"command not found" for uv, just, or git**
     :   The tool is not installed or not on your `PATH`. Re-run the installation step and, if needed, open a new terminal window so your shell picks up the updated `PATH`.

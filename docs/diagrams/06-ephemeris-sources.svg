@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2459.2875 1308" width="2459.2875" height="1308" style="--bg:#2e3440;--fg:#d8dee9;--line:#4c566a;--accent:#88c0d0;--muted:#616e88;background:var(--bg)">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap');
+  text { font-family: 'Inter', system-ui, sans-serif; }
+  svg {
+    /* Derived from --bg and --fg (overridable via --line, --accent, etc.) */
+    --_text:          var(--fg);
+    --_text-sec:      var(--muted, color-mix(in srgb, var(--fg) 60%, var(--bg)));
+    --_text-muted:    var(--muted, color-mix(in srgb, var(--fg) 40%, var(--bg)));
+    --_text-faint:    color-mix(in srgb, var(--fg) 25%, var(--bg));
+    --_line:          var(--line, color-mix(in srgb, var(--fg) 30%, var(--bg)));
+    --_arrow:         var(--accent, color-mix(in srgb, var(--fg) 50%, var(--bg)));
+    --_node-fill:     var(--surface, color-mix(in srgb, var(--fg) 3%, var(--bg)));
+    --_node-stroke:   var(--border, color-mix(in srgb, var(--fg) 20%, var(--bg)));
+    --_group-fill:    var(--bg);
+    --_group-hdr:     color-mix(in srgb, var(--fg) 5%, var(--bg));
+    --_inner-stroke:  color-mix(in srgb, var(--fg) 12%, var(--bg));
+    --_key-badge:     color-mix(in srgb, var(--fg) 10%, var(--bg));
+  }
+</style>
+<defs>
+  <marker id="arrowhead" markerWidth="8" markerHeight="4.8" refX="8" refY="2.4" orient="auto">
+    <polygon points="0 0, 8 2.4, 0 4.8" fill="var(--_arrow)" />
+  </marker>
+  <marker id="arrowhead-start" markerWidth="8" markerHeight="4.8" refX="0" refY="2.4" orient="auto-start-reverse">
+    <polygon points="8 0, 0 2.4, 8 4.8" fill="var(--_arrow)" />
+  </marker>
+</defs>
+<rect x="961.2999999999998" y="40" width="1457.9875" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="961.2999999999998" y="40" width="1457.9875" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="973.2999999999998" y="54" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;📡 Observation Files&quot;</text>
+<rect x="40" y="216" width="2035" height="96" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="40" y="216" width="2035" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="52" y="230" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;🛰️ Ephemeris Sources&quot;</text>
+<rect x="275.70000000000005" y="376" width="433.5" height="580" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="275.70000000000005" y="376" width="433.5" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="287.70000000000005" y="390" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Agency Final Pipeline&quot;</text>
+<rect x="729.2000000000003" y="376" width="1296.25" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="729.2000000000003" y="376" width="1296.25" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="741.2000000000003" y="390" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Broadcast Pipeline&quot;</text>
+<rect x="364.07500000000005" y="1000" width="1614.9" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="364.07500000000005" y="1000" width="1614.9" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="376.07500000000005" y="1014" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Coordinate Transform&quot;</text>
+<rect x="898.0625000000001" y="1156" width="1398.1000000000001" height="112" rx="0" ry="0" fill="var(--_group-fill)" stroke="var(--_node-stroke)" stroke-width="1" />
+<rect x="898.0625000000001" y="1156" width="1398.1000000000001" height="28" rx="0" ry="0" fill="var(--_group-hdr)" stroke="var(--_node-stroke)" stroke-width="1" />
+<text x="910.0625000000001" y="1170" dy="0.35em" font-size="12" font-weight="600" fill="var(--_text-sec)">&quot;Augmented Dataset&quot;</text>
+<polyline points="492.45000000000005,468 492.45000000000005,588" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="492.45000000000005,624 492.45000000000005,744" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="492.45000000000005,780 492.45000000000005,900" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="390.175,282 390.175,332 492.45000000000005,332 492.45000000000005,432" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1086.1,282 1086.1,332 1812.275,332 1812.275,432" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1753.425,282 1753.425,332 992.4250000000001,332 992.4250000000001,432" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1753.425,282 1753.425,332 1427.375,332 1427.375,432" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="492.45000000000005,936 492.45000000000005,1074 751.2500000000001,1074" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="992.4250000000001,468 992.4250000000001,1074 1155.0500000000002,1074" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1427.375,468 1427.375,1074 1155.0500000000002,1074" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1812.275,468 1812.275,1056" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="953.1500000000001,1092 953.1500000000001,1230 1935.4250000000004,1230" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1812.275,1092 1812.275,1230 1935.4250000000004,1230" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="2259.7375,132 2259.7375,152 2256.1625000000004,152 2256.1625000000004,1230 2031.7750000000003,1230" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1213.475,132 1213.475,152 2276.1625000000004,152 2276.1625000000004,1230 2031.7750000000003,1230" fill="none" stroke="var(--_line)" stroke-width="0.75" marker-end="url(#arrowhead)" />
+<polyline points="1213.475,132 1213.475,152 1057.5,152 1057.5,282 1086.1,282" fill="none" stroke="var(--_line)" stroke-width="0.75" stroke-dasharray="4 4" marker-end="url(#arrowhead)" />
+<rect x="2122.1875" y="96" width="275.1" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1083.0749999999998" y="96" width="260.8" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="354.90000000000003" y="432" width="275.1" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="297.70000000000005" y="588" width="389.50000000000006" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="326.30000000000007" y="744" width="332.3" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="362.05000000000007" y="900" width="260.8" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1621.1000000000001" y="432" width="382.35" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="751.2" y="432" width="482.45000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1257.65" y="432" width="339.45000000000005" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="751.2500000000001" y="1056" width="403.8" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1667.575" y="1056" width="289.40000000000003" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1935.4250000000004" y="1212" width="96.35000000000001" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="56" y="264" width="668.35" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="748.3499999999999" y="264" width="675.5" height="36" rx="0" ry="0" fill="var(--_node-fill)" stroke="var(--_node-stroke)" stroke-width="0.75" />
+<rect x="1447.85" y="264" width="611.1500000000001" height="36" rx="0" ry="0" fill="#fff9c4" stroke="#f9a825" stroke-width="2px" />
+<text x="2259.7375" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;📄 RINEX v3 OBS&lt;br/&gt;(.YYo, .rnx)&quot;</text>
+<text x="1213.475" y="114" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;📦 SBF Binary&lt;br/&gt;(.YY_, .sbf)&quot;</text>
+<text x="492.45000000000005" y="450" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;FTP Download&lt;br/&gt;COD / ESA / IGS&quot;</text>
+<text x="492.45000000000005" y="606" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Hermite Interpolation&lt;br/&gt;Orbits → target epochs&quot;</text>
+<text x="492.45000000000005" y="762" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Clock Interpolation&lt;br/&gt;Piecewise linear&quot;</text>
+<text x="492.45000000000005" y="918" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Zarr Cache&lt;br/&gt;aux_{date}.zarr&quot;</text>
+<text x="1812.275" y="450" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;SatVisibility Extract&lt;br/&gt;θ, φ from receiver FW&quot;</text>
+<text x="992.4250000000001" y="450" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Keplerian Propagation&lt;br/&gt;GPS/Galileo/BeiDou orbital elements&quot;</text>
+<text x="1427.375" y="450" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;RK4 Integration&lt;br/&gt;GLONASS state vectors&quot;</text>
+<text x="953.1500000000001" y="1074" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;compute_spherical_coordinates()&lt;br/&gt;ECEF → θ, φ, r&quot;</text>
+<text x="1812.275" y="1074" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;Direct θ, φ&lt;br/&gt;(already computed)&quot;</text>
+<text x="1983.6000000000004" y="1230" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;ds[theta</text>
+<text x="390.175" y="282" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;🏛️ Agency Final&lt;br/&gt;SP3 + CLK&lt;br/&gt;&lt;i&gt;12-18 day latency&lt;/i&gt;&lt;br/&gt;&lt;i&gt;~2-3 cm accuracy&lt;/i&gt;&quot;</text>
+<text x="1086.1" y="282" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;📡 SBF Broadcast&lt;br/&gt;SatVisibility block&lt;br/&gt;&lt;i&gt;Immediate&lt;/i&gt;&lt;br/&gt;&lt;i&gt;~1-2 m accuracy&lt;/i&gt;&quot;</text>
+<text x="1753.425" y="282" text-anchor="middle" dy="0.35em" font-size="13" font-weight="500" fill="var(--_text)">&quot;📄 RINEX NAV 🚧&lt;br/&gt;.YYp / .YYn / .YYg&lt;br/&gt;&lt;i&gt;Planned — not yet implemented&lt;/i&gt;&quot;</text>
+</svg>
