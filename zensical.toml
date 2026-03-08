@@ -117,6 +117,7 @@ nav = [
     { "canvod.grids" = "api/canvod-grids.md" },
     { "canvod.vod" = "api/canvod-vod.md" },
     { "canvod.store" = "api/canvod-store.md" },
+    { "canvod.store_metadata" = "api/canvod-store-metadata.md" },
     { "canvod.viz" = "api/canvod-viz.md" },
     { "canvod.utils" = "api/canvod-utils.md" },
     { "canvod.ops" = "api/canvod-ops.md" },

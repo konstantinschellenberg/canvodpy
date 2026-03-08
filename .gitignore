@@ -231,6 +231,8 @@ logs/
 # Data directories
 .data/
 data/
+# Allow bundled package data files
+!packages/canvod-readers/src/canvod/readers/gnss_specs/data/
 *.nc
 *.zarr/
 

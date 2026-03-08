@@ -9,6 +9,7 @@ graph TD
     subgraph Consumers["Consumer Layer"]
         Aux["canvod-auxiliary"]
         Store["canvod-store"]
+        StoreMeta["canvod-store-metadata"]
         Viz["canvod-viz"]
         OPS["canvod-ops"]
         NAMING["canvod-virtualiconvname"]
@@ -26,11 +27,13 @@ graph TD
     Canvodpy ==> Viz
     Canvodpy ==> OPS
     Canvodpy ==> NAMING
+    Canvodpy ==> StoreMeta
 
     Aux -.-> Readers
     Aux -.-> Utils
     Store -.-> Readers
     Store -.-> Utils
+    StoreMeta -.-> Utils
     Grids -.-> Utils
     Viz -.-> Grids
     OPS -.-> Grids

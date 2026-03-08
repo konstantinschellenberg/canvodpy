@@ -14,6 +14,17 @@ sites:
     # Absolute path to site data directory
     gnss_site_data_root: /path/to/your/gnss/data/01_Rosalia
 
+    # Site geospatial metadata (optional, used by canvod-store-metadata)
+    description: Mixed forest GNSS-T research site
+    country: AT                # ISO 3166-1 alpha-2 country code
+    latitude: 47.7             # WGS84 latitude (decimal degrees)
+    longitude: 16.3            # WGS84 longitude (decimal degrees)
+    altitude_m: 680.0          # Altitude above WGS84 ellipsoid (metres)
+
+    # Optional site-level naming convention override
+    # naming:
+    #   convention: "{SIT}{T}{NN}{AGC}_R_{YYYY}{DOY}{HHMM}_{PERIOD}_{SAMPLING}_{CONTENT}.{TYPE}"
+
     # Receiver definitions
     receivers:
       reference_01:
