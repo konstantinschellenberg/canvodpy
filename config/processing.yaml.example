@@ -11,10 +11,16 @@
 metadata:
   author: Your Name
   email: your.email@example.com
+  orcid: null                          # e.g. "0000-0001-2345-6789"
   institution: Your Institution
-  department: Your Department  # Optional
+  institution_ror: null                # e.g. "https://ror.org/04d836q62"
+  department: Your Department          # Optional
   research_group: Your Research Group  # Optional
   website: https://your-institution.edu  # Optional
+  license: CC-BY-4.0                   # SPDX identifier
+  publisher: Your Institution          # Optional
+  publisher_url: null                  # Optional
+  naming_authority: null               # e.g. "at.ac.tuwien"
 
 # =============================================================================
 # Credentials
@@ -63,6 +69,7 @@ processing:
   store_radial_distance: false   # If true, store satellite-receiver distance (r) alongside phi/theta
   receiver_position_mode: shared  # 'shared': all receivers use canopy position (default, enables 1:1 SNR comparison). 'per_receiver': each receiver uses its own RINEX header position (⚠ breaks direct SNR comparability between receivers).
   file_pairing: complete          # 'complete': discover files per-receiver independently (all data ingested). 'paired': only process dates where both receivers have data.
+  ephemeris_source: final         # 'final': satellite coords from SP3/CLK agency products. 'broadcast': use broadcast ephemerides from SBF SatVisibility (SBF only, faster but ~1-2m orbit).
 
   # --- Batch strategy -----------------------------------------------------
   # >= 24: multi-day strategy (accumulates calendar days)
@@ -184,3 +191,17 @@ logging:
   # log_dir: /path/to/logs
   log_file_name: canvodpy.log
   log_path_depth: 6              # Path components shown in log references
+
+# =============================================================================
+# References (Publications & Funding)
+# =============================================================================
+
+references:
+  publications: []
+    # - doi: "10.1234/example"
+    #   citation: "Author et al. (2026). Title. Journal."
+  funding: []
+    # - funder: "Austrian Science Fund (FWF)"
+    #   funder_ror: "https://ror.org/013tf3c58"
+    #   grant_number: "P12345"
+    #   award_title: "GNSS-VOD for forest monitoring"

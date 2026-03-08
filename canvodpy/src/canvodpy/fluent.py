@@ -136,6 +136,11 @@ class FluentWorkflow:
     def read(self, date: str, receivers: list[str] | None = None) -> FluentWorkflow:
         """Load RINEX observations for *date*.
 
+        Uses :class:`~canvod.virtualiconvname.FilenameMapper` for file
+        discovery when naming config is available, preventing duplicate
+        files (e.g. daily + sub-daily) from being concatenated.  Falls
+        back to naive glob when naming config is missing.
+
         Parameters
         ----------
         date : str
@@ -147,21 +152,134 @@ class FluentWorkflow:
         receiver_list = receivers or list(self._site.active_receivers.keys())
         log = self.log.bind(date=date)
 
+        from pathlib import Path
+
+        import xarray as xr
+
+        from canvod.utils.config import load_config
+
+        config = load_config()
+        site_cfg = config.sites.sites[self._site.name]
+        data_root = Path(site_cfg.gnss_site_data_root)
+
+        year = int(date[:4])
+        doy = int(date[4:])
+
         for name in receiver_list:
-            path = self._site._site.get_rinex_path(name, date)
-            reader_obj = ReaderFactory.create(self._reader_name, path=path)
-            ds = reader_obj.read()
+            recv_cfg = site_cfg.receivers[name]
+            recv_base = data_root / recv_cfg.directory
 
-            # Filter variables
-            if self._keep_vars:
-                drop = [v for v in ds.data_vars if v not in set(self._keep_vars)]
-                if drop:
-                    ds = ds.drop_vars(drop)
+            rnx_files = self._discover_files(
+                site_cfg,
+                recv_cfg,
+                name,
+                recv_base,
+                year,
+                doy,
+                log,
+            )
+            if not rnx_files:
+                continue
 
-            self._datasets[name] = ds
-            log.info("read_complete", receiver=name)
+            datasets_for_recv = []
+            for fpath in rnx_files:
+                reader_obj = ReaderFactory.create(self._reader_name, fpath=fpath)
+                ds = reader_obj.to_ds()
+
+                # Filter variables
+                if self._keep_vars:
+                    drop = [v for v in ds.data_vars if v not in set(self._keep_vars)]
+                    if drop:
+                        ds = ds.drop_vars(drop)
+
+                datasets_for_recv.append(ds)
+
+            if datasets_for_recv:
+                self._datasets[name] = xr.concat(datasets_for_recv, dim="epoch")
+                log.info("read_complete", receiver=name, files=len(datasets_for_recv))
 
         return self  # never reached (decorator returns self), but aids type checkers
+
+    @staticmethod
+    def _discover_files(
+        site_cfg,
+        recv_cfg,
+        recv_name,
+        recv_base,
+        year,
+        doy,
+        log,
+    ) -> list:
+        """Discover RINEX files using FilenameMapper or fallback glob."""
+
+        # Try FilenameMapper when naming config is available
+        if site_cfg.naming and recv_cfg.naming:
+            try:
+                from canvod.virtualiconvname import (
+                    FilenameMapper,
+                    ReceiverNamingConfig,
+                    SiteNamingConfig,
+                )
+
+                mapper = FilenameMapper(
+                    site_naming=SiteNamingConfig(**site_cfg.naming),
+                    receiver_naming=ReceiverNamingConfig(**recv_cfg.naming),
+                    receiver_type=recv_cfg.type,
+                    receiver_base_dir=recv_base,
+                )
+                vfs = mapper.discover_for_date(year, doy)
+
+                # Check for overlaps
+                overlaps = FilenameMapper.detect_overlaps(vfs)
+                if overlaps:
+                    overlap_msgs = [
+                        f"  {a.canonical_str} <-> {b.canonical_str}"
+                        for a, b in overlaps[:5]
+                    ]
+                    log.warning(
+                        "temporal_overlaps_detected",
+                        receiver=recv_name,
+                        overlaps=overlap_msgs,
+                    )
+
+                if vfs:
+                    log.info(
+                        "files_discovered",
+                        receiver=recv_name,
+                        n_files=len(vfs),
+                        method="FilenameMapper",
+                    )
+                    return [vf.physical_path for vf in vfs]
+
+                log.warning("no_files_via_mapper", receiver=recv_name)
+                return []
+
+            except Exception as exc:
+                log.warning(
+                    "filename_mapper_failed_fallback_to_glob",
+                    receiver=recv_name,
+                    error=str(exc),
+                )
+
+        # Fallback: naive glob (no naming config)
+        doy_dir = f"{year % 100:02d}{doy:03d}"
+        recv_dir = recv_base / doy_dir
+        if not recv_dir.exists():
+            log.warning("no_data_dir", receiver=recv_name, path=str(recv_dir))
+            return []
+
+        rnx_files = sorted(recv_dir.glob("*.25o"))
+        if not rnx_files:
+            log.warning("no_rinex_files", receiver=recv_name, path=str(recv_dir))
+            return []
+
+        log.info(
+            "files_discovered",
+            receiver=recv_name,
+            n_files=len(rnx_files),
+            method="glob_fallback",
+        )
+        return rnx_files
 
     @step
     def preprocess(self, agency: str = "COD") -> FluentWorkflow:

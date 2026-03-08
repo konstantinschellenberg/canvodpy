@@ -101,6 +101,9 @@ from canvodpy.functional import (
 # Logging (for all users)
 from canvodpy.logging import get_logger, setup_logging
 
+# VOD computation helper
+from canvodpy.vod_computer import VodComputer
+
 # New workflow API
 from canvodpy.workflow import VODWorkflow
 

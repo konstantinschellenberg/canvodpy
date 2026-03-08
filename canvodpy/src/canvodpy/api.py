@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     import xarray as xr
 
     from canvod.store import MyIcechunkStore
+    from canvodpy.vod_computer import VodComputer
 
 
 class Site:
@@ -102,6 +103,15 @@ class Site:
     def vod_analyses(self) -> dict:
         """Get configured VOD analysis pairs."""
         return self._site.active_vod_analyses
+
+    @property
+    def vod(self) -> VodComputer:
+        """Lazy VOD computation helper."""
+        if not hasattr(self, "_vod_computer"):
+            from canvodpy.vod_computer import VodComputer
+
+            self._vod_computer = VodComputer(self)
+        return self._vod_computer
 
     @property
     def rinex_store(self) -> MyIcechunkStore:

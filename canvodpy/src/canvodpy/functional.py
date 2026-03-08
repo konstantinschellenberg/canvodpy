@@ -89,11 +89,11 @@ def read_rinex(
 
     reader_obj = ReaderFactory.create(
         reader,
-        path=path,
+        fpath=path,
         **reader_kwargs,
     )
 
-    ds = reader_obj.read()
+    ds = reader_obj.to_ds()
     log.info("read_rinex_complete", variables=len(ds.data_vars))
     return ds
 

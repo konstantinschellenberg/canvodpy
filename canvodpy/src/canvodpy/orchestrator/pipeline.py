@@ -129,7 +129,10 @@ class PipelineOrchestrator:
         self.pair_matcher = PairDataDirMatcher(
             base_dir=site.site_config["gnss_site_data_root"],
             receivers=site.receivers,
-            analysis_pairs=site.vod_analyses,
+            analysis_pairs={
+                name: cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
+                for name, cfg in site.vod_analyses.items()
+            },
         )
 
         self._logger.info(
@@ -786,12 +789,17 @@ class PipelineOrchestrator:
             # Build expected counts and receiver→files lookup
             expected_counts: dict[tuple[str, str], int] = {}
             receiver_files_lookup: dict[tuple[str, str], list[Path]] = {}
+            reader_format_lookup: dict[tuple[str, str], str | None] = {}
             for date_key in doy_contexts:
                 _processor, receiver_file_map = doy_contexts[date_key]
                 for receiver_name, rinex_files in receiver_file_map:
                     key = (date_key, receiver_name)
                     expected_counts[key] = len(rinex_files)
                     receiver_files_lookup[key] = rinex_files
+            # Build reader_format lookup from the original receivers dict
+            for date_key, receivers in batch:
+                for store_group, (_, _, _, fmt) in receivers.items():
+                    reader_format_lookup[(date_key, store_group)] = fmt
 
             # Submit all tasks
             t_submit_start = _time.monotonic()
@@ -813,6 +821,9 @@ class PipelineOrchestrator:
             # Streaming collection: write as groups complete
             pending_results: dict[tuple[str, str], list[tuple[Path, xr.Dataset]]] = (
                 defaultdict(list)
+            )
+            pending_aux: dict[tuple[str, str], dict[Path, dict[str, xr.Dataset]]] = (
+                defaultdict(dict)
             )
             completed_counts: dict[tuple[str, str], int] = defaultdict(int)
             tasks_succeeded = 0
@@ -850,8 +861,10 @@ class PipelineOrchestrator:
                     group_key = (date_key, receiver_name)
 
                     try:
-                        fname, ds, _aux, _sids = fut.result()
+                        fname, ds, aux, _sids = fut.result()
                         pending_results[group_key].append((fname, ds))
+                        if aux:
+                            pending_aux[group_key][fname] = aux
                         tasks_succeeded += 1
                     except Exception:
                         tasks_failed += 1
@@ -915,11 +928,17 @@ class PipelineOrchestrator:
                     augmented = sorted(group_results, key=lambda x: x[0].name)
                     processor = doy_contexts[date_key][0]
                     rinex_files = receiver_files_lookup[group_key]
+                    group_aux = pending_aux.pop(group_key, None)
+                    group_fmt = reader_format_lookup.get(group_key)
 
                     t_write_start = _time.monotonic()
                     try:
                         processor._append_to_icechunk(
-                            augmented, receiver_name, rinex_files
+                            augmented,
+                            receiver_name,
+                            rinex_files,
+                            aux_datasets=group_aux or None,
+                            reader_format=group_fmt,
                         )
                     except (OSError, RuntimeError, ValueError):
                         self._logger.exception(

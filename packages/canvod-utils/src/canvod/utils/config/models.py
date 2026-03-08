@@ -216,6 +216,15 @@ class ProcessingParams(BaseModel):
             "memory overhead + shared aux data within a worker."
         ),
     )
+    ephemeris_source: Literal["final", "broadcast"] = Field(
+        "final",
+        description=(
+            "'final': compute satellite coordinates from agency final products "
+            "(SP3/CLK). 'broadcast': use broadcast ephemerides from SBF "
+            "SatVisibility blocks (SBF reader_format only, skips SP3/CLK "
+            "download). Broadcast is faster but less accurate (~1-2 m orbit)."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_resource_mode(self) -> "ProcessingParams":

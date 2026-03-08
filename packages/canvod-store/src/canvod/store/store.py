@@ -1294,6 +1294,43 @@ class MyIcechunkStore:
                 f"hash={rinex_hash}"
             )
 
+    def write_or_append_group(
+        self,
+        dataset: xr.Dataset,
+        group_name: str,
+        append_dim: str = "epoch",
+        branch: str = "main",
+        commit_message: str | None = None,
+    ) -> None:
+        """Write or append a dataset to a group (no File Hash guardrails).
+
+        Suitable for VOD stores and other derived-data stores where the
+        rinex-style hash/temporal-overlap guardrails do not apply.
+
+        If the group does not exist, creates it (mode='w').
+        If it exists, appends along ``append_dim``.
+        """
+        dataset = self._normalize_encodings(dataset)
+
+        if self.group_exists(group_name, branch):
+            with self.writable_session(branch) as session:
+                to_icechunk(dataset, session, group=group_name, append_dim=append_dim)
+                if commit_message is None:
+                    commit_message = f"Appended to group '{group_name}'"
+                session.commit(commit_message)
+            self._logger.info(
+                f"Appended {len(dataset.epoch)} epochs to group '{group_name}'"
+            )
+        else:
+            with self.writable_session(branch) as session:
+                to_icechunk(dataset, session, group=group_name, mode="w")
+                if commit_message is None:
+                    commit_message = f"Created group '{group_name}'"
+                session.commit(commit_message)
+            self._logger.info(
+                f"Created group '{group_name}' with {len(dataset.epoch)} epochs"
+            )
+
     def append_metadata(
         self,
         group_name: str,

@@ -348,11 +348,11 @@ class VODWorkflow:
         # Create reader using factory
         reader = ReaderFactory.create(
             self.reader_name,
-            path=rinex_path,
+            fpath=rinex_path,
         )
 
         # Read data
-        ds = reader.read()
+        ds = reader.to_ds()
 
         # Filter variables
         if self.keep_vars:

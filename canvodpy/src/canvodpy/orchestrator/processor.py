@@ -88,6 +88,8 @@ def preprocess_with_hermite_aux(
     reader_name: str = "rinex3",
     use_sbf_geometry: bool = False,
     store_radial_distance: bool = False,
+    broadcast_canopy_file: Path | None = None,
+    broadcast_canopy_fmt: str | None = None,
 ) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
     """Read RINEX and compute coordinates using Hermite-interpolated aux data from Zarr.
 
@@ -113,6 +115,12 @@ def preprocess_with_hermite_aux(
         and transfer theta/phi directly from SBF SatVisibility blocks.
     store_radial_distance : bool, default False
         If True, keep the radial distance variable ``r`` in the output.
+    broadcast_canopy_file : Path | None, default None
+        Path to the matching canopy SBF file. When provided (for reference
+        receivers in shared position mode), its sbf_obs theta/phi override
+        the reference file's own geometry.
+    broadcast_canopy_fmt : str | None, default None
+        Reader format for the canopy file (e.g. "sbf").
 
     Returns
     -------
@@ -157,9 +165,36 @@ def preprocess_with_hermite_aux(
 
             # SBF-geometry fast path: use receiver-reported theta/phi, skip ephemeris
             if reader_name == "sbf" and use_sbf_geometry:
-                meta_ds = aux_datasets.get("sbf_obs")
+                # Use canopy file's sbf_obs when provided (reference receiver
+                # in shared position mode), else this file's own sbf_obs
+                if broadcast_canopy_file is not None:
+                    from canvodpy.factories import ReaderFactory
+
+                    canopy_rnx = ReaderFactory.create(
+                        broadcast_canopy_fmt or "sbf", fpath=broadcast_canopy_file
+                    )
+                    _, canopy_aux = canopy_rnx.to_ds_and_auxiliary(
+                        keep_data_vars=None,
+                        write_global_attrs=False,
+                        keep_sids=keep_sids,
+                    )
+                    meta_ds = canopy_aux.get("sbf_obs")
+                else:
+                    meta_ds = aux_datasets.get("sbf_obs")
                 if meta_ds is not None and "theta" in meta_ds and "phi" in meta_ds:
-                    ds = ds.assign_coords(theta=meta_ds["theta"], phi=meta_ds["phi"])
+                    # Align broadcast theta/phi to obs epoch+SID space
+                    geo = meta_ds[["theta", "phi"]]
+                    if "epoch" in geo.dims:
+                        common_epochs = np.intersect1d(
+                            ds.epoch.values, geo.epoch.values
+                        )
+                        geo = geo.sel(epoch=common_epochs)
+                        geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
+                    common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
+                    geo = geo.sel(sid=common_sids)
+                    geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
+                    ds["theta"] = geo["theta"]
+                    ds["phi"] = geo["phi"]
                 from canvod.auxiliary.preprocessing import flush_sid_accumulators
 
                 sid_issues = flush_sid_accumulators()
@@ -531,7 +566,8 @@ class RinexDataProcessor:
             self.n_max_workers = None
         self._dask_client = dask_client
         self._reader_name = reader_name  # fallback; prefer per-receiver reader_format
-        self.use_sbf_geometry = use_sbf_geometry
+        # use_sbf_geometry: explicit param wins, otherwise read from config
+        self._use_sbf_geometry_override = use_sbf_geometry
         self._logger = get_logger(__name__).bind(
             site=site.site_name,
             workers=self.n_max_workers or os.cpu_count(),
@@ -547,6 +583,14 @@ class RinexDataProcessor:
         config = load_config()
         self._config = config  # cache to avoid re-reading YAML in methods
         self.keep_sids = config.sids.get_sids()
+
+        # Resolve ephemeris source: explicit param > config > default (final)
+        if self._use_sbf_geometry_override:
+            self.use_sbf_geometry = True
+        else:
+            self.use_sbf_geometry = (
+                config.processing.processing.ephemeris_source == "broadcast"
+            )
 
         # Cache config values formerly in globals
         aux_cfg = config.processing.aux_data
@@ -566,7 +610,15 @@ class RinexDataProcessor:
         )
 
         # Initialize auxiliary data pipeline (loads SP3 and CLK files)
-        self.aux_pipeline = self._initialize_aux_pipeline()
+        # Skip when using broadcast ephemerides (no SP3/CLK needed)
+        if self.use_sbf_geometry:
+            self.aux_pipeline = None
+            self._logger.info(
+                "aux_pipeline_skipped",
+                reason="ephemeris_source=broadcast, using SBF SatVisibility",
+            )
+        else:
+            self.aux_pipeline = self._initialize_aux_pipeline()
 
         t_init_end = time.perf_counter()
         self._logger.info(
@@ -2301,6 +2353,7 @@ class RinexDataProcessor:
         rinex_files: list[Path],
         aux_datasets: dict[Path, dict[str, xr.Dataset]] | None = None,
         sid_issues: dict[str, list[str]] | None = None,
+        reader_format: str | None = None,
     ) -> None:
         """Batch append with single commit.
 
@@ -2610,7 +2663,7 @@ class RinexDataProcessor:
 
         # STEP 5: Set source_format root attr (once, idempotent)
         if self.site.rinex_store.source_format is None:
-            reader_fmt = self._reader_name
+            reader_fmt = reader_format or self._reader_name
             try:
                 self.site.rinex_store.set_root_attrs(
                     {"source_format": reader_fmt}, branch=branch
@@ -2640,7 +2693,7 @@ class RinexDataProcessor:
                     break
 
             if site_cfg is not None:
-                reader_fmt = self._reader_name
+                reader_fmt = reader_format or self._reader_name
                 if not metadata_exists(store_path, branch=branch):
                     resources = self._config.processing.processing.resolve_resources()
                     meta = collect_metadata(
@@ -3229,13 +3282,47 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(
-            first_files, date_str, reader_format=first_fmt
-        )
+        if self.use_sbf_geometry:
+            aux_zarr_path = None
+            self._logger.info(
+                "aux_preprocessing_skipped",
+                reason="ephemeris_source=broadcast",
+            )
+        else:
+            aux_zarr_path = self._ensure_aux_data_preprocessed(
+                first_files, date_str, reader_format=first_fmt
+            )
         t_aux_done = time.perf_counter()
 
         task_descriptors: list[tuple] = []
         receiver_file_map: list[tuple[str, list[Path]]] = []
+
+        # In broadcast + shared position mode, build a mapping from
+        # timestamp suffix → canopy file path so reference tasks can
+        # read the matching canopy file's sbf_obs on the fly
+        canopy_file_by_timestamp: dict[str, Path] | None = None
+        canopy_reader_fmt: str | None = None
+        position_mode = self._config.processing.processing.receiver_position_mode
+        if self.use_sbf_geometry and position_mode == "shared":
+            for rc_name, rc_type, rc_dir, _, rc_fmt in receiver_configs:
+                if rc_type == "canopy":
+                    canopy_files = self._get_rinex_files(rc_dir, rc_fmt)
+                    if canopy_files:
+                        import re
+
+                        canopy_file_by_timestamp = {}
+                        canopy_reader_fmt = rc_fmt or self._reader_name
+                        for cf in canopy_files:
+                            # Extract timestamp: last chars before extension
+                            # e.g. "ract001a15.25_" → "a15"
+                            m = re.search(r"([a-x]\d{2})\.\d{2}_$", cf.name)
+                            if m:
+                                canopy_file_by_timestamp[m.group(1)] = cf
+                        self._logger.info(
+                            "canopy_broadcast_file_index_built",
+                            canopy_files=len(canopy_file_by_timestamp),
+                        )
+                    break
 
         for (
             receiver_name,
@@ -3254,7 +3341,6 @@ class RinexDataProcessor:
                 )
                 continue
 
-            position_mode = self._config.processing.processing.receiver_position_mode
             if position_mode == "per_receiver":
                 position_files = rinex_files
                 self._logger.warning(
@@ -3286,6 +3372,19 @@ class RinexDataProcessor:
 
             effective_reader = reader_format or self._reader_name
             for rnx_file in rinex_files:
+                # For reference receivers in broadcast + shared mode,
+                # find matching canopy file by timestamp suffix
+                broadcast_canopy_file = None
+                if (
+                    _receiver_type == "reference"
+                    and canopy_file_by_timestamp is not None
+                ):
+                    import re
+
+                    m = re.search(r"([a-x]\d{2})\.\d{2}_$", rnx_file.name)
+                    if m:
+                        broadcast_canopy_file = canopy_file_by_timestamp.get(m.group(1))
+
                 task_descriptors.append(
                     (
                         rnx_file,
@@ -3296,6 +3395,9 @@ class RinexDataProcessor:
                         self.keep_sids,
                         effective_reader,
                         self.use_sbf_geometry,
+                        False,  # store_radial_distance
+                        broadcast_canopy_file,
+                        canopy_reader_fmt,
                     )
                 )
 
@@ -3393,9 +3495,12 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(
-            first_files, date_str, reader_format=first_fmt
-        )
+        if self.use_sbf_geometry:
+            aux_zarr_path = None
+        else:
+            aux_zarr_path = self._ensure_aux_data_preprocessed(
+                first_files, date_str, reader_format=first_fmt
+            )
 
         # ====================================================================
         # STEP 2: Process each receiver, reusing RINEX parsing for
@@ -3536,6 +3641,7 @@ class RinexDataProcessor:
                 rinex_files=rinex_files,
                 aux_datasets=aux_datasets,
                 sid_issues=sid_issues,
+                reader_format=reader_format,
             )
             t_write_end = time.perf_counter()
 
