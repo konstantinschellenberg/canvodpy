@@ -91,6 +91,7 @@ from canvodpy.fluent import FluentWorkflow
 from canvodpy.functional import (
     assign_grid_cells,
     assign_grid_cells_to_file,
+    augment_with_ephemeris,
     calculate_vod_to_file,
     create_grid,
     create_grid_to_file,

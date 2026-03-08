@@ -200,11 +200,17 @@ input data:
 
 This is not transparent to users and will cause bugs downstream.
 
-**Decision:** TBD — depends on resolution of issues #2, #4. Core question:
-should all levels produce equivalent output, or should L2/L4 be explicitly
-"raw reader" APIs?
+**Decision:** Resolved by #2 and #4. All levels can now produce equivalent
+output (SNR + theta + phi):
 
-**Related:** Issue #2 (theta/phi), Issue #4 (file discovery)
+- **L1/L3** (orchestrator): theta/phi via inline SP3/CLK pipeline (unchanged)
+- **L2** (fluent): `.augment(source="final")` step using `AgencyEphemerisProvider`
+- **L4** (functional): `augment_with_ephemeris(ds, rx_pos, source="final")`
+- **L2** file discovery: uses `FilenameMapper` (prevents duplication)
+
+All levels share the same coordinate transform code
+(`compute_spherical_coordinates`) and produce identical theta/phi values
+for the same ephemeris source.
 
 ---
 
@@ -251,9 +257,9 @@ already designed as standalone components that move us toward this architecture.
 | 1 | #1 VodComputer | Done | Unblocks daily VOD pipeline |
 | 2 | #3 vod_analyses Pydantic | Done | Type safety, quick fix |
 | 3 | #5 Factory bugs | Done | Already fixed |
-| 4 | #2 Theta/phi in L2/L4 | High | Requires EphemerisProvider design |
+| 4 | #2 Theta/phi in L2/L4 | Done (Phase 1-2) | EphemerisProvider ABC + Agency + SBF |
 | 5 | #4 File discovery | Done | Prevents data duplication |
-| 6 | #6 Level consistency | High | Architectural decision, depends on #2 and #4 |
+| 6 | #6 Level consistency | Resolved | All levels can now produce theta/phi |
 
 ---
 

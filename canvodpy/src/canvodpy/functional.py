@@ -98,6 +98,68 @@ def read_rinex(
     return ds
 
 
+def augment_with_ephemeris(
+    ds: xr.Dataset,
+    receiver_position: Any,
+    source: str = "final",
+    agency: str = "COD",
+    date: str | None = None,
+    site_config: Any = None,
+    aux_data_dir: str | Path | None = None,
+    **kwargs: Any,
+) -> xr.Dataset:
+    """Augment dataset with theta/phi from ephemeris data.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        GNSS observation dataset with ``(epoch, sid)`` dims.
+    receiver_position
+        Receiver ECEF position (``ECEFPosition`` or compatible).
+    source : str
+        Ephemeris source: ``"final"`` (SP3/CLK), ``"rapid"``,
+        ``"broadcast"`` (SBF only).
+    agency : str
+        Analysis centre for SP3/CLK products.
+    date : str, optional
+        Date in ``YYYYDOY`` format.  Required for ``"final"``/``"rapid"``.
+    site_config : optional
+        Site configuration for aux data paths.
+    aux_data_dir : str or Path, optional
+        Directory for cached aux data.
+    **kwargs
+        Forwarded to the provider.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with ``theta`` and ``phi`` added.
+    """
+    from canvod.auxiliary.ephemeris.provider import (
+        AgencyEphemerisProvider,
+        SbfBroadcastProvider,
+    )
+
+    log.info("augment_with_ephemeris", source=source, agency=agency)
+
+    if source in ("final", "rapid"):
+        provider = AgencyEphemerisProvider(
+            agency=agency,
+            product_type=source,
+            aux_data_dir=Path(aux_data_dir) if aux_data_dir else None,
+            **kwargs,
+        )
+        if date is not None:
+            provider.preprocess_day(date, site_config)
+        return provider.augment_dataset(ds, receiver_position)
+
+    if source == "broadcast":
+        provider = SbfBroadcastProvider(**kwargs)
+        return provider.augment_dataset(ds, receiver_position)
+
+    raise ValueError(f"Unknown ephemeris source: {source!r}")
+
+
 def create_grid(
     grid_type: str = "equal_area",
     **grid_params: Any,

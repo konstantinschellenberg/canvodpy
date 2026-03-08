@@ -305,6 +305,65 @@ class FluentWorkflow:
         return self
 
     @step
+    def augment(
+        self,
+        source: str = "final",
+        agency: str = "COD",
+        date: str | None = None,
+    ) -> FluentWorkflow:
+        """Augment loaded datasets with theta/phi from ephemeris data.
+
+        Parameters
+        ----------
+        source : str
+            Ephemeris source: ``"final"`` (SP3/CLK), ``"rapid"``,
+            ``"broadcast"`` (SBF only).
+        agency : str
+            Analysis centre code (default ``"COD"``).
+        date : str, optional
+            Date in ``YYYYDOY`` format.  If not provided, inferred from
+            the most recent ``.read()`` call.
+        """
+        from canvod.auxiliary.ephemeris.provider import (
+            AgencyEphemerisProvider,
+        )
+        from canvod.utils.config import load_config
+
+        log = self.log.bind(source=source, agency=agency)
+
+        config = load_config()
+        site_cfg = config.sites.sites[self._site.name]
+
+        if source in ("final", "rapid"):
+            provider = AgencyEphemerisProvider(
+                agency=agency,
+                product_type=source,
+            )
+            if date:
+                provider.preprocess_day(date, site_cfg)
+
+            from canvod.auxiliary.position.position import ECEFPosition
+
+            for name, ds in self._datasets.items():
+                try:
+                    rx_pos = ECEFPosition.from_ds_metadata(ds)
+                except (KeyError, ValueError):
+                    log.warning(
+                        "no_receiver_position",
+                        receiver=name,
+                    )
+                    continue
+                self._datasets[name] = provider.augment_dataset(
+                    ds,
+                    rx_pos,
+                )
+                log.info("augment_complete", receiver=name)
+        else:
+            log.warning("augment_source_not_supported", source=source)
+
+        return self
+
+    @step
     def grid(self, kind: str | None = None, **params: Any) -> FluentWorkflow:
         """Build a hemisphere grid and assign cell IDs to all datasets.
 

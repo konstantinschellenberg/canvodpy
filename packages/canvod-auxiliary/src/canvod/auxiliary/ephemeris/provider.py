@@ -1,0 +1,392 @@
+"""Ephemeris provider ABC and implementations.
+
+Provides a unified interface for augmenting GNSS datasets with satellite
+angular coordinates (theta, phi).  Three implementations:
+
+- ``AgencyEphemerisProvider`` — SP3/CLK from analysis centres (COD, ESA, IGS),
+  Hermite interpolation.  Extracted from the orchestrator's aux data pipeline.
+- ``SbfBroadcastProvider`` — theta/phi directly from SBF SatVisibility blocks.
+- ``RinexNavProvider`` — (future) parses RINEX NAV files.
+
+Examples
+--------
+Standalone augmentation (Level 4 functional)::
+
+    from canvod.auxiliary.ephemeris.provider import AgencyEphemerisProvider
+
+    provider = AgencyEphemerisProvider(agency="COD")
+    provider.preprocess_day(date="2025001", site_config=site_cfg)
+    ds = provider.augment_dataset(ds, receiver_position=rx_pos)
+
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import xarray as xr
+
+    from canvod.auxiliary.position.position import ECEFPosition
+
+
+class EphemerisProvider(ABC):
+    """Abstract base class for satellite ephemeris providers.
+
+    Implementations augment a GNSS dataset with angular coordinates
+    (theta, phi) relative to a receiver position.
+    """
+
+    @abstractmethod
+    def augment_dataset(
+        self,
+        ds: xr.Dataset,
+        receiver_position: ECEFPosition,
+    ) -> xr.Dataset:
+        """Add theta and phi (and optionally r) to *ds*.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            GNSS observation dataset with ``(epoch, sid)`` dims.
+        receiver_position : ECEFPosition
+            Receiver ECEF coordinates.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with ``theta``, ``phi`` (and optionally ``r``) added.
+        """
+
+    @abstractmethod
+    def preprocess_day(
+        self,
+        date: str,
+        site_config: Any,
+    ) -> Path | None:
+        """Download / prepare ephemeris data for one day.
+
+        Parameters
+        ----------
+        date : str
+            Date in ``YYYYDOY`` format.
+        site_config : Any
+            Site configuration object providing receiver info, data root, etc.
+
+        Returns
+        -------
+        Path or None
+            Path to cached/preprocessed ephemeris data, or ``None``
+            if preparation is not needed (e.g. broadcast provider).
+        """
+
+
+class AgencyEphemerisProvider(EphemerisProvider):
+    """SP3/CLK-based ephemeris from analysis centres.
+
+    Downloads final/rapid/ultra products from COD, ESA, IGS etc.,
+    interpolates via Hermite cubic splines, and computes theta/phi
+    via ECEF→spherical coordinate transformation.
+
+    Parameters
+    ----------
+    agency : str
+        Analysis centre code (``"COD"``, ``"ESA"``, ``"GFZ"``, ``"JPL"``).
+    product_type : str
+        Product type (``"final"``, ``"rapid"``, ``"ultra"``).
+    aux_data_dir : Path, optional
+        Directory for cached aux Zarr files.
+    keep_sids : list[str], optional
+        SID filter list.
+    store_radial_distance : bool
+        Whether to keep ``r`` in the output.
+    """
+
+    def __init__(
+        self,
+        agency: str = "COD",
+        product_type: str = "final",
+        aux_data_dir: Path | None = None,
+        keep_sids: list[str] | None = None,
+        store_radial_distance: bool = False,
+    ) -> None:
+        self.agency = agency
+        self.product_type = product_type
+        self.aux_data_dir = aux_data_dir
+        self.keep_sids = keep_sids
+        self.store_radial_distance = store_radial_distance
+        self._aux_zarr_path: Path | None = None
+
+    def preprocess_day(
+        self,
+        date: str,
+        site_config: Any,
+    ) -> Path | None:
+        """Download SP3/CLK and interpolate to observation epochs.
+
+        Creates a Zarr store with interpolated satellite positions (X, Y, Z)
+        and clock corrections at the observation sampling rate.
+
+        Parameters
+        ----------
+        date : str
+            Date in ``YYYYDOY`` format.
+        site_config : Any
+            Site configuration (needs ``gnss_site_data_root``, receiver info).
+
+        Returns
+        -------
+        Path
+            Path to the preprocessed aux Zarr store.
+        """
+        import shutil
+
+        import numpy as np
+        import xarray as xr
+
+        from canvod.auxiliary.interpolation import (
+            ClockConfig,
+            ClockInterpolationStrategy,
+            Sp3Config,
+            Sp3InterpolationStrategy,
+        )
+        from canvod.auxiliary.pipeline import AuxDataPipeline
+
+        year = int(date[:4])
+        doy = int(date[4:])
+
+        # Determine aux output directory
+        aux_dir = self.aux_data_dir or Path(site_config.gnss_site_data_root)
+        aux_zarr_path = aux_dir / f"aux_{date}.zarr"
+
+        # Always reprocess (cheap; avoids stale caches)
+        if aux_zarr_path.exists():
+            shutil.rmtree(aux_zarr_path)
+
+        # Build MatchedDirs stub (only yyyydoy is used by the pipeline)
+        from canvod.readers.matching.models import MatchedDirs
+        from canvod.utils.tools import YYYYDOY
+
+        yyyydoy = YYYYDOY.from_str(date)
+        matched_dirs = MatchedDirs(
+            canopy_data_dir=aux_dir,
+            reference_data_dir=aux_dir,
+            yyyydoy=yyyydoy,
+        )
+
+        pipeline = AuxDataPipeline.create_standard(
+            matched_dirs=matched_dirs,
+            aux_file_path=aux_dir,
+            agency=self.agency,
+            product_type=self.product_type,
+            keep_sids=self.keep_sids,
+        )
+        pipeline.load_all()
+
+        # Generate target epoch grid (5s default)
+        sampling_interval = 5.0
+        day_start = np.datetime64(f"{year:04d}-01-01", "D") + np.timedelta64(
+            doy - 1,
+            "D",
+        )
+        n_epochs = int(24 * 3600 / sampling_interval)
+        target_epochs = day_start + np.arange(n_epochs) * np.timedelta64(
+            int(sampling_interval), "s"
+        )
+
+        # Interpolate ephemerides (Hermite cubic)
+        sp3_config = Sp3Config(use_velocities=True, fallback_method="linear")
+        sp3_interp = Sp3InterpolationStrategy(config=sp3_config)
+        ephem_ds = pipeline.get("ephemerides")
+        ephem_interp = sp3_interp.interpolate(ephem_ds, target_epochs)
+
+        # Interpolate clock (piecewise linear)
+        clock_config = ClockConfig(window_size=9, jump_threshold=1e-6)
+        clock_interp_strategy = ClockInterpolationStrategy(config=clock_config)
+        clock_ds = pipeline.get("clock")
+        clock_interp = clock_interp_strategy.interpolate(clock_ds, target_epochs)
+
+        # Merge and write
+        aux_processed = xr.merge([ephem_interp, clock_interp])
+        aux_processed.to_zarr(aux_zarr_path, mode="w")
+
+        self._aux_zarr_path = aux_zarr_path
+        return aux_zarr_path
+
+    def augment_dataset(
+        self,
+        ds: xr.Dataset,
+        receiver_position: ECEFPosition,
+    ) -> xr.Dataset:
+        """Add theta/phi to dataset using preprocessed SP3/CLK data.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            GNSS observation dataset.
+        receiver_position : ECEFPosition
+            Receiver ECEF position.
+
+        Returns
+        -------
+        xr.Dataset
+            Augmented dataset with theta, phi (and optionally r).
+
+        Raises
+        ------
+        RuntimeError
+            If ``preprocess_day()`` has not been called.
+        """
+        import xarray as xr
+
+        from canvod.auxiliary.position.spherical_coords import (
+            add_spherical_coords_to_dataset,
+            compute_spherical_coordinates,
+        )
+
+        if self._aux_zarr_path is None:
+            raise RuntimeError(
+                "Call preprocess_day() before augment_dataset(). "
+                "The aux data must be prepared first."
+            )
+
+        # Open preprocessed aux data and align to observation epochs
+        aux_store = xr.open_zarr(self._aux_zarr_path, decode_timedelta=True)
+        aux_slice = aux_store.sel(epoch=ds.epoch, method="nearest").load()
+
+        # Inner join on SIDs
+        common_sids = sorted(set(ds.sid.values) & set(aux_slice.sid.values))
+        if not common_sids:
+            raise ValueError(
+                f"No common SIDs between dataset ({len(ds.sid)}) "
+                f"and aux data ({len(aux_slice.sid)})"
+            )
+
+        ds = ds.sel(sid=common_sids)
+        aux_slice = aux_slice.sel(sid=common_sids)
+
+        # Compute spherical coordinates
+        sat_x = aux_slice["X"].values
+        sat_y = aux_slice["Y"].values
+        sat_z = aux_slice["Z"].values
+        r, theta, phi = compute_spherical_coordinates(
+            sat_x,
+            sat_y,
+            sat_z,
+            receiver_position,
+        )
+        ds = add_spherical_coords_to_dataset(ds, r, theta, phi)
+
+        if not self.store_radial_distance and "r" in ds:
+            ds = ds.drop_vars("r")
+
+        # Add clock if available
+        if "clock" in aux_slice.data_vars:
+            ds = ds.assign({"clock": aux_slice["clock"]})
+
+        return ds
+
+
+class SbfBroadcastProvider(EphemerisProvider):
+    """Ephemeris from SBF SatVisibility broadcast data.
+
+    Transfers theta/phi directly from SBF metadata datasets,
+    skipping external orbit/clock downloads entirely.  Only works
+    when the source format is SBF.
+
+    Parameters
+    ----------
+    canopy_file : Path, optional
+        Path to canopy SBF file for reference receivers in shared-position
+        mode.  When provided, the canopy file's geometry overrides the
+        reference file's own geometry.
+    canopy_reader_format : str
+        Reader format for the canopy file.
+    """
+
+    def __init__(
+        self,
+        canopy_file: Path | None = None,
+        canopy_reader_format: str = "sbf",
+    ) -> None:
+        self.canopy_file = canopy_file
+        self.canopy_reader_format = canopy_reader_format
+
+    def preprocess_day(
+        self,
+        date: str,
+        site_config: Any,
+    ) -> Path | None:
+        """No preprocessing needed for broadcast ephemeris."""
+        return None
+
+    def augment_dataset(
+        self,
+        ds: xr.Dataset,
+        receiver_position: ECEFPosition,
+        *,
+        aux_datasets: dict[str, xr.Dataset] | None = None,
+    ) -> xr.Dataset:
+        """Add theta/phi from SBF SatVisibility metadata.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            SBF observation dataset.
+        receiver_position : ECEFPosition
+            Receiver ECEF position (unused but required by ABC).
+        aux_datasets : dict, optional
+            Auxiliary datasets from ``reader.to_ds_and_auxiliary()``.
+            Must contain ``"sbf_obs"`` with theta/phi.
+
+        Returns
+        -------
+        xr.Dataset
+            Dataset with theta/phi added from SBF broadcast.
+        """
+        import numpy as np
+
+        # Determine source of sbf_obs metadata
+        if self.canopy_file is not None:
+            from canvodpy.factories import ReaderFactory
+
+            canopy_rnx = ReaderFactory.create(
+                self.canopy_reader_format,
+                fpath=self.canopy_file,
+            )
+            _, canopy_aux = canopy_rnx.to_ds_and_auxiliary(
+                keep_data_vars=None,
+                write_global_attrs=False,
+            )
+            meta_ds = canopy_aux.get("sbf_obs")
+        elif aux_datasets is not None:
+            meta_ds = aux_datasets.get("sbf_obs")
+        else:
+            raise ValueError(
+                "SbfBroadcastProvider requires either canopy_file or "
+                "aux_datasets with 'sbf_obs' key."
+            )
+
+        if meta_ds is None or "theta" not in meta_ds or "phi" not in meta_ds:
+            raise ValueError(
+                "sbf_obs metadata does not contain theta/phi. "
+                "Cannot use broadcast ephemeris."
+            )
+
+        # Align broadcast theta/phi to observation epoch+SID space
+        geo = meta_ds[["theta", "phi"]]
+        if "epoch" in geo.dims:
+            common_epochs = np.intersect1d(ds.epoch.values, geo.epoch.values)
+            geo = geo.sel(epoch=common_epochs)
+            geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
+
+        common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
+        geo = geo.sel(sid=common_sids)
+        geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
+
+        ds["theta"] = geo["theta"]
+        ds["phi"] = geo["phi"]
+
+        return ds
