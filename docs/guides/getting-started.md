@@ -4,29 +4,29 @@ This guide walks you through everything you need — from creating a GitHub acco
 
 <div class="grid cards" markdown>
 
--   :fontawesome-brands-github: &nbsp; **Steps 1–5** &nbsp; GitHub + Git
+-   :fontawesome-brands-github: &nbsp; **[Steps 1–5](#1-create-a-github-account)** &nbsp; GitHub + Git
 
     ---
 
-    GitHub account · Homebrew · Git install · SSH keys · Git identity
+    [GitHub account](#1-create-a-github-account) · [Homebrew](#2-install-homebrew-macos) · [Git install](#3-install-git) · [SSH keys](#4-set-up-ssh-keys-for-github) · [Git identity](#5-configure-your-git-identity)
 
--   :fontawesome-solid-gear: &nbsp; **Steps 6–9** &nbsp; Tools + Repo
-
-    ---
-
-    Install `uv` + `just` · Fork + clone · Submodules · Dev environment
-
--   :fontawesome-solid-sliders: &nbsp; **Step 10** &nbsp; Configuration
+-   :fontawesome-solid-gear: &nbsp; **[Steps 6–9](#6-install-uv-and-just)** &nbsp; Tools + Repo
 
     ---
 
-    Initialize YAML config files · Set paths and credentials · Validate
+    [Install `uv` + `just`](#6-install-uv-and-just) · [Fork + clone](#7-fork-and-clone-the-repository) · [Submodules](#8-initialise-git-submodules) · [Dev environment](#9-install-the-development-environment)
 
--   :fontawesome-solid-circle-check: &nbsp; **Steps 11–13** &nbsp; Verify + Contribute
+-   :fontawesome-solid-sliders: &nbsp; **[Step 10](#10-initialise-configuration-files)** &nbsp; Configuration
 
     ---
 
-    Run tests · Quality checks · Your first pull request
+    [Initialize YAML config files](#10-initialise-configuration-files) · Set paths and credentials · Validate
+
+-   :fontawesome-solid-circle-check: &nbsp; **[Steps 11–13](#11-run-the-test-suite)** &nbsp; Verify + Contribute
+
+    ---
+
+    [Run tests](#11-run-the-test-suite) · [Quality checks](#12-keeping-your-fork-up-to-date) · [Your first pull request](#13-your-first-contribution)
 
 </div>
 

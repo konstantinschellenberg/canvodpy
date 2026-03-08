@@ -87,6 +87,14 @@ signal-to-noise ratio observations.
 
     **Reader:** `Rnxv3Obs` — all GNSS constellations, all bands
 
+!!! success "Septentrio Binary Format (SBF)"
+
+    Binary format from Septentrio receivers. Includes broadcast ephemerides
+    (SatVisibility blocks) for standalone satellite geometry — no SP3/CLK
+    download required.
+
+    **Reader:** `SbfReader` — all GNSS constellations, PVT + DOP metadata
+
 </div>
 
 ---

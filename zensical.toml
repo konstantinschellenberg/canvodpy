@@ -183,6 +183,8 @@ favicon = "assets/logo.svg"
 features = [
   "content.code.copy",
   "content.code.annotate",
+  "content.tooltips",
+  "content.tabs.link",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
@@ -193,6 +195,8 @@ features = [
   "navigation.top",
   "navigation.tracking",
   "search.highlight",
+  "search.suggest",
+  "toc.follow",
 ]
 
 [project.theme.icon]

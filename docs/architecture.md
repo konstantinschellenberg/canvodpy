@@ -27,6 +27,7 @@ graph TD
 
     subgraph STORE_LAYER["Persistence"]
         STORE["canvod-store"]
+        STOREMETA["canvod-store-metadata"]
     end
 
     subgraph DATAIO["Data I/O"]
@@ -44,13 +45,14 @@ graph TD
     end
 
     CANVODPY --> READERS & AUX & NAMING
-    CANVODPY --> STORE
+    CANVODPY --> STORE & STOREMETA
     CANVODPY --> VOD & GRIDS & OPS & VIZ
 
     OPS -.-> GRIDS
     VIZ -.-> GRIDS
     AUX -.-> READERS
     STORE -.-> READERS
+    STOREMETA -.-> UTILS
     NAMING -.-> UTILS
     READERS -.-> UTILS
     GRIDS -.-> UTILS
@@ -60,7 +62,7 @@ graph TD
 |-------|----------|------|
 | **Orchestration** | canvodpy | Pipeline orchestrator, Dask batch processing, 4-level public API |
 | **Computation** | canvod-vod, canvod-grids, canvod-ops | VOD retrieval, hemispheric grids, preprocessing pipeline |
-| **Persistence** | canvod-store | Icechunk versioned storage, hash deduplication |
+| **Persistence** | canvod-store, canvod-store-metadata | Icechunk versioned storage, hash deduplication, provenance metadata (DataCite/ACDD/STAC) |
 | **Data I/O** | canvod-readers, canvod-auxiliary, canvod-virtualiconvname | RINEX/SBF parsing, SP3/CLK retrieval, filename mapping |
 | **Presentation** | canvod-viz | 2D polar projections, 3D interactive surfaces |
 | **Foundation** | canvod-utils | Pydantic configuration, date utilities, shared tooling |
@@ -137,6 +139,7 @@ canvodpy/                           # Repository root
     canvod-grids/
     canvod-vod/
     canvod-store/
+    canvod-store-metadata/
     canvod-viz/
     canvod-utils/
     canvod-ops/
@@ -162,6 +165,7 @@ canvod-vod        ──── no inter-package deps
 canvod-utils      ──── no inter-package deps
 canvod-auxiliary   ─── depends on canvod-readers
 canvod-store      ──── depends on canvod-grids
+canvod-store-metadata ── depends on canvod-utils
 canvod-viz        ──── depends on canvod-grids
 canvod-ops        ──── depends on canvod-grids, canvod-utils
 canvod-virtualiconvname ── depends on canvod-utils
