@@ -244,6 +244,7 @@ temp/
 # Custom plotting outputs
 .vod_plotly_plots/
 *.html
+!docs/overrides/*.html
 
 # Documentation builds
 site/

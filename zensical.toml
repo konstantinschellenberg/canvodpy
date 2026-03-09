@@ -25,7 +25,6 @@ edit_uri = "edit/main/docs/"
 
 extra_css = ["assets/canvod-nordic.css"]
 extra_javascript = [
-  "https://unpkg.com/beautiful-mermaid/dist/beautiful-mermaid.browser.global.js",
   "assets/mermaid-init.js",
 ]
 
@@ -186,6 +185,7 @@ custom_checkbox = true
 language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
+custom_dir = "docs/overrides"
 
 features = [
   "content.code.copy",
