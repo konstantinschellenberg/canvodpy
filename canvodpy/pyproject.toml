@@ -41,6 +41,7 @@ dependencies = [
     "howfairis>=0.13.0",
     "pyarrow>=23.0.1",
     "palettable>=3.3.3",
+    "altair>=6.0.0",
 ]
 
 [dependency-groups]
