@@ -1,9 +1,10 @@
 graph TD
-    subgraph Foundation["Foundation Layer"]
+    subgraph Foundation["Foundation Layer (0 inter-package deps)"]
         Utils["canvod-utils"]
         Readers["canvod-readers"]
         Grids["canvod-grids"]
         VOD["canvod-vod"]
+        NAMING["canvod-virtualiconvname"]
     end
 
     subgraph Consumers["Consumer Layer"]
@@ -12,7 +13,6 @@ graph TD
         StoreMeta["canvod-store-metadata"]
         Viz["canvod-viz"]
         OPS["canvod-ops"]
-        NAMING["canvod-virtualiconvname"]
     end
 
     subgraph Orchestration["Orchestration Layer"]
@@ -30,13 +30,8 @@ graph TD
     Canvodpy ==> StoreMeta
 
     Aux -.-> Readers
-    Aux -.-> Utils
-    Store -.-> Readers
-    Store -.-> Utils
+    Store -.-> Grids
     StoreMeta -.-> Utils
-    Grids -.-> Utils
     Viz -.-> Grids
     OPS -.-> Grids
     OPS -.-> Utils
-    NAMING -.-> Utils
-    Readers -.-> Utils

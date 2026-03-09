@@ -8,8 +8,8 @@ graph TB
     end
 
     subgraph CorePkg[Core Processing Packages]
-        Readers["📖 canvod-readers<br/>RINEX v3.04 Parsing"]
-        Aux["📡 canvod-aux<br/>SP3/CLK/Position"]
+        Readers["📖 canvod-readers<br/>RINEX & SBF Parsing"]
+        Aux["📡 canvod-auxiliary<br/>SP3/CLK/Position"]
         Store["💾 canvod-store<br/>Icechunk Storage"]
         StoreMeta["📋 canvod-store-metadata<br/>Provenance & Standards"]
         Utils["🛠️ canvod-utils<br/>Config & Tools"]
@@ -22,7 +22,7 @@ graph TB
     end
 
     subgraph InfraPkg[Infrastructure Packages]
-        Ops["⚙️ canvod-ops<br/>Airflow DAGs & Scheduling"]
+        Ops["⚙️ canvod-ops<br/>Preprocessing Pipeline"]
         Naming["🏷️ canvod-virtualiconvname<br/>File Naming & Discovery"]
     end
 
@@ -37,18 +37,12 @@ graph TB
     Canvodpy --> Ops
     Canvodpy --> Naming
 
-    Readers --> Utils
     Aux --> Readers
-    Aux --> Utils
-    Store --> Aux
-    Store --> Readers
-    Store --> Utils
+    Store --> Grids
     StoreMeta --> Utils
-    Grids --> Store
-    Grids --> Utils
     Viz --> Grids
+    Ops --> Grids
     Ops --> Utils
-    Naming --> Utils
 
     style Canvodpy fill:#e1f5ff,stroke:#01579b,stroke-width:3px
     style Readers fill:#fff3e0,stroke:#e65100,stroke-width:2px

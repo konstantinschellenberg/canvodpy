@@ -240,8 +240,24 @@ small, figcaption,
 .md-typeset .md-caption,
 .md-typeset .admonition-title,
 .md-nav__title,
+/* GitHub repo info — visible in header bar on desktop */
+@media screen and (min-width: 76.25em){
+  .md-header__source{
+    display: block !important;
+    max-width: 13rem;
+    width: auto;
+    margin-left: auto;
+  }
+}
+.md-source{
+  color: var(--g1) !important;
+}
+.md-source__repository{
+  color: var(--g1) !important;
+}
 .md-source__facts{
-  color: var(--muted) !important;
+  color: var(--g2) !important;
+  font-size: 0.65rem;
 }
 /* Footer direction labels need light color against dark footer bg */
 .md-footer .md-footer__direction{
@@ -336,7 +352,7 @@ nav a:hover{
   border-left: 2px solid var(--link) !important;
 }
 
-/* TOC sidebar ("On this page") */
+/* TOC sidebar ("On this page") — always visible on desktop */
 .md-sidebar,
 .md-sidebar--secondary,
 .md-sidebar--secondary .md-sidebar__inner,
@@ -344,6 +360,34 @@ nav a:hover{
 .md-nav__title{
   background: transparent !important;
 }
+
+@media screen and (min-width: 960px){
+  .md-sidebar--secondary{
+    display: block !important;
+    height: auto !important;
+  }
+}
+
+/* Disable blur overlay when nav drawer opens */
+.md-overlay{
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+  background-color: rgba(0,0,0,0.3) !important;
+}
+
+/* Nav drawer (mobile/narrow) needs solid background */
+@media screen and (max-width: 76.1875em){
+  .md-sidebar--primary{
+    background: var(--bg) !important;
+  }
+}
+
+/* Nav drawer inner sections */
+.md-nav--primary,
+.md-nav--primary .md-nav{
+  background: var(--bg) !important;
+}
+
 
 /* Remove focus/hover blue outlines that MkDocs Material adds via box-shadow */
 .md-nav__link:focus,

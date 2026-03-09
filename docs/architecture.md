@@ -49,13 +49,11 @@ graph TD
     CANVODPY --> VOD & GRIDS & OPS & VIZ
 
     OPS -.-> GRIDS
+    OPS -.-> UTILS
     VIZ -.-> GRIDS
     AUX -.-> READERS
-    STORE -.-> READERS
+    STORE -.-> GRIDS
     STOREMETA -.-> UTILS
-    NAMING -.-> UTILS
-    READERS -.-> UTILS
-    GRIDS -.-> UTILS
 ```
 
 | Layer | Packages | Role |
@@ -115,8 +113,8 @@ graph TD
     ---
 
     Maximum depth = 1. Four foundation packages have zero inter-package
-    dependencies. Three consumer packages each depend on exactly one
-    foundation package.
+    dependencies. Six consumer packages depend on one or two foundation
+    packages each.
 
 </div>
 
@@ -168,7 +166,7 @@ canvod-store      ──── depends on canvod-grids
 canvod-store-metadata ── depends on canvod-utils
 canvod-viz        ──── depends on canvod-grids
 canvod-ops        ──── depends on canvod-grids, canvod-utils
-canvod-virtualiconvname ── depends on canvod-utils
+canvod-virtualiconvname ── no inter-package deps
 canvodpy          ──── depends on all packages
 ```
 

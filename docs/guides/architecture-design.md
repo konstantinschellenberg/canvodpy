@@ -46,15 +46,18 @@ canVODpy applies the engineering concept of *Sollbruchstellen* (predetermined br
 
 ```
 Foundation (0 inter-package dependencies):
-  canvod-readers, canvod-grids, canvod-vod, canvod-utils
+  canvod-readers, canvod-grids, canvod-vod, canvod-utils,
+  canvod-virtualiconvname
 
-Consumer (1 dependency each):
-  canvod-auxiliary → canvod-readers
-  canvod-viz       → canvod-grids
-  canvod-store     → canvod-grids
+Consumer (1–2 dependencies each):
+  canvod-auxiliary      → canvod-readers
+  canvod-viz            → canvod-grids
+  canvod-store          → canvod-grids
+  canvod-store-metadata → canvod-utils
+  canvod-ops            → canvod-grids, canvod-utils
 
 Orchestration:
-  canvodpy         → all packages
+  canvodpy              → all packages
 ```
 
 ---

@@ -10,7 +10,7 @@ description: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrie
 **An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals**
 
 canVODpy aims to be the central community-driven software suite for deriving
-and analyzing canopy Vegetation Optical Depth (VOD) from GNSS
+and analyzing canopy [Vegetation Optical Depth](https://gsics.nesdis.noaa.gov/wiki/Development/ReferenceDocuments){:target="_blank"} (VOD) from [GNSS](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"}
 signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
@@ -83,13 +83,13 @@ signal-to-noise ratio observations.
 !!! success "RINEX v3.04"
 
     Text-based standard format from all manufacturers.
-    Satellite geometry computed from SP3 + CLK precise ephemerides.
+    Satellite geometry computed from [SP3](https://gssc.esa.int/navipedia/index.php/SP3){:target="_blank"} + CLK precise [ephemerides](https://gssc.esa.int/navipedia/index.php/Precise_GNSS_Orbits){:target="_blank"}.
 
     **Reader:** `Rnxv3Obs` — all GNSS constellations, all bands
 
 !!! success "Septentrio Binary Format (SBF)"
 
-    Binary format from Septentrio receivers. Includes broadcast ephemerides
+    Binary format from [Septentrio](https://www.septentrio.com){:target="_blank"} receivers. Includes [broadcast ephemerides](https://gssc.esa.int/navipedia/index.php/Broadcast_Orbits){:target="_blank"}
     (SatVisibility blocks) for standalone satellite geometry — no SP3/CLK
     download required.
 
@@ -150,9 +150,11 @@ pip install canvodpy
 
 ```mermaid
 flowchart TD
-    RINEX["RINEX 3.04"] --> PARSE["Parse & Hermite interpolation"]
+    RINEX["RINEX 3.04"] --> PARSE["Parse + SP3/CLK interpolation"]
+    SBF["Septentrio SBF"] --> PARSE2["Parse (geometry embedded)"]
     SP3["SP3 / CLK"] --> PARSE
     PARSE --> STORE["Icechunk store"]
+    PARSE2 --> STORE
     STORE --> VOD["Tau-Omega VOD retrieval"]
     VOD --> GRID["Hemispheric grid assignment"]
     GRID --> VIZ["Visualisation"]
@@ -224,6 +226,13 @@ flowchart TD
 
     Configurable preprocessing pipeline: temporal aggregation,
     grid assignment, extensible Op chain.
+
+-   :fontawesome-solid-stamp: &nbsp; **canvod-store-metadata**
+
+    ---
+
+    Store-level provenance (DataCite, ACDD, STAC), compliance validation,
+    inventory builder, STAC catalog export.
 
 -   :fontawesome-solid-circle-nodes: &nbsp; **canvodpy**
 

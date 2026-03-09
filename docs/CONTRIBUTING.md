@@ -201,8 +201,7 @@ The CI runs the **same checks as the pre-commit hooks**, so fixing hook failures
     3. New code must not reduce test coverage. Aim to increase it.
     4. Update documentation if adding or changing public API.
     5. Target Python 3.13+.
-    6. Add the Apache 2.0 license header to every new source file (see below).
-
+    6. Add yourself to `CONTRIBUTORS.md` if this is your first contribution.
 ### Test coverage requirement
 
 Every pull request that adds new functionality **must include tests**. The CI
@@ -215,37 +214,12 @@ hard minimum percentage, reviewers will check that:
 
 Run `just test-coverage` locally to inspect which lines are covered before pushing.
 
-### Apache 2.0 license header
+### Licensing
 
-canVODpy is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0). Every new Python source file must include the standard license header at the top, **before any imports**:
-
-```python
-# Copyright 2026 canVODpy Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-```
-
-The Apache 2.0 license requires this header in every source file so that the
-licensing terms travel with the code even when individual files are extracted
-or redistributed independently. The header does not need to list individual
-authors — `canVODpy Contributors` covers all contributors collectively, and
-Git history provides the authoritative record of who wrote what.
-
-!!! note "Existing files"
-
-    Not all existing files have the header yet. If you are modifying an
-    existing file and notice the header is missing, adding it is appreciated
-    but not required for your PR to be accepted.
+canVODpy is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+By submitting a pull request, you agree that your contribution is licensed under
+the same terms. The `LICENSE` and `NOTICE` files at the repository root apply to
+all source files. Per-file license headers are not required.
 
 ---
 

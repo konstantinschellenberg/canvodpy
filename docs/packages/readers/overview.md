@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `canvod-readers` package provides validated parsers for GNSS observation data. It transforms raw receiver files into analysis-ready xarray Datasets, serving as the data ingestion layer for GNSS Transmissometry (GNSS-T) analysis.
+The `canvod-readers` package provides validated parsers for [GNSS](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"} observation data. It transforms raw receiver files into analysis-ready xarray Datasets, serving as the data ingestion layer for [GNSS Transmissometry](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"} (GNSS-T) analysis.
 
 <div class="grid cards" markdown>
 
@@ -228,7 +228,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 
     ```python
     from canvod.readers.gnss_specs.constellations import GPS
-    gps = GPS(use_wiki=False)  # static SVs, no network
+    gps = GPS()  # static SVs from IGS SINEX catalog
     gps.BANDS  # {'1': 'L1', '2': 'L2', '5': 'L5'}
     ```
 

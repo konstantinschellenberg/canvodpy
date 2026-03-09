@@ -8,8 +8,8 @@ description: Time-aware GNSS satellite metadata from the IGS igs_satellite_metad
 ## Overview
 
 The `SatelliteCatalog` class parses the IGS `igs_satellite_metadata.snx` SINEX file —
-a single authoritative source of satellite metadata maintained by the IGS (updated
-every 2-4 weeks by DLR). It provides time-aware queries for all GNSS constellations:
+a single authoritative source of satellite metadata maintained by the [IGS](https://gssc.esa.int/navipedia/index.php/International_GNSS_Service_(IGS)){:target="_blank"} (updated
+every 2-4 weeks by [DLR](https://gssc.esa.int/navipedia/index.php/GNSS_Satellite_Orbit_Determination){:target="_blank"}). It provides time-aware queries for all GNSS constellations:
 GPS, GLONASS, Galileo, BeiDou, QZSS, IRNSS, and SBAS.
 
 !!! tip "Offline-first design"
@@ -293,21 +293,6 @@ print(catalog.summary())
 | `FrequencyChannel` | svn, channel, start, end, comment | GLONASS FDMA channel |
 | `PlaneSlot` | svn, plane, slot, start, end, comment | Orbital plane and slot |
 | `Reassignment` | prn, old_svn, new_svn, old_end, new_start | PRN reassignment event |
-
----
-
-## Why not WikipediaCache?
-
-The previous approach (`WikipediaCache`) scraped Wikipedia tables for satellite
-lists, using `pandas`, `requests`, `sqlite3`, and `threading`. It was:
-
-- Fragile (HTML scraping breaks when Wikipedia editors change table formatting)
-- Heavyweight (four extra dependencies)
-- Missing metadata (no TX power, mass, plane/slot, or validity periods)
-- Not authoritative (Wikipedia is community-edited, not an official source)
-
-`SatelliteCatalog` replaces all of this with a single 150 KB file maintained by
-the IGS — the same organization that operates the global tracking network.
 
 ---
 

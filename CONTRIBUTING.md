@@ -126,32 +126,14 @@ just docs                      # Preview documentation
 1. Include tests for new functionality — new code must not reduce test coverage.
 2. Update documentation if adding features.
 3. Ensure compatibility with Python 3.13+.
-4. Add the Apache 2.0 license header to every new source file:
+4. Add yourself to `CONTRIBUTORS.md` if this is your first contribution.
 
-```python
-# Copyright 2026 canVODpy Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-```
+## Licensing
 
-## Workspace Development
-
-This project uses a monorepo structure with multiple packages:
-
-- Work on individual packages in `packages/` or `canvodpy/`
-- Run package-specific commands: `just check-package canvod-readers`
-- Run workspace-wide commands: `just check`, `just test`
-- All packages share a single lockfile and virtual environment
+canVODpy is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+By submitting a pull request, you agree that your contribution is licensed under
+the same terms. The `LICENSE` and `NOTICE` files at the repository root apply to
+all source files. Per-file license headers are not required.
 
 ## Code Quality
 

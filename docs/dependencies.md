@@ -8,27 +8,28 @@ Inter-package dependency relationships and independence metrics for the canVODpy
 
 ```mermaid
 graph TD
-    subgraph CONSUMERS["Consumer Layer (1 dep each)"]
+    subgraph CONSUMERS["Consumer Layer"]
         AUX["canvod-auxiliary"]
         VIZ["canvod-viz"]
         STORE["canvod-store"]
+        STOREMETA["canvod-store-metadata"]
         OPS["canvod-ops"]
-        NAMING["canvod-virtualiconvname"]
     end
 
-    subgraph FOUNDATION["Foundation Layer (0 deps)"]
+    subgraph FOUNDATION["Foundation Layer (0 inter-package deps)"]
         READERS["canvod-readers"]
         GRIDS["canvod-grids"]
         VOD["canvod-vod"]
         UTILS["canvod-utils"]
+        NAMING["canvod-virtualiconvname"]
     end
 
     AUX   --> READERS
     VIZ   --> GRIDS
     STORE --> GRIDS
+    STOREMETA --> UTILS
     OPS   --> GRIDS
     OPS   --> UTILS
-    NAMING --> UTILS
 ```
 
 ---
@@ -38,12 +39,15 @@ graph TD
 | Package | Ce (deps) | Ca (dependents) | Instability | Independence |
 |---------|:---------:|:---------------:|:-----------:|:------------:|
 | canvod-readers | 0 | 1 | 0.00 | 1.00 |
-| canvod-grids | 0 | 2 | 0.00 | 1.00 |
+| canvod-grids | 0 | 3 | 0.00 | 1.00 |
 | canvod-vod | 0 | 0 | 0.00 | 1.00 |
-| canvod-utils | 0 | 0 | 0.00 | 1.00 |
-| canvod-auxiliary | 1 | 0 | 1.00 | 0.83 |
-| canvod-viz | 1 | 0 | 1.00 | 0.83 |
-| canvod-store | 1 | 0 | 1.00 | 0.83 |
+| canvod-utils | 0 | 2 | 0.00 | 1.00 |
+| canvod-virtualiconvname | 0 | 0 | 0.00 | 1.00 |
+| canvod-auxiliary | 1 | 0 | 1.00 | 0.90 |
+| canvod-viz | 1 | 0 | 1.00 | 0.90 |
+| canvod-store | 1 | 0 | 1.00 | 0.90 |
+| canvod-store-metadata | 1 | 0 | 1.00 | 0.90 |
+| canvod-ops | 2 | 0 | 1.00 | 0.80 |
 
 ??? note "Metric definitions"
     - **Ce (efferent coupling)** — packages this package depends on. Lower = more independent.
@@ -57,9 +61,9 @@ graph TD
 
 !!! success "Flat dependency graph"
     - **No circular dependencies**
-    - 4 of 7 packages (57 %) have zero inter-package dependencies
-    - 3 total internal dependency edges
-    - **Maximum depth = 1** — a consumer depends on a foundation; foundations never depend on each other
+    - 5 of 10 packages (50 %) have zero inter-package dependencies
+    - 7 total internal dependency edges
+    - **Maximum depth = 1** — a consumer depends on one or two foundation packages; foundations never depend on each other
 
 This two-layer structure simplifies testing (test Layer 0 packages first, then Layer 1) and ensures that changes to a foundation package do not cascade to sibling packages.
 
@@ -73,19 +77,22 @@ All packages can be extracted to independent repositories with zero or minimal c
 
     ```bash
     # Extract directly — no internal dependencies
-    packages/canvod-readers/  → independent repo
-    packages/canvod-grids/    → independent repo
-    packages/canvod-vod/      → independent repo
-    packages/canvod-utils/    → independent repo
+    packages/canvod-readers/          → independent repo
+    packages/canvod-grids/            → independent repo
+    packages/canvod-vod/              → independent repo
+    packages/canvod-utils/            → independent repo
+    packages/canvod-virtualiconvname/ → independent repo
     ```
 
 === "Consumer packages"
 
     ```bash
-    # Extract + add one PyPI dependency
-    packages/canvod-auxiliary/ → independent repo (+ canvod-readers on PyPI)
-    packages/canvod-viz/       → independent repo (+ canvod-grids on PyPI)
-    packages/canvod-store/     → independent repo (+ canvod-grids on PyPI)
+    # Extract + add PyPI dependencies
+    packages/canvod-auxiliary/      → independent repo (+ canvod-readers on PyPI)
+    packages/canvod-viz/            → independent repo (+ canvod-grids on PyPI)
+    packages/canvod-store/          → independent repo (+ canvod-grids on PyPI)
+    packages/canvod-store-metadata/ → independent repo (+ canvod-utils on PyPI)
+    packages/canvod-ops/            → independent repo (+ canvod-grids + canvod-utils on PyPI)
     ```
 
 ---

@@ -1,6 +1,6 @@
 # RINEX v3.04 Parsing
 
-`Rnxv3Obs` implements a full RINEX v3.04 observation file parser — from raw text to a validated `xarray.Dataset` in a single `to_ds()` call.
+`Rnxv3Obs` implements a full [RINEX v3.04](https://gssc.esa.int/navipedia/index.php/RINEX){:target="_blank"} observation file parser — from raw text to a validated `xarray.Dataset` in a single `to_ds()` call.
 
 ---
 
@@ -25,7 +25,7 @@ A RINEX v3 observation file has two sections separated by `END OF HEADER`:
 +──────────────────────────────────────────────────+
 ```
 
-Supported systems: GPS (G), GLONASS (R), Galileo (E), BeiDou (C), QZSS (J), IRNSS (I), SBAS (S).
+Supported systems: [GPS](https://gssc.esa.int/navipedia/index.php/GPS){:target="_blank"} (G), [GLONASS](https://gssc.esa.int/navipedia/index.php/GLONASS){:target="_blank"} (R), [Galileo](https://gssc.esa.int/navipedia/index.php/Galileo){:target="_blank"} (E), [BeiDou](https://gssc.esa.int/navipedia/index.php/BeiDou){:target="_blank"} (C), [QZSS](https://gssc.esa.int/navipedia/index.php/QZSS){:target="_blank"} (J), [IRNSS](https://gssc.esa.int/navipedia/index.php/IRNSS){:target="_blank"} (I), [SBAS](https://gssc.esa.int/navipedia/index.php/SBAS){:target="_blank"} (S).
 
 ---
 

@@ -1,6 +1,6 @@
 # Coordinate Systems
 
-canvod-auxiliary works with three coordinate systems. Knowing which one is used where prevents sign errors and unit confusion in downstream VOD calculations.
+canvod-auxiliary works with three [coordinate systems](https://gssc.esa.int/navipedia/index.php/Reference_Frames_in_GNSS){:target="_blank"}. Knowing which one is used where prevents sign errors and unit confusion in downstream VOD calculations.
 
 <div class="grid cards" markdown>
 

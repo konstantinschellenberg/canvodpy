@@ -17,7 +17,7 @@ site_name = "canVODpy"
 site_description = "GNSS Transmissometry (GNSS-T) analysis framework for Python"
 site_author = "Nicolas Bader"
 site_url = "https://nfb2021.github.io/canvodpy/"
-copyright = "Copyright &copy; 2026 Nicolas Bader, TU Wien"
+copyright = "Copyright &copy; 2026 Nicolas François Bader, TU Wien. This documentation is provided &ldquo;as is&rdquo; without warranty of any kind, express or implied, including but not limited to warranties of correctness, completeness, or fitness for a particular purpose."
 
 repo_url = "https://github.com/nfb2021/canvodpy"
 repo_name = "nfb2021/canvodpy"
@@ -93,6 +93,7 @@ nav = [
     { "Contributing" = "CONTRIBUTING.md" },
     { "Development Guide" = "guides/DEVELOPMENT.md" },
     { "Architecture & Design Patterns" = "guides/architecture-design.md" },
+    { "Developing with Claude Code" = "guides/ai-development.md" },
     { "Build System" = "build-system.md" },
     { "Tooling" = "tooling.md" },
     { "Configuration Guide" = "guides/configuration.md" },
@@ -108,6 +109,10 @@ nav = [
     { "Zenodo DOI" = "guides/ZENODO_SETUP.md" },
     { "OIDC Authentication" = "guides/OIDC_EXPLAINED.md" },
     { "Release Internals" = "guides/HOW_RELEASE_WORKS.md" },
+  ]},
+
+  { "Legal" = [
+    { "Impressum & AI Disclosure" = "impressum.md" },
   ]},
 
   { "API Reference" = [
@@ -162,6 +167,8 @@ emoji_index = "zensical.extensions.emoji.twemoji"
 [project.markdown_extensions.pymdownx.keys]
 [project.markdown_extensions.pymdownx.mark]
 [project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.snippets]
+auto_append = ["docs/includes/abbreviations.md"]
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
@@ -189,6 +196,7 @@ features = [
   "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
+  "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
   "navigation.tabs",

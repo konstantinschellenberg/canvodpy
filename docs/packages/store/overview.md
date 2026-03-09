@@ -43,7 +43,7 @@ The `canvod-store` package provides versioned storage management for GNSS vegeta
 
 ```mermaid
 graph TD
-    A1["`**RINEX + Aux**
+    A1["`**GNSS Data (RINEX / SBF)**
     epoch x sid`"]
     A1 --> B["`**Preprocessing**
     encoding, padding`"]
@@ -106,7 +106,7 @@ graph TD
 
 ## Data Flow
 
-1. **Ingest** — Raw RINEX data + SP3/CLK ephemerides via `Rnxv3Obs.to_ds()`
+1. **Ingest** — Raw GNSS data (RINEX via `Rnxv3Obs` or SBF via `SbfReader`) + ephemerides
 2. **Preprocess** — Normalise encodings, pad to global SID, strip fill values
 3. **Store observations** — Append to `{group}/obs/` with `"File Hash"` deduplication
 4. **Query** — Retrieve by time range, signal, or group name

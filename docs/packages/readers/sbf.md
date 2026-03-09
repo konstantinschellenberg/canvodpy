@@ -96,7 +96,7 @@ Identical structure to `Rnxv3Obs.to_ds()` — a drop-in replacement:
 | -------- | ----- |
 | Dimensions | `(epoch, sid)` |
 | `epoch` coordinate | `datetime64[ns]`, UTC |
-| `sid` coordinate | `"SV\|Band\|Code"` string (e.g. `G07\|L1C\|C`) |
+| `sid` coordinate | `"SV\|Band\|Code"` string (e.g. `G07\|L1\|C`) |
 | Data variables | `SNR` (always), `Pseudorange`, `Phase`, `Doppler` (on request) |
 | Validation | Passes `validate_dataset()` |
 
