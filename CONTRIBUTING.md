@@ -124,7 +124,7 @@ just docs                      # Preview documentation
 ## Pull Request Guidelines
 
 1. Include tests for new functionality — new code must not reduce test coverage.
-2. Update documentation if adding features.
+2. Update the Zensical documentation in `docs/` if adding or changing public API, behaviour, or configuration.
 3. Ensure compatibility with Python 3.13+.
 4. Add yourself to `CONTRIBUTORS.md` if this is your first contribution.
 

@@ -44,6 +44,18 @@
             "name": "🖥️ canvodpy",
             "path": "canvodpy",
         },
+        {
+            "name": "⚙️ config",
+            "path": "config",
+        },
+        {
+            "name": "📂 demo",
+            "path": "demo",
+        },
+        {
+            "name": "🧪 test-data",
+            "path": "packages/canvod-readers/tests/test_data",
+        },
     ],
     "settings": {
         // --- Python Environment ---

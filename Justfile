@@ -336,6 +336,23 @@ build-package PACKAGE:
     cd packages/{{PACKAGE}} && uv build
 
 # ============================================================================
+# Notebooks (marimo)
+# ============================================================================
+
+# list all marimo notebooks in demo/
+notebooks:
+    @echo "{{ GREEN }}{{ BOLD }}Available notebooks:{{ NORMAL }}"
+    @ls demo/*.py | grep -v __pycache__ | sed 's|demo/||' | sort
+
+# edit a marimo notebook interactively (e.g. just notebook-edit grids_overview)
+notebook-edit NAME:
+    uv run marimo edit demo/{{ NAME }}.py
+
+# run a marimo notebook as a read-only app (e.g. just notebook-run grids_overview)
+notebook-run NAME:
+    uv run marimo run demo/{{ NAME }}.py
+
+# ============================================================================
 # Documentation
 # ============================================================================
 
