@@ -1,6 +1,10 @@
-"""Utility modules for canvodpy."""
+"""Performance tracking, diagnostics, and monitoring for canvodpy.
 
-from canvodpy.utils.perf import (
+Re-exports from ``canvod.utils.diagnostics`` — the canonical implementation
+lives in the ``canvod-utils`` package so all workspace packages can use it.
+"""
+
+from canvod.utils.diagnostics import (
     BatchTracker,
     DatasetReport,
     TaskMetrics,

@@ -99,6 +99,7 @@ nav = [
     { "Dask & Resource Management" = "guides/dask-resources.md" },
     { "API Levels" = "guides/api-levels.md" },
     { "Airflow Integration" = "guides/airflow.md" },
+    { "Diagnostics & Monitoring" = "guides/diagnostics.md" },
   ]},
 
   { "Release & Publishing" = [
