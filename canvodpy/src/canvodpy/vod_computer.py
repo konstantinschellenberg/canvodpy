@@ -166,7 +166,13 @@ class VodComputer:
 
         with store.readonly_session() as session:
             canopy_ds = xr.open_zarr(store=session.store, group=canopy_name)
-            sky_ds = xr.open_zarr(store=session.store, group=ref_name)
+            try:
+                sky_ds = xr.open_zarr(store=session.store, group=ref_name)
+            except Exception:
+                # Paired naming: reference_01_canopy_01 instead of reference_01
+                paired_name = f"{ref_name}_{canopy_name}"
+                log.info("group_fallback", original=ref_name, paired=paired_name)
+                sky_ds = xr.open_zarr(store=session.store, group=paired_name)
 
         # Time-range filter
         if start or end:

@@ -19,30 +19,39 @@ Traditional software testing catches many of these issues, but not all:
 - **Tests don't survive refactors.** When you rewrite the RINEX reader, how do you prove the new version produces the *same* outputs as the old one?
 - **Tests don't document tolerances.** Even when two outputs *should* differ (SBF quantizes SNR to 0.25 dB; RINEX to ~0.001 dB), you need to state and justify the expected difference.
 
-### The solution: three tiers of verification
+### The solution: four tiers + infrastructure
 
-`canvod-audit` organises verification into three tiers, each serving a different purpose:
+`canvod-audit` organises verification into four tiers plus infrastructure checks:
 
 ```mermaid
 graph LR
+    subgraph "Tier 0: Self-Consistency"
+        A0["canvodpy"] -->|same data| C0["audit_vs_gnssvodpy()"]
+        B0["gnssvodpy"] -->|same data| C0
+        D0["L1 store"] -->|same config| E0["audit_api_levels()"]
+        F0["L2/L3/L4"] -->|same config| E0
+    end
+
     subgraph "Tier 1: Internal Consistency"
-        A["SBF reader"] -->|same data| C["compare_datasets()"]
+        A["SBF reader"] -->|same data| C["audit_sbf_vs_rinex()"]
         B["RINEX reader"] -->|same data| C
-        D["Broadcast ephemeris"] -->|same orbits| E["compare_datasets()"]
+        D["Broadcast ephemeris"] -->|same orbits| E["audit_ephemeris_sources()"]
         F["Agency ephemeris"] -->|same orbits| E
     end
 
     subgraph "Tier 2: Regression"
-        G["Current code"] -->|today's output| H["compare_against_checkpoint()"]
-        I["Frozen NetCDF"] -->|known-good output| H
+        G["Current code"] -->|today's output| H["audit_regression()"]
+        I["Frozen checkpoint"] -->|known-good output| H
     end
 
     subgraph "Tier 3: External"
-        J["canvodpy output"] --> K["compare_vs_gnssvod()"]
+        J["canvodpy output"] --> K["audit_vs_gnssvod()"]
         L["gnssvod output"] --> K
     end
 
-    C --> M{{"PASS / FAIL"}}
+    C0 --> M{{"PASS / FAIL"}}
+    E0 --> M
+    C --> M
     E --> M
     H --> M
     K --> M
@@ -50,9 +59,11 @@ graph LR
 
 | Tier | What it answers | When to run |
 |------|----------------|-------------|
-| **Internal consistency** | Do different code paths through canvodpy agree? | After changing readers, ephemeris providers, or coordinate transforms |
-| **Regression** | Did a code change alter the outputs? | After any code change (CI) |
-| **External intercomparison** | Does canvodpy agree with independent implementations? | Before publication, after major algorithm changes |
+| **Tier 0: Self-consistency** | Does canvodpy match gnssvodpy? Do API levels agree? | After any algorithm or API change |
+| **Tier 1: Internal consistency** | Do different code paths through canvodpy agree? | After changing readers, ephemeris providers, or coordinate transforms |
+| **Tier 2: Regression** | Did a code change alter the outputs? | After any code change (CI) |
+| **Tier 3: External** | Does canvodpy agree with independent implementations? | Before publication, after major algorithm changes |
+| **Infrastructure** | Is the pipeline deterministic, serialization-safe, and chunk-invariant? | After store/pipeline changes |
 
 ---
 
@@ -133,7 +144,66 @@ This is critical for honest reporting. If you drop 50% of the data to make the c
 
 ---
 
-## The three tiers in detail
+## The tiers in detail
+
+### Tier 0: Self-consistency
+
+Self-consistency checks verify that **canvodpy agrees with its predecessor** and that **all API levels produce identical output**.
+
+#### canvodpy vs gnssvodpy
+
+gnssvodpy is canvodpy's predecessor implementation. canvodpy's coordinate transform module was migrated directly from gnssvodpy — the algorithms are identical (`scipy.interpolate.CubicHermiteSpline` for SP3 orbit interpolation, `pymap3d.ecef2enu` for the ECEF→ENU transform, `arctan2(East, North)` for navigation-convention azimuth). Both tools use the shared canopy receiver position for all receivers (`receiver_position_mode: shared`).
+
+**Canopy group: bit-identical.** SNR, phi, and theta are exactly zero-difference between canvodpy and gnssvodpy for the canopy receiver. This confirms that the RINEX reader, SP3 interpolation, and coordinate transform chain are correct.
+
+**Reference group: known differences (~20 arcseconds).** All reference phi and theta values differ by approximately 1×10⁻⁴ rad (~20 arcseconds, ~6×10⁻³ degrees). This affects 100% of reference-frame values. The root cause is **non-deterministic floating-point accumulation** in the SP3 Hermite interpolation: each tool independently preprocesses SP3 orbits into an auxiliary Zarr cache (`aux_{YYYYDDD}.zarr`), and `CubicHermiteSpline` evaluated via `ThreadPoolExecutor` produces subtly different satellite ECEF positions across runs due to floating-point non-associativity. The satellite position differences are sub-nanometer but propagate to ~20 arcsecond angular differences at 20,000 km range. Additionally, 9 cells exhibit ~2π (360°) wrap-around differences where the azimuth falls near the 0°/360° boundary — both values are geometrically equivalent.
+
+**canvodpy is correct.** Independent recomputation from the auxiliary data confirms that canvodpy's stored values match to within 1×10⁻⁸ rad (~0.002 arcseconds), while the gnssvodpy store values diverge by ~1×10⁻⁴ rad from the same recomputation. The gnssvodpy store was produced in an earlier session whose auxiliary cache has since been overwritten.
+
+**These differences do not affect VOD.** The VOD retrieval algorithm uses only canopy-frame angles (`canopy_ds["phi"]`, `canopy_ds["theta"]`), never the reference group angles. The reference group serves as a baseline for separating vegetation attenuation from atmospheric effects, and the ~20 arcsecond offset is well below the angular resolution relevant to VOD computation.
+
+| Variable | Canopy group | Reference group | Impact on VOD |
+|----------|-------------|-----------------|---------------|
+| SNR | bit-identical | bit-identical | None |
+| phi (azimuth) | bit-identical | ~1×10⁻⁴ rad (~20") all cells | None (not used in VOD) |
+| theta (elevation) | bit-identical | ~1×10⁻⁴ rad (~20") all cells | None (not used in VOD) |
+| NaN mask | bit-identical | 165/5.5M cells disagree | None |
+| VOD | bit-identical | N/A | — |
+
+#### Known issue: `overwrite` store strategy is broken
+
+The `rinex_store_strategy: overwrite` option in `processing.yaml` is non-functional. The `_prepare_store_for_overwrite()` method calls `.load()` on a Dask-backed dataset to preserve existing data before clearing the store, but the Icechunk session object cannot be pickled for Dask's distributed scheduler, raising `ValueError: You must opt-in to pickle writable sessions`.
+
+**Workaround**: Use `rinex_store_strategy: append` instead. However, appending to an existing store that already contains data from a previous run will mix old and new epochs (e.g. 120,960 epochs instead of the expected 17,280). For clean audit runs, either delete the store directory first or use a fresh `rinex_store_name`.
+
+**Impact on audit**: All audit stores are now produced into scenario-specific subdirectories under `/Volumes/ExtremePro/canvod_audit_output/` (e.g. `tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store`), ensuring a clean store for each run.
+
+```python
+from canvod.audit.runners import audit_vs_gnssvodpy
+
+result = audit_vs_gnssvodpy(
+    canvodpy_rinex="/path/to/canvodpy_store",
+    gnssvodpy_rinex="/path/to/gnssvodpy_store",
+    canvodpy_vod="/path/to/canvodpy_vod",    # optional
+    gnssvodpy_vod="/path/to/gnssvodpy_vod",  # optional
+)
+print(result.summary())
+```
+
+#### API level consistency
+
+canvodpy exposes four API levels (L1 convenience, L2 fluent, L3 site/pipeline, L4 functional). All must produce **bit-identical** stores from the same input data.
+
+```python
+from canvod.audit.runners import audit_api_levels
+
+result = audit_api_levels(
+    stores={"l1": "/path/to/l1", "l2": "/path/to/l2", "l3": "/path/to/l3"},
+    reference_level="l1",
+    store_type="rinex",
+)
+print(result.summary())
+```
 
 ### Tier 1: Internal consistency
 
@@ -144,9 +214,12 @@ Internal consistency checks verify that **different paths through canvodpy produ
 The same GNSS receiver writes both SBF (Septentrio Binary Format) and RINEX files from the same raw observations. After processing both through canvodpy, the outputs should agree within instrumentation-level tolerances.
 
 ```python
-from canvod.audit.tiers.internal import compare_sbf_vs_rinex
+from canvod.audit.runners import audit_sbf_vs_rinex
 
-result = compare_sbf_vs_rinex(store_sbf, store_rinex, group="2025001")
+result = audit_sbf_vs_rinex(
+    sbf_store="/path/to/sbf_store",
+    rinex_store="/path/to/rinex_store",
+)
 print(result.summary())
 ```
 
@@ -170,9 +243,12 @@ GNSS satellite positions can be computed from two sources:
 Both should place the satellite in roughly the same location, but the agency products are more accurate.
 
 ```python
-from canvod.audit.tiers.internal import compare_ephemeris_sources
+from canvod.audit.runners import audit_ephemeris_sources
 
-result = compare_ephemeris_sources(store_broadcast, store_agency, group="2025001")
+result = audit_ephemeris_sources(
+    broadcast_store="/path/to/broadcast",
+    agency_store="/path/to/agency",
+)
 print(result.summary())
 ```
 
@@ -187,14 +263,15 @@ Regression checks verify that **code changes don't alter the outputs**. You free
 #### Creating a checkpoint
 
 ```python
-from canvod.audit.tiers.regression import freeze_checkpoint
+from canvod.audit.runners import freeze_checkpoint
 
 freeze_checkpoint(
-    ds,
-    "checkpoints/rosa_2025001_v0.3.0.nc",
+    store="/path/to/store",
+    group="canopy_01",
+    output_dir="/path/to/checkpoints",
+    version="0.3.0",
     metadata={
         "git_hash": "abc123",
-        "canvodpy_version": "0.3.0",
         "date": "2026-03-10",
         "notes": "First verified output for ROSA site",
     },
@@ -206,12 +283,11 @@ The metadata is stored as dataset attributes prefixed with `checkpoint_`, creati
 #### Checking against a checkpoint
 
 ```python
-from canvod.audit.tiers.regression import compare_against_checkpoint
+from canvod.audit.runners import audit_regression
 
-result = compare_against_checkpoint(
-    ds_current,
-    "checkpoints/rosa_2025001_v0.3.0.nc",
-    tier=ToleranceTier.EXACT,  # default — regressions should be bit-identical
+result = audit_regression(
+    store="/path/to/store",
+    checkpoint_dir="/path/to/checkpoints",
 )
 if not result.passed:
     print(result.summary())
@@ -233,34 +309,150 @@ if not result.passed:
 
 External intercomparison compares canvodpy against a **completely independent implementation** of GNSS-VOD processing. This is the strongest validation, because it's the only tier where bugs cannot cancel out — a systematic error in canvodpy's coordinate transform will show up as a disagreement with an implementation that computes coordinates differently.
 
-#### gnssvod (Humphrey et al.)
+#### The SID vs PRN problem
 
-[gnssvod](https://github.com/vincenthumphrey/gnssvod) is the established community tool for GNSS vegetation optical depth, developed by Vincent Humphrey. It processes RINEX files into VOD products using an independent codebase. Comparing canvodpy against gnssvod provides the strongest evidence that both implementations are correct.
+canvodpy and gnssvod represent satellite observations differently, and this matters for comparison:
+
+- **canvodpy** uses **Signal IDs (SIDs)** like `G01|L1|C`, `G01|L2|S`, `G01|L2|W`. Each combination of satellite, frequency band, and tracking code is a separate coordinate on the `sid` dimension. A single satellite can have multiple SIDs per band if the receiver tracks multiple codes.
+- **gnssvod** uses **PRN only** — `G01`, `G05`, etc. When a RINEX file contains multiple tracking codes for the same band (e.g. both `C1C` and `C1W` for GPS L1), gnssvod merges them using `fillna`: it takes the first code and fills gaps with the second.
+
+This means you cannot directly compare a full canvodpy store against gnssvod output: canvodpy has multiple SIDs per satellite while gnssvod has one row per satellite per epoch. The SID dimension does not align.
+
+#### The solution: trimmed-RINEX workflow
+
+The solution is to **trim the RINEX file to one tracking code per band before processing**, then feed the *same* trimmed file to both tools. This eliminates the SID/PRN ambiguity at the source. We use [gfzrnx](https://gnss.gfz-potsdam.de/services/gfzrnx), the IGS-standard RINEX manipulation tool from GFZ Potsdam, to do the trimming.
+
+The workflow is:
+
+1. Choose which tracking codes to keep (e.g. GPS+Galileo L1+L2, or GPS L1 only)
+2. Use `RinexTrimmer` to trim the RINEX file to those codes
+3. Process the trimmed file through both canvodpy and gnssvod
+4. Run `audit_vs_gnssvod` to compare the outputs
+
+Because both tools now read a file with exactly one code per band per satellite, the SID dimension in canvodpy maps 1:1 to gnssvod's PRN column.
+
+#### RINEX file preparation
+
+`RinexTrimmer` wraps gfzrnx to select specific observation types from a RINEX file. It ships with preset code selections for common comparison scenarios.
+
+**Prerequisites:** Install [gfzrnx](https://gnss.gfz-potsdam.de/services/gfzrnx) and ensure it is on your PATH. gfzrnx is free for academic and non-commercial use; download from GFZ Potsdam.
 
 ```python
-from canvod.audit.tiers.external import compare_vs_gnssvod
+from canvod.audit.rinex_trimmer import RinexTrimmer, gps_galileo_l1_l2, gps_l1_only
 
-# gnssvod outputs a pandas DataFrame
-result = compare_vs_gnssvod(
-    ds_canvod,
-    df_gnssvod,  # pandas DataFrame from gnssvod
+rinex_path = "/path/to/ROSA00TUW_R_20250010000_01D_30S_MO.rnx"
+
+# Create a trimmer with GPS+Galileo L1+L2 codes
+trimmer = RinexTrimmer(rinex_path, obs_types=gps_galileo_l1_l2())
+
+# Preview what will be kept (dry run — no files written)
+trimmer.preview()
+# Shows which observation types are in the file, which will be kept,
+# and which will be dropped.
+
+# Describe the trimming plan in plain English
+print(trimmer.describe())
+# "Keep C1C, L1C, S1C, C2W, L2W, S2W for GPS; C1C, L1C, S1C, C5Q, L5Q, S5Q for Galileo.
+#  Drop C1W, L1W, S1W, C2L, L2L, S2L, ..."
+
+# Write the trimmed file
+trimmed_path = trimmer.write("/path/to/output/")
+# Returns the path to the trimmed RINEX file, ready for both canvodpy and gnssvod
+```
+
+For a minimal GPS-only comparison:
+
+```python
+trimmer = RinexTrimmer(rinex_path, obs_types=gps_l1_only())
+trimmed_path = trimmer.write("/path/to/output/")
+```
+
+#### Running the comparison
+
+Once you have a trimmed RINEX file, process it through both tools and run the audit:
+
+```python
+from canvod.audit.runners import audit_vs_gnssvod
+
+result = audit_vs_gnssvod(
+    canvodpy_store="/path/to/canvodpy_store",   # processed from trimmed RINEX
+    gnssvod_file="/path/to/gnssvod_output.csv", # processed from same trimmed RINEX
+    group="canopy_01",
     variables=["SNR", "vod"],
 )
 print(result.summary())
 ```
 
-The `compare_vs_gnssvod()` function handles the format conversion automatically: gnssvod outputs pandas DataFrames with columns like `epoch`, `sv`, `SNR`, while canvodpy uses xarray Datasets with `(epoch, sid)` dimensions. The conversion pivots the DataFrame to match canvodpy's array structure, then aligns on shared coordinates.
+The runner handles format conversion automatically: gnssvod outputs pandas DataFrames with columns like `epoch`, `sv`, `SNR`, while canvodpy uses xarray Datasets with `(epoch, sid)` dimensions. Because the trimmed file has one code per band, the conversion from PRN to SID is unambiguous.
 
 **What agreement means:**
 
-- **SNR: identical** — both packages read the same RINEX values
+- **SNR: identical** — both packages read the same RINEX values from the same trimmed file
 - **Canopy phi/theta: identical** — both packages compute the same canopy-frame angles
 - **VOD: identical** — VOD uses canopy angles, so agreement follows from angle agreement
 - **Reference phi: max 2.43 deg difference** — different coordinate conversion implementations, does *not* affect VOD
 
 **Important framing:** This is not about one package being "better" than the other. gnssvod is a proven, peer-reviewed tool that serves as **the benchmark canvodpy validates against**. Agreement between independent implementations is the strongest evidence that both are correct.
 
-**If this fails:** Investigate whether the disagreement is in the raw observables (unlikely — both read RINEX), the coordinate transforms (most common source of differences), or the VOD retrieval algorithm. The `plot_diff_histogram()` and `plot_scatter()` visualisations help localise the source.
+**If this fails:** First verify that both tools processed the same trimmed RINEX file. Then investigate whether the disagreement is in the raw observables (unlikely if the input file is identical), the coordinate transforms (most common source of differences), or the VOD retrieval algorithm. The `plot_diff_histogram()` and `plot_scatter()` visualisations help localise the source.
+
+### Infrastructure checks
+
+Infrastructure checks verify that the pipeline and storage layer behave correctly regardless of how data flows through them.
+
+#### Store round-trip
+
+Write a dataset to NetCDF (and optionally Zarr/Icechunk), read it back, compare. Catches serialization bugs, encoding issues, and compression artifacts.
+
+```python
+from canvod.audit.runners import audit_store_round_trip
+
+result = audit_store_round_trip(store="/path/to/store")
+print(result.summary())
+```
+
+#### Temporal chunking
+
+Processing days 1-3 then 4-7 should give the same output as processing all 7 days at once. If not, state is leaking between batches.
+
+```python
+from canvod.audit.runners import audit_temporal_chunking
+
+result = audit_temporal_chunking(
+    monolithic_store="/path/to/all_7_days",
+    chunked_store="/path/to/days_processed_separately",
+)
+print(result.summary())
+```
+
+#### Idempotency
+
+Running the pipeline twice on the same input must produce identical output. Catches non-determinism from random seeds, dict ordering, or parallel race conditions.
+
+```python
+from canvod.audit.runners import audit_idempotency
+
+result = audit_idempotency(
+    run1_store="/path/to/first_run",
+    run2_store="/path/to/second_run",
+)
+print(result.summary())
+```
+
+#### Constellation filtering
+
+When processing all constellations, the GPS subset should be identical to a GPS-only run. If not, constellation filtering is leaking.
+
+```python
+from canvod.audit.runners import audit_constellation_filter
+
+result = audit_constellation_filter(
+    all_constellations_store="/path/to/all",
+    filtered_store="/path/to/gps_only",
+    system_prefix="G",
+)
+print(result.summary())
+```
 
 ---
 
@@ -383,28 +575,37 @@ All figures use the canvodpy Nordic Green palette for visual consistency with th
 
 ### Pattern 1: Full audit pipeline
 
-Run all three tiers for a single site and date:
+Run all tiers for a single site:
 
 ```python
-from canvod.audit import compare_datasets, ToleranceTier
-from canvod.audit.tiers.internal import compare_sbf_vs_rinex, compare_ephemeris_sources
-from canvod.audit.tiers.regression import compare_against_checkpoint, freeze_checkpoint
-from canvod.audit.tiers.external import compare_vs_gnssvod
+from canvod.audit.runners import (
+    audit_vs_gnssvodpy,
+    audit_api_levels,
+    audit_sbf_vs_rinex,
+    audit_ephemeris_sources,
+    audit_regression,
+    audit_store_round_trip,
+    audit_idempotency,
+)
+
+# Tier 0: Self-consistency
+r0a = audit_vs_gnssvodpy(canvodpy_rinex="stores/canvodpy", gnssvodpy_rinex="stores/gnssvodpy")
+r0b = audit_api_levels({"l1": "stores/l1", "l2": "stores/l2"})
 
 # Tier 1: Internal consistency
-r1a = compare_sbf_vs_rinex(store_sbf, store_rinex, group="2025001")
-r1b = compare_ephemeris_sources(store_broadcast, store_agency, group="2025001")
+r1a = audit_sbf_vs_rinex(sbf_store="stores/sbf", rinex_store="stores/rinex")
+r1b = audit_ephemeris_sources(broadcast_store="stores/broadcast", agency_store="stores/agency")
 
 # Tier 2: Regression
-r2 = compare_against_checkpoint(ds_current, "checkpoints/rosa_2025001_v0.3.0.nc")
+r2 = audit_regression(store="stores/canvodpy", checkpoint_dir="checkpoints/")
 
-# Tier 3: External
-r3 = compare_vs_gnssvod(ds_canvod, df_gnssvod)
+# Infrastructure
+r_rt = audit_store_round_trip(store="stores/canvodpy")
 
 # Summary
-for r in [r1a, r1b, r2, r3]:
+for r in [r0a, r0b, r1a, r1b, r2, r_rt]:
     status = "PASS" if r.passed else "FAIL"
-    print(f"[{status}] {r.label}")
+    print(f"[{status}] {r.summary().splitlines()[0]}")
 ```
 
 ### Pattern 2: Custom tolerances for a specific comparison
@@ -458,18 +659,12 @@ Add to your test suite to catch regressions automatically:
 ```python
 # tests/test_regression.py
 import pytest
-from pathlib import Path
-from canvod.audit.tiers.regression import compare_against_checkpoint
-from canvod.audit.tolerances import ToleranceTier
-
-CHECKPOINT_DIR = Path("checkpoints")
+from canvod.audit.runners import audit_regression
 
 @pytest.mark.integration
-@pytest.mark.parametrize("checkpoint", sorted(CHECKPOINT_DIR.glob("*.nc")))
-def test_regression(checkpoint, process_site):
+def test_regression(store_path, checkpoint_dir):
     """Verify current output matches frozen checkpoint."""
-    ds_current = process_site(checkpoint.stem)
-    result = compare_against_checkpoint(ds_current, checkpoint, tier=ToleranceTier.EXACT)
+    result = audit_regression(store=store_path, checkpoint_dir=checkpoint_dir)
     assert result.passed, result.summary()
 ```
 
