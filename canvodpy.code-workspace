@@ -56,6 +56,10 @@
             "name": "🧪 test-data",
             "path": "packages/canvod-readers/tests/test_data",
         },
+        {
+            "name": "🔍 canvod-audit",
+            "path": "packages/canvod-audit",
+        },
     ],
     "settings": {
         // --- Python Environment ---
@@ -120,7 +124,7 @@
             "titleBar.activeBackground": "#215732",
             "titleBar.activeForeground": "#e7e7e7",
             "titleBar.inactiveBackground": "#21573299",
-            "titleBar.inactiveForeground": "#e7e7e799"
+            "titleBar.inactiveForeground": "#e7e7e799",
         },
         "liveServer.settings.multiRootWorkspaceName": "🏠 Root",
     },
