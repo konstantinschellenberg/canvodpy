@@ -243,6 +243,8 @@ temp/
 
 # Images (generated diagrams, plots)
 *.png
+*.svg
+!docs/assets/logo.svg
 
 # Custom plotting outputs
 .vod_plotly_plots/
@@ -341,9 +343,8 @@ config/sids.yaml
 # Prevent config directory in packages
 canvodpy/config/
 node_modules/
+package.json
 package-lock.json
-docs/diagrams/package.json
-docs/diagrams/package-lock.json
 packages/*/config/
 
 # Session documentation archive
