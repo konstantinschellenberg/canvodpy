@@ -921,7 +921,9 @@ class MyIcechunkStore:
         with self.writable_session(branch) as session:
             ds_from_store = xr.open_zarr(
                 session.store, group=group_name, consolidated=False
-            )
+            ).compute(
+                scheduler="synchronous"
+            )  # synchronous avoids Dask serialization error
 
             # Backup the existing metadata table
             metadata_backup = self.backup_metadata_table(group_name, session)
@@ -1058,6 +1060,57 @@ class MyIcechunkStore:
         with self.writable_session(branch) as session:
             to_icechunk(ds, session, group=path, mode="w")
             return session.commit(f"[v{version}] metadata/{name} for {group_name}")
+
+    def append_metadata_datasets(
+        self,
+        parts: list[xr.Dataset],
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> str:
+        """Write metadata datasets incrementally — no in-memory concat.
+
+        The first dataset initialises the group (``mode="w"``), subsequent
+        datasets are appended along ``epoch``.  All writes happen inside a
+        single session/commit so the operation is atomic.
+
+        Parameters
+        ----------
+        parts : list[xr.Dataset]
+            Individual per-file metadata datasets with an ``epoch`` dim.
+        group_name : str
+            Target group (receiver name).
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch to write to.
+
+        Returns
+        -------
+        str
+            Icechunk snapshot ID.
+        """
+        if not parts:
+            msg = "parts list is empty"
+            raise ValueError(msg)
+
+        version = get_version_from_pyproject()
+        path = f"{group_name}/metadata/{name}"
+        total_epochs = 0
+
+        with self.writable_session(branch) as session:
+            for i, part in enumerate(parts):
+                ds = self._normalize_encodings(part)
+                ds = self._cleanse_dataset_attrs(ds)
+                if i == 0:
+                    to_icechunk(ds, session, group=path, mode="w")
+                else:
+                    to_icechunk(ds, session, group=path, append_dim="epoch")
+                total_epochs += ds.sizes.get("epoch", 0)
+
+            return session.commit(
+                f"[v{version}] metadata/{name} for {group_name} ({total_epochs} epochs)"
+            )
 
     def read_metadata_dataset(
         self,

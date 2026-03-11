@@ -386,7 +386,9 @@ class SbfBroadcastProvider(EphemerisProvider):
         geo = geo.sel(sid=common_sids)
         geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
 
-        ds["theta"] = geo["theta"]
-        ds["phi"] = geo["phi"]
+        # SBF SatVisibility stores theta/phi in degrees; convert to radians
+        # for consistency with AgencyEphemerisProvider (which outputs radians).
+        ds["theta"] = np.deg2rad(geo["theta"])
+        ds["phi"] = np.deg2rad(geo["phi"])
 
         return ds

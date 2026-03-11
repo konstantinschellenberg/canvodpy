@@ -19,7 +19,10 @@ DATE_DIR_LEN = 5
 
 
 def _has_rinex_files(directory: Path) -> bool:
-    """Check if directory exists and contains RINEX observation files.
+    """Check if directory exists and contains GNSS observation files.
+
+    Checks for RINEX and SBF files using all builtin patterns from
+    ``canvod.virtualiconvname.patterns``.
 
     Parameters
     ----------
@@ -29,12 +32,25 @@ def _has_rinex_files(directory: Path) -> bool:
     Returns
     -------
     bool
-        True if directory exists and contains RINEX files.
+        True if directory exists and contains GNSS data files.
 
     """
-    return directory.exists() and any(
-        f for pattern in RINEX_OBS_GLOB_PATTERNS for f in directory.glob(pattern)
-    )
+    if not directory.exists():
+        return False
+
+    # Check RINEX patterns first (fast path)
+    if any(f for pattern in RINEX_OBS_GLOB_PATTERNS for f in directory.glob(pattern)):
+        return True
+
+    # Also check SBF and other formats via BUILTIN_PATTERNS
+    from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
+
+    for name in auto_match_order():
+        for glob_pat in BUILTIN_PATTERNS[name].file_globs:
+            if any(directory.glob(glob_pat)):
+                return True
+
+    return False
 
 
 class DataDirMatcher:

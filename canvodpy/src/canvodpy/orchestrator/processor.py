@@ -193,8 +193,10 @@ def preprocess_with_hermite_aux(
                     common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
                     geo = geo.sel(sid=common_sids)
                     geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
-                    ds["theta"] = geo["theta"]
-                    ds["phi"] = geo["phi"]
+                    # SBF SatVisibility stores theta/phi in degrees;
+                    # convert to radians for consistency with agency path.
+                    ds["theta"] = np.deg2rad(geo["theta"])
+                    ds["phi"] = np.deg2rad(geo["phi"])
                 from canvod.auxiliary.preprocessing import flush_sid_accumulators
 
                 sid_issues = flush_sid_accumulators()
@@ -934,6 +936,10 @@ class RinexDataProcessor:
 
         if reader_format == "sbf":
             globs = set(BUILTIN_PATTERNS["septentrio_sbf"].file_globs)
+            # Also include canvod pattern which covers .sbf extension
+            globs.update(
+                g for g in BUILTIN_PATTERNS["canvod"].file_globs if ".sbf" in g
+            )
         elif reader_format in ("rinex3", "rinex"):
             # Only RINEX patterns — exclude SBF globs
             rinex_pattern_names = [
@@ -1551,7 +1557,9 @@ class RinexDataProcessor:
         try:
             ds_store = xr.open_zarr(
                 session.store, group=receiver_name, consolidated=False
-            ).load()  # .load() to detach from session store before mode="w"
+            ).compute(
+                scheduler="synchronous"
+            )  # synchronous avoids Dask serialization error
         except (KeyError, zarr.errors.GroupNotFoundError):
             return  # New group, nothing to prepare
 
@@ -2729,6 +2737,9 @@ class RinexDataProcessor:
             )
 
         # STEP 6: Write SBF metadata datasets (sbf_obs) per receiver
+        # Each file produces its own sbf_obs dataset.  We write them
+        # incrementally to the store (first=overwrite, rest=append) to
+        # avoid an expensive xr.concat in memory.
         if aux_datasets:
             sbf_parts = [
                 aux_dict["sbf_obs"]
@@ -2737,14 +2748,15 @@ class RinexDataProcessor:
             ]
             if sbf_parts:
                 try:
-                    combined_sbf = xr.concat(sbf_parts, dim="epoch")
-                    self.site.rinex_store.write_sbf_metadata(
-                        combined_sbf, receiver_name, branch
+                    self.site.rinex_store.append_metadata_datasets(
+                        sbf_parts, receiver_name, "sbf_obs", branch
                     )
+                    n_epochs = sum(p.sizes.get("epoch", 0) for p in sbf_parts)
                     log.info(
-                        "Wrote sbf_obs metadata for %s (%d epochs)",
+                        "Wrote sbf_obs metadata for %s (%d parts, %d epochs)",
                         receiver_name,
-                        len(combined_sbf.epoch),
+                        len(sbf_parts),
+                        n_epochs,
                     )
                 except Exception:
                     log.warning(

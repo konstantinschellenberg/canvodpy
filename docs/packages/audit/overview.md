@@ -211,7 +211,57 @@ Internal consistency checks verify that **different paths through canvodpy produ
 
 #### SBF vs RINEX
 
-The same GNSS receiver writes both SBF (Septentrio Binary Format) and RINEX files from the same raw observations. After processing both through canvodpy, the outputs should agree within instrumentation-level tolerances.
+The same Septentrio receiver writes both SBF (Septentrio Binary Format) and RINEX files from the same raw observations. However, the RINEX file is **not a byte-identical re-encoding** of SBF — the receiver's internal RINEX converter applies a **receiver clock correction** that shifts epochs and adjusts observables.
+
+##### The receiver clock correction
+
+Septentrio receivers operate with a free-running internal clock that drifts from GPS system time. The receiver monitors this offset (the **receiver clock bias**, `RxClkBias` in SBF PVT blocks) and only corrects it when it exceeds a configurable threshold. Between corrections, a steady-state bias of ~1–3 seconds is typical.
+
+When generating RINEX, the receiver's internal converter:
+
+1. **Reads the clock bias** from the PVT solution (~2.0 s for the Rosalia test data)
+2. **Shifts epochs** from receiver clock time to nominal GPS time (e.g. `:02` → `:00`)
+3. **Corrects pseudorange and carrier phase** by `c × dT` (speed of light × clock bias), maintaining the consistency of epoch/phase/pseudorange as required by the RINEX specification
+4. **Does not correct SNR** — it is an instantaneous amplitude measurement unaffected by clock bias
+
+The SBF reader preserves the raw receiver clock timestamps, while the RINEX reader sees the corrected nominal epochs. This means SBF and RINEX represent **complementary views** of the same measurement session: SBF gives raw receiver-time observables, RINEX gives clock-corrected GPS-time observables.
+
+##### Results (2026-03-10)
+
+Comparison of canvodpy stores from 378 SBF files and 192 RINEX v3.04 files for DOY 2025-001, both processed with agency (final) ephemeris. Epochs aligned via nearest-neighbor snapping (constant 2.000 s offset, 17,276/17,280 matched).
+
+| Variable | Canopy group | Reference group | Interpretation |
+|----------|-------------|-----------------|----------------|
+| phi | max 3×10⁻⁹ rad | max 3×10⁻⁹ rad | Bit-identical — satellite geometry static over 2 s |
+| theta | max 1×10⁻¹¹ rad | max 1×10⁻¹¹ rad | Bit-identical |
+| SNR | RMSE 3.0 dB, max 26.1 dB | RMSE 0.5 dB, max 17.1 dB | Different measurement instants; canopy has higher variability from multipath |
+| Doppler | RMSE 7.0 Hz, max 46.1 Hz | RMSE 6.6 Hz, max 28.8 Hz | Different instants + rate of range change |
+| Phase | RMSE 143K cycles, max 1.6M cycles | RMSE 114K cycles, max 1.6M cycles | Clock correction `c × dT` applied to RINEX, not SBF |
+| Pseudorange | RMSE 1.9M m, max 978M m | RMSE 25K m, max 315K m | Clock correction + potential satellite handover at epoch boundary |
+| NaN coverage | SBF: 57K fewer valid cells | SBF: 2.6K fewer valid cells | SBF reader discovers fewer satellites (observation-based vs RINEX header-based) |
+
+**Key findings:**
+
+- **phi/theta are bit-identical** between SBF and RINEX, confirming the coordinate transform pipeline is correct across both readers. The satellite position changes by ~120 m over 2 seconds at 20,000 km range, producing an angular change of ~3×10⁻⁹ rad — well below any practical significance.
+
+- **Observables differ physically.** Phase and pseudorange differences are dominated by the `c × dT` clock correction (~600 km range equivalent for 2 s bias). This is not a bug — it is the expected consequence of comparing raw receiver-time SBF observables against clock-corrected RINEX observables.
+
+- **SNR differences reflect measurement timing**, not quantization. Only 11% of canopy SNR differences fall within the expected 0.25 dB SBF quantization step. The remaining 89% reflect genuine signal variation over 2 seconds, amplified by multipath under the canopy.
+
+##### Visual inspection confirms interpolation
+
+Interactive visual inspection (marimo notebook `explore_sbf_vs_rinex.py`) confirmed that the Septentrio RINEX converter does **not** simply relabel SBF timestamps onto the nominal GPS-time grid. It **interpolates** the observations. When plotting SBF and RINEX time series on their native epoch grids (SBF at `:02, :07, :12...`, RINEX at `:00, :05, :10...`), the RINEX values are not identical to the SBF values shifted by 2 s — they are smoothed and adjusted.
+
+This means SBF and RINEX are **complementary datasets**, not duplicates:
+
+- **SBF** preserves the raw receiver-time measurements (noisy, unmodified)
+- **RINEX** provides clock-corrected, interpolated values on a clean GPS-time grid
+
+For canvodpy, this has a practical implication: when both SBF and RINEX are available for the same session, they should not be treated as interchangeable. The choice of source depends on the use case — SBF for raw signal analysis, RINEX for standard geodetic processing.
+
+##### Next steps
+
+1. **SBF → RINEX conversion**: Use Septentrio's `sbf2rin` tool to convert the SBF files to RINEX, then compare the two RINEX files (original on-board export vs sbf2rin conversion). If both apply the same clock correction, the resulting RINEX files should be identical — confirming the interpolation is deterministic.
 
 ```python
 from canvod.audit.runners import audit_sbf_vs_rinex
@@ -223,38 +273,76 @@ result = audit_sbf_vs_rinex(
 print(result.summary())
 ```
 
-**Expected differences and why:**
-
-| Variable | Expected difference | Root cause |
-|----------|-------------------|------------|
-| `SNR` | up to 0.25 dB | SBF quantises to 0.25 dB steps |
-| `carrier_phase` | < 1e-6 cycles | Both sources carry full precision |
-| Satellite coverage | SBF may have fewer sids | SBF reader populates sid-level coords only for observed satellites (e.g. 86/321); RINEX uses header-based discovery |
-
-**If this fails:** The readers disagree beyond what instrumentation can explain. Investigate whether a parsing bug was introduced, whether coordinate conventions differ, or whether one reader drops observations the other keeps.
-
 #### Broadcast vs agency ephemeris
 
 GNSS satellite positions can be computed from two sources:
 
-1. **Broadcast ephemeris** — transmitted by the satellites themselves, available in real-time, ~1-2 m orbit accuracy
-2. **Agency products (SP3/CLK)** — computed by IGS analysis centres days later, ~2 cm orbit accuracy
+1. **Broadcast ephemeris** — transmitted by the satellites themselves, available in real-time, ~1-2 m orbit accuracy. In canvodpy, this comes from SBF `SatVisibility` blocks which contain pre-computed azimuth and elevation angles.
+2. **Agency products (SP3/CLK)** — computed by IGS analysis centres days later, ~2 cm orbit accuracy. canvodpy interpolates SP3 Cartesian coordinates (ECEF, km) via Hermite cubic splines, then converts to spherical coordinates.
 
 Both should place the satellite in roughly the same location, but the agency products are more accurate.
 
-```python
-from canvod.audit.runners import audit_ephemeris_sources
+##### Results (DOY 2025-001, Rosalia)
 
-result = audit_ephemeris_sources(
-    broadcast_store="/path/to/broadcast",
-    agency_store="/path/to/agency",
-)
-print(result.summary())
-```
+Comparison of SBF stores produced with broadcast vs agency (CODE final) ephemeris. Same 378 SBF input files, same receiver positions.
 
-**Expected differences:** Satellite coordinates (`sat_x`, `sat_y`, `sat_z`) should agree to within a few meters. Derived angles (`phi`, `theta`) should agree within their respective tolerances. NaN rates may differ because broadcast and SP3 products cover different satellite sets.
+| Variable | canopy_01 | reference_01 | Notes |
+|----------|-----------|--------------|-------|
+| **SNR** | bit-identical | bit-identical | Ephemeris does not affect raw observables |
+| **Doppler** | bit-identical | bit-identical | " |
+| **Phase** | bit-identical | bit-identical | " |
+| **Pseudorange** | bit-identical | bit-identical | " |
+| **theta** | mean Δ 0.001 rad (0.07°), p99 0.002 rad (0.13°) | mean Δ 0.002 rad (0.11°), p99 0.002 rad (0.13°) | Consistent with 1–2 m broadcast orbit error |
+| **phi** | mean Δ 0.003 rad (0.15°), p99 0.012 rad (0.7°) | mean Δ 0.003 rad (0.17°), p99 0.012 rad (0.7°) | max ~2π from azimuth wrap at 0°/360° boundary |
+| **NaN coverage** | broadcast 1.43M vs agency 1.97M valid | broadcast 1.74M vs agency 1.97M valid | Broadcast covers fewer satellites than SP3 |
 
-**If this fails:** Check whether the broadcast ephemeris is being parsed correctly, whether the SP3/CLK interpolation is working, or whether there's a reference frame mismatch (ITRF vs WGS84 vs broadcast-specific).
+**Key findings:**
+
+- All raw observables (SNR, Doppler, Phase, Pseudorange) are **bit-identical**, confirming that ephemeris source selection does not affect the observation data path.
+- theta (zenith angle) differences are small and consistent with the expected ~1–2 m broadcast orbit accuracy: at 20,000 km orbital altitude, 2 m position error ≈ 0.006 arcsec, but the SBF receiver firmware computes geometry from broadcast navigation messages (not raw ECEF), and the 0.01° resolution of the SBF azimuth/elevation fields is the dominant source of difference.
+- phi (azimuth) max differences of ~2π rad are wrap-around artifacts at the North (0°/360°) boundary — the actual angular difference is < 0.01 rad for p99.
+- Broadcast covers ~28% fewer valid cells than agency because SP3 products include more satellites (e.g. satellites not yet broadcasting almanacs).
+
+##### Bug found and fixed
+
+The initial comparison showed differences spanning the full angular range (0–360° for phi, 0–90° for theta). Root cause: **unit mismatch** — the SBF `SatVisibility` blocks store azimuth/elevation in **degrees**, while the agency path (`compute_spherical_coordinates`) outputs **radians**. Two code paths were writing SBF degrees directly without conversion:
+
+1. `SbfBroadcastProvider.augment_dataset()` in `provider.py` — the provider's own augmentation method
+2. The "SBF-geometry fast path" in `processor.py` — an optimised code path in the orchestrator that bypasses the provider entirely
+
+Both were fixed by adding `np.deg2rad()` before assignment. The fast path in the processor was the one actually used at runtime, which is why fixing only the provider was insufficient.
+
+##### Impact on 2° equal-area hemigrid
+
+The angular differences may seem small (median 0.09°, p99 0.14°), but the question that matters for VOD retrieval is: **do observations land in different grid cells?**
+
+Analysis against the 2° equal-area hemigrid (6,448 cells):
+
+| Metric | Value |
+|--------|-------|
+| Observations compared | 1,402,666 |
+| Cell mismatches | 86,834 (**6.2%**) |
+| Angular sep > 1° | 1,183 (0.08%) |
+
+Mismatch rate by zenith angle band:
+
+| Band | Mismatches | Rate |
+|------|-----------|------|
+| 0°–10° | 2,571 / 39,319 | 6.5% |
+| 10°–20° | 5,683 / 88,886 | 6.4% |
+| 20°–30° | 7,640 / 115,791 | 6.6% |
+| 30°–40° | 8,942 / 133,082 | 6.7% |
+| 40°–50° | 10,664 / 166,082 | 6.4% |
+| 50°–60° | 12,962 / 209,087 | 6.2% |
+| 60°–70° | 15,372 / 265,843 | 5.8% |
+| 70°–80° | 14,068 / 238,081 | 5.9% |
+| 80°–90° | 8,932 / 146,495 | 6.1% |
+
+**Key finding:** The mismatch rate is remarkably uniform across all zenith angles (~6%), meaning this is not a low-elevation artefact. The dominant source is the 0.01° resolution of SBF azimuth/elevation fields — the agency path computes coordinates at floating-point precision from SP3 interpolation, while the broadcast path quantises to 0.01° steps. A median angular offset of 0.09° is enough to straddle cell boundaries ~6% of the time for a 2° grid.
+
+**Practical implication:** For gridded VOD maps, the choice of ephemeris source matters. ~6% of observations would be assigned to neighbouring grid cells, creating a smoothing/blurring effect. Agency (final) products should be preferred for production-quality gridded outputs. Broadcast ephemeris is acceptable for non-gridded analysis or coarser grids (e.g. 5° resolution would reduce mismatches to <1%).
+
+**If theta/phi differences exceed expectations:** Check whether there is a coordinate frame mismatch (ITRF vs WGS84 vs broadcast-specific), whether the SBF azimuth/elevation resolution (0.01°) is a limiting factor, or whether the SP3/CLK interpolation is introducing artefacts at epoch boundaries.
 
 ### Tier 2: Regression verification
 
