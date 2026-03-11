@@ -38,14 +38,14 @@ from canvod.audit.tolerances import Tolerance, ToleranceTier
 REFERENCE_TOLERANCE_OVERRIDES = {
     "phi": Tolerance(
         atol=0.05,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.01,
         description="Reference phi: coordinate conversion difference "
         "(ECEF-to-spherical), max 2.43 deg observed. Does not affect VOD.",
     ),
     "theta": Tolerance(
         atol=0.01,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.01,
         description="Reference theta: small coordinate conversion difference.",
     ),

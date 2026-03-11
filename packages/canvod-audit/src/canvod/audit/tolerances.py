@@ -14,12 +14,19 @@ from enum import Enum
 class Tolerance:
     """Numerical tolerance for a single variable comparison.
 
+    A variable passes if ALL of the following hold:
+
+    1. ``max_abs_diff <= atol``  — worst-case single-element error
+    2. ``mae <= mae_atol``       — typical (mean) error, when ``mae_atol > 0``
+    3. ``|NaN_rate_a - NaN_rate_b| <= nan_rate_atol``
+
     Parameters
     ----------
     atol : float
-        Absolute tolerance. Two values agree if ``|a - b| <= atol + rtol * |b|``.
-    rtol : float
-        Relative tolerance.
+        Absolute tolerance on maximum single-element error.
+    mae_atol : float
+        Absolute tolerance on Mean Absolute Error (typical error).
+        Set to 0 to skip this check.
     nan_rate_atol : float
         Maximum allowed difference in NaN rates between the two datasets.
         0.0 means NaN patterns must match exactly.
@@ -28,7 +35,7 @@ class Tolerance:
     """
 
     atol: float
-    rtol: float
+    mae_atol: float
     nan_rate_atol: float = 0.0
     description: str = ""
 
@@ -37,11 +44,11 @@ class ToleranceTier(Enum):
     """Pre-defined comparison strictness levels."""
 
     EXACT = "exact"
-    """Bit-identical. atol=0, rtol=0. Use for values that should be
+    """Bit-identical. atol=0, mae_atol=0. Use for values that should be
     computed from the same source data with the same algorithm."""
 
     NUMERICAL = "numerical"
-    """Float64 precision. atol=1e-12, rtol=1e-10. Use for values that
+    """Float64 precision. atol=1e-12, mae_atol=1e-10. Use for values that
     should be mathematically identical but may differ due to floating-point
     operation ordering."""
 
@@ -55,17 +62,18 @@ class ToleranceTier(Enum):
 TIER_DEFAULTS: dict[ToleranceTier, Tolerance] = {
     ToleranceTier.EXACT: Tolerance(
         atol=0.0,
-        rtol=0.0,
+        mae_atol=0.0,
         description="Bit-identical comparison",
     ),
     ToleranceTier.NUMERICAL: Tolerance(
-        atol=1e-12,
-        rtol=1e-10,
-        description="Float64 precision (operation ordering differences)",
+        atol=1e-6,
+        mae_atol=1e-10,
+        description="Float64 precision — atol bounds worst-case single-element "
+        "error from operation reordering; mae_atol bounds typical (MAE) error.",
     ),
     ToleranceTier.SCIENTIFIC: Tolerance(
         atol=0.01,
-        rtol=0.01,
+        mae_atol=0.01,
         description="Domain-specific scientific tolerance",
     ),
 }
@@ -75,57 +83,57 @@ TIER_DEFAULTS: dict[ToleranceTier, Tolerance] = {
 SCIENTIFIC_DEFAULTS: dict[str, Tolerance] = {
     "SNR": Tolerance(
         atol=0.25,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.01,
         description="SBF quantization is 0.25 dB; RINEX ~0.001 dB. Hardware limitation.",
     ),
     "vod": Tolerance(
         atol=0.01,
-        rtol=0.01,
+        mae_atol=0.01,
         nan_rate_atol=0.01,
         description="VOD retrieval: sub-0.01 differences are below measurement noise.",
     ),
     "phi": Tolerance(
         atol=0.05,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.0,
         description="Elevation angle: coordinate conversion differences up to ~2.4 deg "
         "observed between implementations (wrap-aware).",
     ),
     "theta": Tolerance(
         atol=0.05,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.0,
         description="Azimuth angle: coordinate conversion differences.",
     ),
     "carrier_phase": Tolerance(
         atol=1e-6,
-        rtol=1e-9,
+        mae_atol=1e-9,
         nan_rate_atol=0.01,
         description="Carrier phase: high-precision observable, expect near-exact agreement.",
     ),
     "pseudorange": Tolerance(
         atol=1e-3,
-        rtol=1e-6,
+        mae_atol=1e-6,
         nan_rate_atol=0.01,
         description="Pseudorange: meter-level observable.",
     ),
     "sat_x": Tolerance(
         atol=1e-3,
-        rtol=1e-9,
+        mae_atol=1e-9,
         nan_rate_atol=0.05,
         description="Satellite X coordinate (meters). NaN rate may differ due to "
         "broadcast vs SP3 satellite coverage.",
     ),
     "sat_y": Tolerance(
         atol=1e-3,
-        rtol=1e-9,
+        mae_atol=1e-9,
         nan_rate_atol=0.05,
         description="Satellite Y coordinate (meters).",
     ),
     "sat_z": Tolerance(
         atol=1e-3,
-        rtol=1e-9,
+        mae_atol=1e-9,
         nan_rate_atol=0.05,
         description="Satellite Z coordinate (meters).",
     ),

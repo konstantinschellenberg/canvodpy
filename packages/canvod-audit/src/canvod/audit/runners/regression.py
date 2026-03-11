@@ -139,7 +139,7 @@ def audit_regression(
     result = AuditResult()
 
     for cp_path in checkpoints:
-        ds_ref = xr.open_dataset(cp_path)
+        ds_ref = xr.open_dataset(cp_path).load()
 
         # Figure out which group this checkpoint belongs to
         group = ds_ref.attrs.get("checkpoint_group", cp_path.stem.split("_v")[0])

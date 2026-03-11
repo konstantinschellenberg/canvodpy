@@ -8,7 +8,7 @@ import xarray as xr
 
 from canvod.audit.runners.common import AuditResult
 from canvod.audit.runners.vs_gnssvod import (
-    _canvodpy_to_prn,
+    GnssvodAdapter,
     gnssvod_df_to_xarray,
 )
 
@@ -99,17 +99,64 @@ def gnssvod_dataframe():
 # ---------------------------------------------------------------------------
 
 
-def test_canvodpy_to_prn_single_code(prn_dataset):
-    """SID→PRN mapping works when there's one code per PRN."""
-    ds = _canvodpy_to_prn(prn_dataset)
+def test_adapter_single_code(prn_dataset):
+    """GnssvodAdapter maps SIDs to PRNs when there's one code per PRN."""
+    adapter = GnssvodAdapter(prn_dataset, band_filter="L1|C", snr_col="S1C")
+    ds = adapter.to_gnssvod_dataset()
     assert list(ds.sid.values) == ["G01", "G02", "G03"]
-    assert ds["SNR"].shape == prn_dataset["SNR"].shape
+    assert "S1C" in ds.data_vars
+    assert ds["S1C"].shape == prn_dataset["SNR"].shape
 
 
-def test_canvodpy_to_prn_rejects_multi_code(multi_code_dataset):
-    """SID→PRN mapping raises on duplicate PRNs (untrimmed RINEX)."""
+def test_adapter_rejects_duplicate_prn():
+    """GnssvodAdapter raises when band filter matches multiple SIDs for same PRN."""
+    rng = np.random.default_rng(42)
+    n_epochs = 10
+    # Two SIDs for G01 that both end with "|C" — simulates a bad/broad filter
+    sids = ["G01|L1|C", "G01|L2|C", "G02|L1|C"]
+    ds = xr.Dataset(
+        {"SNR": (["epoch", "sid"], rng.uniform(20, 50, (n_epochs, 3)))},
+        coords={
+            "epoch": np.arange(
+                np.datetime64("2025-01-01"),
+                np.datetime64("2025-01-01") + np.timedelta64(n_epochs * 30, "s"),
+                np.timedelta64(30, "s"),
+            ),
+            "sid": sids,
+        },
+    )
+    # Band filter "C" is too broad — matches both G01|L1|C and G01|L2|C
     with pytest.raises(ValueError, match="Duplicate PRNs"):
-        _canvodpy_to_prn(multi_code_dataset)
+        GnssvodAdapter(ds, band_filter="C", snr_col="S1C")
+
+
+def test_adapter_converts_angles(prn_dataset):
+    """GnssvodAdapter converts phi/theta to Azimuth/Elevation in degrees."""
+    rng = np.random.default_rng(99)
+    n_epochs, n_sids = prn_dataset["SNR"].shape
+    ds = prn_dataset.assign(
+        phi=xr.DataArray(
+            rng.uniform(0, 2 * np.pi, (n_epochs, n_sids)),
+            dims=["epoch", "sid"],
+        ),
+        theta=xr.DataArray(
+            rng.uniform(0, np.pi / 2, (n_epochs, n_sids)),
+            dims=["epoch", "sid"],
+        ),
+    )
+    adapter = GnssvodAdapter(ds, band_filter="L1|C", snr_col="S1C")
+    result = adapter.to_gnssvod_dataset()
+
+    assert "Azimuth" in result.data_vars
+    assert "Elevation" in result.data_vars
+    # Azimuth should be in [0, 360)
+    az = result["Azimuth"].values
+    assert np.all(az[~np.isnan(az)] >= 0)
+    assert np.all(az[~np.isnan(az)] < 360)
+    # Elevation should be in [0, 90]
+    el = result["Elevation"].values
+    assert np.all(el[~np.isnan(el)] >= 0)
+    assert np.all(el[~np.isnan(el)] <= 90)
 
 
 # ---------------------------------------------------------------------------
@@ -231,3 +278,75 @@ def test_ready_made_configs():
     t2 = gps_l1_only()
     assert t2.keep_systems == ["G"]
     assert "S1C" in t2.keep_obs_codes["G"]
+
+
+# ---------------------------------------------------------------------------
+# Tests: gnssvod fillna merge replication
+# ---------------------------------------------------------------------------
+
+
+def test_gnssvod_merge_codes_lexicographic_priority():
+    """Merge replicates gnssvod's fillna: lex-first code wins, gaps filled."""
+    from canvod.audit.runners.vs_gnssvod import gnssvod_merge_codes
+
+    n_epochs = 5
+    # G01 has L1|C and L1|W; G02 has only L1|C
+    sids = ["G01|L1|C", "G01|L1|W", "G02|L1|C"]
+    snr_c = np.array([10.0, np.nan, 30.0, np.nan, 50.0])  # G01 S1C
+    snr_w = np.array([np.nan, 22.0, np.nan, 44.0, 55.0])  # G01 S1W
+    snr_g02 = np.array([60.0, 70.0, 80.0, 90.0, 100.0])
+
+    ds = xr.Dataset(
+        {"SNR": (["epoch", "sid"], np.column_stack([snr_c, snr_w, snr_g02]))},
+        coords={
+            "epoch": np.arange(n_epochs),
+            "sid": sids,
+        },
+    )
+
+    merged = gnssvod_merge_codes(ds, band_num="1")
+    assert list(merged.sid.values) == ["G01", "G02"]
+
+    g01 = merged["SNR"].sel(sid="G01").values
+    # epoch 0: C=10 (used), W=NaN → 10
+    # epoch 1: C=NaN, W=22 → 22
+    # epoch 2: C=30, W=NaN → 30
+    # epoch 3: C=NaN, W=44 → 44
+    # epoch 4: C=50, W=55 → 50 (C wins, both present)
+    np.testing.assert_array_equal(g01, [10.0, 22.0, 30.0, 44.0, 50.0])
+
+    g02 = merged["SNR"].sel(sid="G02").values
+    np.testing.assert_array_equal(g02, snr_g02)
+
+
+# ---------------------------------------------------------------------------
+# Tests: band auto-detection and trimmer auto-detection
+# ---------------------------------------------------------------------------
+
+
+def test_detect_bands():
+    """_detect_bands correctly groups obs codes by band number."""
+    from canvod.audit.rinex_trimmer import _detect_bands
+
+    codes = ["C1C", "L1C", "S1C", "C1W", "L1W", "S1W", "C2W", "L2W", "S2W"]
+    bands = _detect_bands(codes)
+    assert "1" in bands
+    assert "2" in bands
+    assert sorted(bands["1"]) == ["C", "W"]
+    assert bands["2"] == ["W"]
+
+
+def test_pick_code_lexicographic():
+    """Default code selection is lexicographic (matches gnssvod)."""
+    from canvod.audit.rinex_trimmer import _pick_code
+
+    assert _pick_code(["C", "W", "X"], None) == "C"
+    assert _pick_code(["W", "X"], None) == "W"
+
+
+def test_pick_code_preferred():
+    """Prefer list overrides lexicographic order."""
+    from canvod.audit.rinex_trimmer import _pick_code
+
+    assert _pick_code(["C", "W", "X"], ["W", "C"]) == "W"
+    assert _pick_code(["C", "X"], ["W", "C"]) == "C"  # W not available

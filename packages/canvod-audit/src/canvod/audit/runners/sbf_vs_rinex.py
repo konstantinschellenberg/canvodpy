@@ -36,27 +36,27 @@ from canvod.audit.tolerances import Tolerance, ToleranceTier
 SBF_RINEX_TOLERANCES = {
     "SNR": Tolerance(
         atol=0.25,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.05,
         description="SBF quantises SNR to 0.25 dB; RINEX ~0.001 dB. "
         "Hardware limitation, not a bug.",
     ),
     "phi": Tolerance(
         atol=0.05,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.05,
         description="Elevation angle differences from ~2s epoch offset "
         "(satellites move ~0.5 deg/s at low elevations).",
     ),
     "theta": Tolerance(
         atol=0.05,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.05,
         description="Azimuth angle differences from ~2s epoch offset.",
     ),
     "sat_x": Tolerance(
         atol=100.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite X position: ~2s epoch offset → ~100m difference "
         "at orbital velocity (~3.9 km/s). NaN rate differs because SBF/RINEX "
@@ -64,13 +64,13 @@ SBF_RINEX_TOLERANCES = {
     ),
     "sat_y": Tolerance(
         atol=100.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite Y position: same as sat_x.",
     ),
     "sat_z": Tolerance(
         atol=100.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite Z position: same as sat_x.",
     ),

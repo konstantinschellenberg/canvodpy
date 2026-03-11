@@ -80,6 +80,11 @@ test-all-packages:
     uv run pytest packages/canvod-vod/tests/ --verbose --color=yes
     uv run pytest packages/canvod-ops/tests/ --verbose --color=yes
     uv run pytest packages/canvod-store-metadata/tests/ --verbose --color=yes
+    uv run pytest packages/canvod-audit/tests/ --verbose --color=yes
+
+# run canvod-audit tests (comparison engine, tolerance checks, adapters)
+test-audit:
+    uv run pytest packages/canvod-audit/tests/ --verbose --color=yes
 
 # run tests with coverage report
 test-coverage:

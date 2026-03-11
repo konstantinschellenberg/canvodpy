@@ -37,33 +37,33 @@ from canvod.audit.tolerances import Tolerance, ToleranceTier
 EPHEMERIS_TOLERANCES = {
     "sat_x": Tolerance(
         atol=5.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite X: broadcast ~1-2m accuracy vs agency ~2cm. "
         "NaN rate differs because broadcast/SP3 cover different satellite sets.",
     ),
     "sat_y": Tolerance(
         atol=5.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite Y: same as sat_x.",
     ),
     "sat_z": Tolerance(
         atol=5.0,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Satellite Z: same as sat_x.",
     ),
     "phi": Tolerance(
         atol=0.01,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Elevation angle: small difference from orbit accuracy. "
         "At ~20,000 km altitude, a few metres of orbit error → <0.01 deg.",
     ),
     "theta": Tolerance(
         atol=0.01,
-        rtol=0.0,
+        mae_atol=0.0,
         nan_rate_atol=0.1,
         description="Azimuth angle: same as phi.",
     ),

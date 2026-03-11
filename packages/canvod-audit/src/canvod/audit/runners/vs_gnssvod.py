@@ -12,13 +12,23 @@ Comparison strategy:
 
 2. Feed the same trimmed RINEX to both canvodpy and gnssvod.
 
-3. Compare the outputs. Since there is one code per band, canvodpy's
-   SID (e.g. "G01|L1|C") maps 1:1 to gnssvod's PRN ("G01") for each
-   band — no collapse logic needed.
+3. Use ``GnssvodAdapter`` to project canvodpy's (epoch, sid) dataset into
+   gnssvod's variable space — same variable names, same units, same
+   conventions. Then compare two identically-shaped datasets.
 
-gnssvod outputs pandas DataFrames with MultiIndex (Epoch, SV) and
-columns like S1C, S2W, Azimuth, Elevation, VOD1, VOD2. This runner
-handles the conversion to xarray automatically.
+Coordinate conventions
+----------------------
+canvodpy:
+    theta = zenith angle from Up, [0, π/2] rad (0=zenith, π/2=horizon)
+    phi   = azimuth from North clockwise, [0, 2π) rad
+
+gnssvod:
+    Elevation = angle from horizon, [0, 90] degrees (0=horizon, 90=zenith)
+    Azimuth   = angle from North clockwise, [0, 360) degrees
+
+Mapping:
+    Elevation = 90 - degrees(theta)
+    Azimuth   = degrees(phi) mod 360
 
 Usage::
 
@@ -26,7 +36,7 @@ Usage::
 
     result = audit_vs_gnssvod(
         canvodpy_store="/path/to/store",
-        gnssvod_dataframe=df,
+        gnssvod_file="/path/to/gnssvod_output.parquet",
         group="canopy_01",
     )
 
@@ -40,38 +50,309 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from canvod.audit.core import compare_datasets
+from canvod.audit.core import ComparisonResult, compare_datasets
 from canvod.audit.runners.common import AuditResult, load_group, open_store
 from canvod.audit.tolerances import Tolerance, ToleranceTier
 
-# Tolerances for cross-implementation comparison
+# ---------------------------------------------------------------------------
+# Tolerances — justified per-variable for cross-implementation comparison
+# ---------------------------------------------------------------------------
+
 GNSSVOD_TOLERANCES = {
+    # Both tools read the same trimmed RINEX → SNR must be identical.
+    # Any difference means a parsing bug, not a physical effect.
     "SNR": Tolerance(
-        atol=0.01,
-        rtol=0.0,
+        atol=0.001,
+        mae_atol=0.0,
         nan_rate_atol=0.05,
-        description="SNR should be near-identical — both read the same RINEX values.",
+        description="SNR from same RINEX: must agree to parsing precision. "
+        "0.001 dB margin for float representation only.",
     ),
-    "vod": Tolerance(
-        atol=0.01,
-        rtol=0.01,
-        nan_rate_atol=0.05,
-        description="VOD retrieval: sub-0.01 differences are below measurement noise.",
-    ),
-    "phi": Tolerance(
+    # VOD = -ln(T) * cos(theta). Different ephemeris → different theta →
+    # different cos(theta) scaling. Also sensitive to SNR reference selection.
+    "VOD": Tolerance(
         atol=0.05,
-        rtol=0.0,
-        nan_rate_atol=0.05,
-        description="Elevation angle: coordinate conversion differences between "
-        "independent implementations.",
+        mae_atol=0.01,
+        nan_rate_atol=0.10,
+        description="VOD retrieval: independent ephemeris and reference "
+        "selection may cause differences. 0.05 is below typical "
+        "measurement uncertainty (~0.1 for forest canopies). "
+        "Higher NaN tolerance because tools may mask different epochs.",
     ),
-    "theta": Tolerance(
-        atol=0.05,
-        rtol=0.0,
+    # Azimuth: both tools compute from SP3 → ECEF → ENU → atan2.
+    # Different SP3 products or interpolation → small angular diffs.
+    # Wrap-around at 0°/360° handled by comparison adapter.
+    "Azimuth": Tolerance(
+        atol=0.5,
+        mae_atol=0.0,
         nan_rate_atol=0.05,
-        description="Azimuth angle: coordinate conversion differences.",
+        description="Azimuth (degrees): SP3 interpolation differences. "
+        "0.5° ≈ 0.009 rad, well within one hemigrid cell (2°).",
+    ),
+    # Elevation: same source of error as azimuth.
+    "Elevation": Tolerance(
+        atol=0.5,
+        mae_atol=0.0,
+        nan_rate_atol=0.05,
+        description="Elevation (degrees): SP3 interpolation differences.",
     ),
 }
+
+
+# ---------------------------------------------------------------------------
+# Adapter: project canvodpy → gnssvod variable space
+# ---------------------------------------------------------------------------
+
+
+class GnssvodAdapter:
+    """Project a canvodpy (epoch, sid) dataset into gnssvod variable space.
+
+    Transforms canvodpy's SID-indexed data into PRN-indexed data with
+    gnssvod-compatible variable names and units. One adapter instance
+    handles one frequency band.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        canvodpy dataset with (epoch, sid) dims and variables: SNR, phi,
+        theta, and optionally VOD.
+    band_filter : str
+        SID band suffix to select, e.g. ``"L1|C"`` or ``"L2|W"``.
+    snr_col : str
+        gnssvod column name for SNR at this band (e.g. ``"S1C"``).
+    vod_col : str or None
+        gnssvod column name for VOD at this band (e.g. ``"VOD1"``).
+    """
+
+    def __init__(
+        self,
+        ds: xr.Dataset,
+        band_filter: str,
+        snr_col: str,
+        vod_col: str | None = None,
+    ):
+        # Select SIDs matching this band
+        all_sids = [str(s) for s in ds.sid.values]
+        band_sids = [s for s in all_sids if s.endswith(f"|{band_filter}")]
+        if not band_sids:
+            raise ValueError(
+                f"No SIDs match band filter '|{band_filter}'. "
+                f"Available: {all_sids[:10]}"
+            )
+
+        self.ds = ds.sel(sid=band_sids)
+        self.band_filter = band_filter
+        self.snr_col = snr_col
+        self.vod_col = vod_col
+
+        # Map SIDs to PRNs
+        self.prns = [s.split("|")[0] for s in band_sids]
+        if len(self.prns) != len(set(self.prns)):
+            from collections import Counter
+
+            dupes = {k: v for k, v in Counter(self.prns).items() if v > 1}
+            raise ValueError(
+                f"Duplicate PRNs after SID→PRN mapping for band {band_filter}: "
+                f"{dupes}. Input RINEX was not trimmed to one code per band. "
+                f"See canvod.audit.rinex_trimmer."
+            )
+
+    def to_gnssvod_dataset(self) -> xr.Dataset:
+        """Convert to a gnssvod-shaped dataset with PRN sids.
+
+        Returns dataset with variables named like gnssvod output:
+        - ``{snr_col}`` (e.g. S1C): SNR in dB-Hz (unchanged)
+        - ``Azimuth``: degrees from North, clockwise [0, 360)
+        - ``Elevation``: degrees from horizon [0, 90]
+        - ``{vod_col}`` (e.g. VOD1): VOD (unchanged) if present
+
+        Coordinates: epoch (datetime), sid (PRN strings like "G01").
+        """
+        data_vars = {}
+
+        # SNR: same units (dB-Hz), just rename
+        if "SNR" in self.ds.data_vars:
+            data_vars[self.snr_col] = (["epoch", "sid"], self.ds["SNR"].values)
+
+        # Azimuth: phi (rad, from North CW) → degrees
+        if "phi" in self.ds.data_vars:
+            az_deg = np.degrees(self.ds["phi"].values) % 360.0
+            data_vars["Azimuth"] = (["epoch", "sid"], az_deg)
+
+        # Elevation: theta (rad, zenith angle) → 90 - degrees(theta)
+        if "theta" in self.ds.data_vars:
+            el_deg = 90.0 - np.degrees(self.ds["theta"].values)
+            data_vars["Elevation"] = (["epoch", "sid"], el_deg)
+
+        # VOD: same units, just rename
+        if self.vod_col and "VOD" in self.ds.data_vars:
+            data_vars[self.vod_col] = (["epoch", "sid"], self.ds["VOD"].values)
+
+        return xr.Dataset(
+            data_vars,
+            coords={
+                "epoch": self.ds.epoch.values,
+                "sid": self.prns,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# gnssvod fillna merge replication
+# ---------------------------------------------------------------------------
+
+
+def gnssvod_merge_codes(
+    ds: xr.Dataset,
+    band_num: str,
+    snr_var: str = "SNR",
+) -> xr.Dataset:
+    """Replicate gnssvod's fillna merge for a given band.
+
+    gnssvod merges multiple tracking codes per band using fillna in
+    lexicographic order (determined by ``numpy.intersect1d`` sorting).
+    For example, with S1C and S1W both present:
+    - S1C values used where available
+    - S1W fills remaining NaN gaps
+
+    .. note::
+
+        In gnssvod (``vod_calc.py``), the fillna merge operates on
+        **per-code VOD values**, not raw SNR. Each code's VOD is
+        computed independently first::
+
+            VOD_code = -ln(10^((grn - ref) / 10)) * cos(90 - elev)
+
+        Then ``band_VOD.fillna(code_VOD)`` cascades in lex order.
+        This function merges raw variable values (SNR, phi, theta)
+        instead, which is equivalent for SNR (a direct observable)
+        but **not** equivalent for VOD. For correct VOD merging,
+        compute VOD per code first, then call this function on the
+        VOD variable.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        canvodpy dataset with (epoch, sid) dims.
+    band_num : str
+        Band number to merge, e.g. ``"1"`` for L1, ``"2"`` for L2.
+    snr_var : str
+        SNR variable name in the dataset.
+
+    Returns
+    -------
+    xarray.Dataset
+        Dataset with one SID per PRN for this band (merged), sid
+        values replaced with PRN strings.
+    """
+    # Find all SIDs for this band: e.g. "G01|L1|C", "G01|L1|W"
+    band_prefix = f"|L{band_num}|"
+    all_sids = [str(s) for s in ds.sid.values]
+    band_sids = [s for s in all_sids if band_prefix in s]
+    if not band_sids:
+        raise ValueError(f"No SIDs match band L{band_num}")
+
+    # Group SIDs by PRN, sort codes lexicographically (matching gnssvod)
+    from collections import defaultdict
+
+    prn_groups: dict[str, list[str]] = defaultdict(list)
+    for sid in band_sids:
+        prn = sid.split("|")[0]
+        prn_groups[prn].append(sid)
+    for prn in prn_groups:
+        prn_groups[prn].sort()  # lexicographic = gnssvod order
+
+    # Merge: for each PRN, fillna across codes in sorted order
+    prns = sorted(prn_groups.keys())
+    merged_data = {}
+
+    for var in ds.data_vars:
+        merged_arrays = []
+        for prn in prns:
+            sids_for_prn = prn_groups[prn]
+            # Start with NaN, fillna in lex order
+            merged = np.full(len(ds.epoch), np.nan)
+            for sid in sids_for_prn:
+                vals = ds[var].sel(sid=sid).values.astype(np.float64)
+                nan_mask = np.isnan(merged)
+                merged[nan_mask] = vals[nan_mask]
+            merged_arrays.append(merged)
+        merged_data[var] = (["epoch", "sid"], np.column_stack(merged_arrays))
+
+    return xr.Dataset(
+        merged_data,
+        coords={"epoch": ds.epoch.values, "sid": prns},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Band configuration
+# ---------------------------------------------------------------------------
+
+
+def detect_band_map(
+    ds_canvod: xr.Dataset,
+    ds_gnssvod: xr.Dataset,
+) -> list[tuple[str, str, str | None]]:
+    """Auto-detect band mapping from available variables.
+
+    Scans canvodpy SIDs and gnssvod columns to find matching bands.
+    Returns list of (canvodpy_band_suffix, gnssvod_snr_col, gnssvod_vod_col).
+    """
+    # Detect bands in canvodpy SIDs
+    all_sids = [str(s) for s in ds_canvod.sid.values]
+    canvod_bands: dict[str, set[str]] = {}  # band_num → set of tracking codes
+    for sid in all_sids:
+        parts = sid.split("|")
+        if len(parts) == 3:
+            band = parts[1]  # e.g. "L1"
+            code = parts[2]  # e.g. "C"
+            band_num = band[1:]  # e.g. "1"
+            canvod_bands.setdefault(band_num, set()).add(code)
+
+    # Match against gnssvod SNR columns (S1C, S2W, etc.)
+    gnssvod_snr_cols = [
+        c for c in ds_gnssvod.data_vars if c.startswith("S") and len(c) == 3
+    ]
+
+    # VOD column mapping: band 1 → VOD1, band 2 → VOD2, etc.
+    gnssvod_vod_cols = {c[-1]: c for c in ds_gnssvod.data_vars if c.startswith("VOD")}
+
+    band_map = []
+    for band_num, codes in sorted(canvod_bands.items()):
+        # Find which gnssvod SNR columns exist for this band
+        matching_snr = [c for c in gnssvod_snr_cols if c[1] == band_num]
+        if not matching_snr:
+            continue
+
+        # Pick the lexicographically first code (matches gnssvod priority)
+        sorted_codes = sorted(codes)
+        primary_code = sorted_codes[0]
+
+        snr_col = f"S{band_num}{primary_code}"
+        if snr_col not in ds_gnssvod.data_vars:
+            # Fallback: use any matching gnssvod column
+            snr_col = matching_snr[0]
+
+        vod_col = gnssvod_vod_cols.get(band_num)
+        band_suffix = f"L{band_num}|{primary_code}"
+
+        band_map.append((band_suffix, snr_col, vod_col))
+
+    return band_map
+
+
+# Default band map — used when auto-detection is not possible
+BAND_MAP = [
+    ("L1|C", "S1C", "VOD1"),
+    ("L2|W", "S2W", "VOD2"),
+    ("L5|Q", "S5Q", None),  # L5 VOD not standard in gnssvod
+]
+
+
+# ---------------------------------------------------------------------------
+# gnssvod DataFrame → xarray conversion
+# ---------------------------------------------------------------------------
 
 
 def gnssvod_df_to_xarray(
@@ -121,7 +402,14 @@ def gnssvod_df_to_xarray(
 
     data_vars = {}
     for col in value_cols:
-        pivoted = df.pivot_table(index=epoch_col, columns=sid_col, values=col)
+        # Use pivot (not pivot_table) to raise on duplicates instead of
+        # silently averaging them
+        try:
+            pivoted = df.pivot(index=epoch_col, columns=sid_col, values=col)
+        except ValueError:
+            # Fallback if there are true duplicates (shouldn't happen with
+            # trimmed RINEX, but be defensive)
+            pivoted = df.pivot_table(index=epoch_col, columns=sid_col, values=col)
         pivoted = pivoted.reindex(index=epochs, columns=sids)
         data_vars[col] = (["epoch", "sid"], pivoted.values)
 
@@ -131,92 +419,71 @@ def gnssvod_df_to_xarray(
     )
 
 
-def _canvodpy_to_prn(ds, snr_var="SNR"):
-    """Rename canvodpy SIDs from "G01|L1|C" to "G01" for direct comparison.
+# ---------------------------------------------------------------------------
+# Azimuth wrap-around handling
+# ---------------------------------------------------------------------------
 
-    Only works correctly when there is one observation code per PRN per
-    band (i.e. the input RINEX was trimmed). Raises ValueError if
-    duplicate PRNs would result.
 
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        canvodpy dataset with sv, band, code coords along sid.
-    snr_var : str
-        Name of the SNR variable.
+def _wrap_aware_azimuth_diff(ds_a, ds_b, var="Azimuth"):
+    """Replace Azimuth in ds_a with wrap-corrected values relative to ds_b.
 
-    Returns
-    -------
-    xarray.Dataset
-        With sid values replaced by PRN strings.
+    Azimuth differences near 0°/360° boundary can produce spurious ~360°
+    diffs. This adjusts ds_a's Azimuth so that (ds_a - ds_b) gives the
+    shortest angular distance, enabling standard abs-diff statistics.
+
+    Returns a copy of ds_a with corrected Azimuth.
     """
-    prns = ds.sv.values.tolist()
+    if var not in ds_a.data_vars or var not in ds_b.data_vars:
+        return ds_a
 
-    # Check for duplicates (would happen if >1 code per PRN per band)
-    if len(prns) != len(set(prns)):
-        from collections import Counter
+    a = ds_a[var].values.copy()
+    b = ds_b[var].values
 
-        dupes = {k: v for k, v in Counter(prns).items() if v > 1}
-        raise ValueError(
-            f"Duplicate PRNs after SID→PRN mapping: {dupes}. "
-            f"This means the input has multiple codes per satellite per band. "
-            f"Use a trimmed RINEX file with one code per band "
-            f"(see canvod.audit.rinex_trimmer)."
-        )
+    diff = a - b
+    a[diff > 180] -= 360
+    a[diff < -180] += 360
 
-    return ds.assign_coords(sid=prns)
+    ds_a = ds_a.copy()
+    ds_a[var] = (ds_a[var].dims, a)
+    return ds_a
 
 
-def audit_vs_gnssvod(
-    canvodpy_store,
-    gnssvod_dataframe=None,
-    gnssvod_file=None,
-    *,
-    group="canopy_01",
-    variables=None,
-    epoch_col="Epoch",
-    sid_col="SV",
-):
-    """Compare canvodpy output against gnssvod output.
+# ---------------------------------------------------------------------------
+# Main audit function
+# ---------------------------------------------------------------------------
 
-    Both tools must have been run on the same trimmed RINEX file
-    (one observation code per band per system). See
-    ``canvod.audit.rinex_trimmer`` for creating trimmed files.
 
-    Provide either ``gnssvod_dataframe`` (a pandas DataFrame) or
-    ``gnssvod_file`` (path to a CSV or Parquet file).
+def _load_canvodpy(canvodpy_store, canvodpy_ds, group):
+    """Load canvodpy data from store or return pre-loaded dataset."""
+    if canvodpy_ds is not None:
+        return canvodpy_ds
 
-    Parameters
-    ----------
-    canvodpy_store : str or Path
-        Path to the canvodpy Icechunk store.
-    gnssvod_dataframe : pandas.DataFrame, optional
-        gnssvod output as a DataFrame (MultiIndex or flat).
-    gnssvod_file : str or Path, optional
-        Path to a saved gnssvod output (CSV or Parquet).
-    group : str
-        Which store group to compare.
-    variables : list of str, optional
-        Which variables to compare. If not given, compares all shared
-        numeric variables.
-    epoch_col, sid_col : str
-        Column/index names in the gnssvod DataFrame.
+    if canvodpy_store is None:
+        raise ValueError("Provide either canvodpy_store or canvodpy_ds.")
 
-    Returns
-    -------
-    AuditResult
-    """
+    store_path = Path(canvodpy_store)
+    if (store_path / ".zgroup").exists() or (store_path / ".zmetadata").exists():
+        ds = xr.open_zarr(str(store_path))
+        print(f"canvodpy (Zarr): {dict(ds.sizes)}")
+    else:
+        s = open_store(canvodpy_store)
+        print(f"Loading canvodpy group '{group}' ...")
+        ds = load_group(s, group)
+        print(f"canvodpy: {dict(ds.sizes)}")
+    return ds
+
+
+def _load_gnssvod(gnssvod_dataframe, gnssvod_file, epoch_col, sid_col):
+    """Load gnssvod data and convert to xarray."""
     if gnssvod_dataframe is None and gnssvod_file is None:
         raise ValueError(
             "Provide either gnssvod_dataframe (a pandas DataFrame) "
             "or gnssvod_file (path to CSV/Parquet)."
         )
 
-    # Load gnssvod data
     if gnssvod_dataframe is None:
         gnssvod_file = Path(gnssvod_file)
         print(f"Loading gnssvod data from {gnssvod_file} ...")
-
         import pandas as pd
 
         if gnssvod_file.suffix == ".parquet":
@@ -224,41 +491,245 @@ def audit_vs_gnssvod(
         else:
             gnssvod_dataframe = pd.read_csv(gnssvod_file)
 
-    # Convert gnssvod → xarray
-    ds_gnssvod = gnssvod_df_to_xarray(
+    return gnssvod_df_to_xarray(
         gnssvod_dataframe,
         epoch_col=epoch_col,
         sid_col=sid_col,
     )
-    print(f"gnssvod: {dict(ds_gnssvod.dims)}, variables: {list(ds_gnssvod.data_vars)}")
 
-    # Load canvodpy store
-    s = open_store(canvodpy_store)
-    print(f"Loading canvodpy group '{group}' ...")
-    ds_canvod = load_group(s, group)
-    print(
-        f"canvodpy: {dict(ds_canvod.dims)}, "
-        f"SID examples: {list(ds_canvod.sid.values[:5])}"
-    )
 
-    # Rename canvodpy SIDs to PRNs for direct comparison
-    ds_canvod_prn = _canvodpy_to_prn(ds_canvod)
-    print(f"canvodpy PRNs: {list(ds_canvod_prn.sid.values[:5])}")
+def _compare_band(
+    ds_canvod_band: xr.Dataset,
+    ds_gnssvod: xr.Dataset,
+    band_suffix: str,
+    snr_col: str,
+    vod_col: str | None,
+) -> ComparisonResult | None:
+    """Compare one band. Returns ComparisonResult or None if skipped."""
+    # Determine which variables to compare
+    compare_vars = []
+    if snr_col in ds_canvod_band.data_vars and snr_col in ds_gnssvod.data_vars:
+        compare_vars.append(snr_col)
+    if "Azimuth" in ds_canvod_band.data_vars and "Azimuth" in ds_gnssvod.data_vars:
+        compare_vars.append("Azimuth")
+    if "Elevation" in ds_canvod_band.data_vars and "Elevation" in ds_gnssvod.data_vars:
+        compare_vars.append("Elevation")
+    if (
+        vod_col
+        and vod_col in ds_canvod_band.data_vars
+        and vod_col in ds_gnssvod.data_vars
+    ):
+        compare_vars.append(vod_col)
 
-    # Compare
-    label = f"{group}: canvodpy vs gnssvod (Humphrey et al.)"
-    r = compare_datasets(
-        ds_canvod_prn,
+    if not compare_vars:
+        print("  No shared variables to compare")
+        return None
+
+    # Handle azimuth wrap-around
+    ds_canvod_band = _wrap_aware_azimuth_diff(ds_canvod_band, ds_gnssvod)
+
+    # Build tolerance overrides
+    tol_overrides = {}
+    if snr_col in compare_vars:
+        tol_overrides[snr_col] = GNSSVOD_TOLERANCES["SNR"]
+    if "Azimuth" in compare_vars:
+        tol_overrides["Azimuth"] = GNSSVOD_TOLERANCES["Azimuth"]
+    if "Elevation" in compare_vars:
+        tol_overrides["Elevation"] = GNSSVOD_TOLERANCES["Elevation"]
+    if vod_col and vod_col in compare_vars:
+        tol_overrides[vod_col] = GNSSVOD_TOLERANCES["VOD"]
+
+    label = f"canvodpy vs gnssvod: {band_suffix} ({snr_col})"
+    return compare_datasets(
+        ds_canvod_band,
         ds_gnssvod,
-        variables=variables,
+        variables=compare_vars,
         tier=ToleranceTier.SCIENTIFIC,
-        tolerance_overrides=GNSSVOD_TOLERANCES,
+        tolerance_overrides=tol_overrides,
         label=label,
+        metadata={
+            "comparison_type": "external",
+            "band": band_suffix,
+            "snr_col": snr_col,
+            "vod_col": vod_col,
+        },
     )
 
-    result = AuditResult()
-    result.results[f"gnssvod_{group}"] = r
 
-    print()
+def audit_vs_gnssvod(
+    canvodpy_store=None,
+    canvodpy_ds=None,
+    gnssvod_dataframe=None,
+    gnssvod_file=None,
+    *,
+    group="canopy_01",
+    band_map=None,
+    mode="trimmed",
+    epoch_col="Epoch",
+    sid_col="SV",
+) -> AuditResult:
+    """Compare canvodpy output against gnssvod output.
+
+    Two comparison modes:
+
+    ``mode="trimmed"`` (default):
+        Both tools ran on the same trimmed RINEX (one code per band).
+        canvodpy SIDs map 1:1 to gnssvod PRNs via ``GnssvodAdapter``.
+        SNR should be bit-identical.
+
+    ``mode="merged"``:
+        Both tools ran on the same untrimmed RINEX (multiple codes per
+        band). canvodpy's per-SID values are merged using gnssvod's
+        fillna logic (lexicographic priority via numpy.intersect1d) to
+        produce one merged value per PRN. **Important**: gnssvod
+        computes VOD per-code *before* merging (see ``vod_calc.py``),
+        so raw-variable merging is only equivalent for direct
+        observables (SNR). For VOD comparison in merged mode, compute
+        VOD per code first, then merge the VOD values.
+
+    Provide either ``canvodpy_store`` or ``canvodpy_ds`` for canvodpy data,
+    and either ``gnssvod_dataframe`` or ``gnssvod_file`` for gnssvod data.
+
+    Parameters
+    ----------
+    canvodpy_store : str, Path, or MyIcechunkStore, optional
+        Path to the canvodpy store (Icechunk or plain Zarr).
+    canvodpy_ds : xarray.Dataset, optional
+        Pre-loaded canvodpy dataset (alternative to store).
+    gnssvod_dataframe : pandas.DataFrame, optional
+        gnssvod output as a DataFrame (MultiIndex or flat).
+    gnssvod_file : str or Path, optional
+        Path to a saved gnssvod output (CSV or Parquet).
+    group : str
+        Which store group to compare (ignored if canvodpy_ds given).
+    band_map : list of tuples, optional
+        Override band mapping. Each tuple:
+        ``(canvodpy_band_suffix, gnssvod_snr_col, gnssvod_vod_col)``.
+        If None, auto-detected from the data.
+    mode : str
+        ``"trimmed"`` (1:1 SID→PRN) or ``"merged"`` (replicate fillna).
+    epoch_col, sid_col : str
+        Column/index names in the gnssvod DataFrame.
+
+    Returns
+    -------
+    AuditResult
+    """
+    if mode not in ("trimmed", "merged"):
+        raise ValueError(f"mode must be 'trimmed' or 'merged', got '{mode}'")
+
+    # ── Load data ─────────────────────────────────────────────────────
+    canvodpy_ds = _load_canvodpy(canvodpy_store, canvodpy_ds, group)
+    print(f"  SID examples: {list(canvodpy_ds.sid.values[:5])}")
+    print(f"  Variables: {sorted(canvodpy_ds.data_vars)}")
+
+    ds_gnssvod = _load_gnssvod(gnssvod_dataframe, gnssvod_file, epoch_col, sid_col)
+    print(
+        f"gnssvod: {dict(ds_gnssvod.sizes)}, variables: {sorted(ds_gnssvod.data_vars)}"
+    )
+
+    # ── Auto-detect band map if needed ────────────────────────────────
+    if band_map is None:
+        band_map = detect_band_map(canvodpy_ds, ds_gnssvod)
+        if band_map:
+            print(f"\n  Auto-detected bands: {[(b, s) for b, s, _ in band_map]}")
+        else:
+            print("  WARNING: Could not auto-detect bands, falling back to defaults")
+            band_map = BAND_MAP
+
+    print(f"  Mode: {mode}")
+
+    # ── Compare per band ──────────────────────────────────────────────
+    result = AuditResult()
+
+    for band_suffix, snr_col, vod_col in band_map:
+        if snr_col not in ds_gnssvod.data_vars:
+            print(f"\n  Skipping {band_suffix}: {snr_col} not in gnssvod output")
+            continue
+
+        print(f"\n{'─' * 60}")
+        print(f"Band: {band_suffix} → {snr_col} (mode={mode})")
+
+        if mode == "trimmed":
+            # One code per band: direct SID→PRN mapping
+            matching_sids = [
+                s for s in canvodpy_ds.sid.values if str(s).endswith(f"|{band_suffix}")
+            ]
+            if not matching_sids:
+                print(f"  Skipping: no matching SIDs for |{band_suffix}")
+                continue
+
+            print(f"  canvodpy SIDs: {len(matching_sids)}")
+            try:
+                adapter = GnssvodAdapter(
+                    canvodpy_ds,
+                    band_filter=band_suffix,
+                    snr_col=snr_col,
+                    vod_col=vod_col,
+                )
+            except ValueError as e:
+                print(f"  ERROR: {e}")
+                continue
+
+            ds_adapted = adapter.to_gnssvod_dataset()
+
+        else:
+            # Merged mode: replicate gnssvod's fillna across codes
+            band_num = band_suffix.split("|")[0].replace("L", "")  # "L1|C" → "1"
+            try:
+                ds_merged = gnssvod_merge_codes(canvodpy_ds, band_num)
+            except ValueError as e:
+                print(f"  Skipping: {e}")
+                continue
+
+            # Convert merged dataset to gnssvod variable space
+            # ds_merged already has PRN sids; rename variables
+            data_vars = {}
+            if "SNR" in ds_merged.data_vars:
+                data_vars[snr_col] = ds_merged["SNR"]
+            if "phi" in ds_merged.data_vars:
+                data_vars["Azimuth"] = (
+                    ds_merged["phi"].dims,
+                    np.degrees(ds_merged["phi"].values) % 360.0,
+                )
+            if "theta" in ds_merged.data_vars:
+                data_vars["Elevation"] = (
+                    ds_merged["theta"].dims,
+                    90.0 - np.degrees(ds_merged["theta"].values),
+                )
+            if vod_col and "VOD" in ds_merged.data_vars:
+                data_vars[vod_col] = ds_merged["VOD"]
+
+            ds_adapted = xr.Dataset(
+                data_vars,
+                coords=ds_merged.coords,
+            )
+
+        print(
+            f"  Adapted: {dict(ds_adapted.sizes)}, vars={sorted(ds_adapted.data_vars)}"
+        )
+
+        r = _compare_band(ds_adapted, ds_gnssvod, band_suffix, snr_col, vod_col)
+        if r is None:
+            continue
+
+        result.results[f"gnssvod_{band_suffix}"] = r
+
+        # Print per-variable summary
+        for var, vs in r.variable_stats.items():
+            status = "PASS" if var not in r.failures else "FAIL"
+            print(
+                f"  [{status}] {var}: "
+                f"RMSE={vs.rmse:.6g}, MAE={vs.mae:.6g}, "
+                f"max={vs.max_abs_diff:.6g}, bias={vs.bias:.6g}, "
+                f"n={vs.n_compared:,}, "
+                f"NaN: {vs.pct_nan_a:.1%} vs {vs.pct_nan_b:.1%}"
+            )
+        if r.failures:
+            for var, reason in r.failures.items():
+                print(f"  !! {var}: {reason}")
+
+    # ── Summary ───────────────────────────────────────────────────────
+    print(f"\n{'=' * 60}")
     print(result.summary())
     return result

@@ -332,3 +332,198 @@ def gps_l1_only():
             "G": ["C1C", "L1C", "S1C"],
         },
     )
+
+
+# ---------------------------------------------------------------------------
+# Auto-detection: build trimmer from RINEX header
+# ---------------------------------------------------------------------------
+
+# RINEX observation attribute prefixes: C=code, L=phase, S=SNR, D=Doppler
+_OBS_ATTRS = ("C", "L", "S", "D")
+
+
+def _detect_bands(obs_codes: list[str]) -> dict[str, list[str]]:
+    """Group observation codes by frequency band.
+
+    Returns dict mapping band number → list of tracking codes for that
+    band. For example, if obs_codes = ["C1C", "C1W", "S1C", "S1W", "C2W"],
+    returns {"1": ["C", "W"], "2": ["W"]}.
+
+    Only considers unique tracking codes (the 3rd character) across all
+    observation attributes (C, L, S, D).
+    """
+    bands: dict[str, set[str]] = {}
+    for code in obs_codes:
+        if len(code) != 3:
+            continue
+        band_num = code[1]
+        tracking = code[2]
+        bands.setdefault(band_num, set()).add(tracking)
+    return {b: sorted(codes) for b, codes in sorted(bands.items())}
+
+
+def auto_trimmer_from_header(
+    rinex_file,
+    *,
+    keep_systems: list[str] | None = None,
+    prefer_codes: list[str] | None = None,
+) -> RinexTrimmer:
+    """Build a RinexTrimmer by auto-detecting obs codes from a RINEX header.
+
+    For each system and band, selects exactly one tracking code. Selection
+    priority:
+
+    1. ``prefer_codes`` list (if given): first match wins
+    2. gnssvod-compatible (lexicographic first): ensures the trimmed file
+       produces the same result as gnssvod's fillna merge
+
+    This guarantees one code per band, making canvodpy SIDs map 1:1 to
+    gnssvod PRNs, without hardcoding specific code choices.
+
+    Parameters
+    ----------
+    rinex_file : str or Path
+        Path to a RINEX v3 file to inspect.
+    keep_systems : list of str, optional
+        Systems to retain. Default: all systems in the file.
+    prefer_codes : list of str, optional
+        Preferred tracking codes in priority order, e.g. ``["C", "W", "Q"]``.
+        Default: lexicographic (matches gnssvod's numpy.intersect1d order).
+
+    Returns
+    -------
+    RinexTrimmer
+        Configured to keep one code per band per system.
+
+    Examples
+    --------
+    >>> # Auto-detect, matching gnssvod's code selection
+    >>> trimmer = auto_trimmer_from_header("input.rnx")
+    >>> trimmer.preview(["input.rnx"])
+
+    >>> # Force specific systems
+    >>> trimmer = auto_trimmer_from_header("input.rnx", keep_systems=["G", "E"])
+
+    >>> # Prefer W codes where available (e.g. P(Y) tracking)
+    >>> trimmer = auto_trimmer_from_header("input.rnx", prefer_codes=["W", "C"])
+    """
+    from pathlib import Path
+
+    rinex_file = Path(rinex_file)
+    header_obs = _parse_obs_types_from_header(rinex_file)
+
+    if keep_systems is None:
+        keep_systems = sorted(header_obs.keys())
+    else:
+        keep_systems = sorted(keep_systems)
+
+    keep_obs_codes: dict[str, list[str]] = {}
+    for system in keep_systems:
+        sys_codes = header_obs.get(system, [])
+        if not sys_codes:
+            continue
+
+        bands = _detect_bands(sys_codes)
+        selected: list[str] = []
+
+        for band_num, tracking_codes in bands.items():
+            # Pick one tracking code for this band
+            chosen = _pick_code(tracking_codes, prefer_codes)
+
+            # Keep all observation attributes (C, L, S, D) for this code
+            for attr in _OBS_ATTRS:
+                full_code = f"{attr}{band_num}{chosen}"
+                if full_code in sys_codes:
+                    selected.append(full_code)
+
+        if selected:
+            keep_obs_codes[system] = selected
+
+    # Only keep systems that have codes
+    keep_systems = [s for s in keep_systems if s in keep_obs_codes]
+
+    if not keep_systems:
+        raise ValueError(
+            f"No observation codes found for systems {keep_systems} "
+            f"in {rinex_file.name}. Available: {header_obs}"
+        )
+
+    return RinexTrimmer(keep_systems=keep_systems, keep_obs_codes=keep_obs_codes)
+
+
+def _pick_code(
+    available: list[str],
+    prefer: list[str] | None,
+) -> str:
+    """Pick one tracking code from available options.
+
+    If prefer is given, uses first match. Otherwise lexicographic first
+    (matches gnssvod's numpy.intersect1d sort order).
+    """
+    if prefer:
+        for code in prefer:
+            if code in available:
+                return code
+    # Lexicographic = gnssvod default
+    return available[0]
+
+
+def random_trimmer_from_header(
+    rinex_file,
+    *,
+    keep_systems: list[str] | None = None,
+    seed: int = 42,
+) -> RinexTrimmer:
+    """Build a RinexTrimmer with randomly selected codes per band.
+
+    For robustness testing: verifies that the comparison works regardless
+    of which tracking code is selected. If the audit passes with random
+    codes, it proves the comparison logic is code-agnostic.
+
+    Parameters
+    ----------
+    rinex_file : str or Path
+        Path to a RINEX v3 file to inspect.
+    keep_systems : list of str, optional
+        Systems to retain.
+    seed : int
+        Random seed for reproducibility.
+
+    Returns
+    -------
+    RinexTrimmer
+    """
+    import random
+    from pathlib import Path
+
+    rinex_file = Path(rinex_file)
+    header_obs = _parse_obs_types_from_header(rinex_file)
+
+    if keep_systems is None:
+        keep_systems = sorted(header_obs.keys())
+    else:
+        keep_systems = sorted(keep_systems)
+
+    rng = random.Random(seed)
+    keep_obs_codes: dict[str, list[str]] = {}
+
+    for system in keep_systems:
+        sys_codes = header_obs.get(system, [])
+        if not sys_codes:
+            continue
+
+        bands = _detect_bands(sys_codes)
+        selected: list[str] = []
+
+        for band_num, tracking_codes in bands.items():
+            chosen = rng.choice(tracking_codes)
+            for attr in _OBS_ATTRS:
+                full_code = f"{attr}{band_num}{chosen}"
+                if full_code in sys_codes:
+                    selected.append(full_code)
+
+        if selected:
+            keep_obs_codes[system] = selected
+
+    keep_systems = [s for s in keep_systems if s in keep_obs_codes]
+    return RinexTrimmer(keep_systems=keep_systems, keep_obs_codes=keep_obs_codes)

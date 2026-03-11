@@ -123,7 +123,17 @@ def _align_datasets(
 
     # Align on epoch
     if "epoch" in ds_a.dims and "epoch" in ds_b.dims:
-        shared_epochs = np.intersect1d(ds_a.epoch.values, ds_b.epoch.values)
+        # Normalize datetime64 resolution to avoid empty intersections when
+        # one dataset uses ns and the other uses us (e.g. pandas vs numpy).
+        epochs_a = ds_a.epoch.values
+        epochs_b = ds_b.epoch.values
+        if np.issubdtype(epochs_a.dtype, np.datetime64) and np.issubdtype(
+            epochs_b.dtype, np.datetime64
+        ):
+            common_dtype = np.result_type(epochs_a.dtype, epochs_b.dtype)
+            epochs_a = epochs_a.astype(common_dtype)
+            epochs_b = epochs_b.astype(common_dtype)
+        shared_epochs = np.intersect1d(epochs_a, epochs_b)
         ds_a = ds_a.sel(epoch=shared_epochs)
         ds_b = ds_b.sel(epoch=shared_epochs)
         info_kwargs["n_shared_epochs"] = len(shared_epochs)
@@ -146,28 +156,44 @@ def _check_tolerance(
     vs: VariableStats,
     tol: Tolerance,
 ) -> str | None:
-    """Check if a variable's stats are within tolerance. Returns failure reason or None."""
-    if vs.max_abs_diff > tol.atol and tol.atol > 0:
-        # Also check relative tolerance
-        if tol.rtol > 0 and vs.rmse > tol.rtol:
-            return (
-                f"max_abs_diff={vs.max_abs_diff:.6g} > atol={tol.atol:.6g}, "
-                f"rmse={vs.rmse:.6g} > rtol={tol.rtol:.6g}"
-            )
-        if tol.rtol == 0:
-            return f"max_abs_diff={vs.max_abs_diff:.6g} > atol={tol.atol:.6g}"
+    """Check if a variable's stats are within tolerance. Returns failure reason or None.
 
-    if tol.atol == 0 and tol.rtol == 0 and vs.max_abs_diff > 0:
-        return f"not bit-identical: max_abs_diff={vs.max_abs_diff:.6g}"
+    Tolerance check: a variable passes if ALL of the following hold:
+    1. max_abs_diff <= atol      (absolute bound on worst-case error)
+    2. mae <= mae_atol           (absolute bound on typical error, when mae_atol > 0)
+    3. NaN rate difference <= nan_rate_atol
 
+    For EXACT tier (atol=0, mae_atol=0): requires bit-identical values.
+    """
+    reasons = []
+
+    # Guard: no valid pairs to compare (all NaN or empty arrays)
+    if vs.n_compared == 0:
+        reasons.append("no valid (non-NaN) pairs to compare")
+        return "; ".join(reasons)
+
+    # Bit-identical check
+    if tol.atol == 0 and tol.mae_atol == 0:
+        if vs.max_abs_diff > 0:
+            reasons.append(f"not bit-identical: max_abs_diff={vs.max_abs_diff:.6g}")
+    else:
+        # Absolute tolerance: worst-case single-element error
+        if tol.atol > 0 and vs.max_abs_diff > tol.atol:
+            reasons.append(f"max_abs_diff={vs.max_abs_diff:.6g} > atol={tol.atol:.6g}")
+
+        # Mean absolute error tolerance: typical error
+        if tol.mae_atol > 0 and vs.mae > tol.mae_atol:
+            reasons.append(f"mae={vs.mae:.6g} > mae_atol={tol.mae_atol:.6g}")
+
+    # NaN rate agreement
     nan_diff = abs(vs.pct_nan_a - vs.pct_nan_b)
     if nan_diff > tol.nan_rate_atol:
-        return (
+        reasons.append(
             f"NaN rate disagreement: {vs.pct_nan_a:.2%} vs {vs.pct_nan_b:.2%} "
             f"(diff={nan_diff:.2%} > {tol.nan_rate_atol:.2%})"
         )
 
-    return None
+    return "; ".join(reasons) if reasons else None
 
 
 def compare_datasets(
@@ -210,6 +236,18 @@ def compare_datasets(
     if align:
         ds_a, ds_b, alignment = _align_datasets(ds_a, ds_b)
 
+        # Guard: fail if alignment produced zero overlap
+        if alignment.n_shared_epochs == 0 and alignment.n_shared_sids == 0:
+            return ComparisonResult(
+                label=label or f"{tier.value} comparison",
+                variable_stats={},
+                tier=tier,
+                passed=False,
+                failures={"_alignment": "No shared coordinates after alignment"},
+                metadata=metadata or {},
+                alignment=alignment,
+            )
+
     # Determine variables to compare
     if variables is None:
         vars_a = set(ds_a.data_vars)
@@ -224,8 +262,11 @@ def compare_datasets(
         if var not in ds_a.data_vars or var not in ds_b.data_vars:
             continue
 
-        a_vals = ds_a[var].values.astype(np.float64)
-        b_vals = ds_b[var].values.astype(np.float64)
+        try:
+            a_vals = ds_a[var].values.astype(np.float64)
+            b_vals = ds_b[var].values.astype(np.float64)
+        except (ValueError, TypeError):
+            continue  # skip non-numeric variables
 
         if a_vals.shape != b_vals.shape:
             failures[var] = f"shape mismatch: {a_vals.shape} vs {b_vals.shape}"

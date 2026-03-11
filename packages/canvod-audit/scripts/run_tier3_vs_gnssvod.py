@@ -3,14 +3,53 @@
 Workflow
 --------
 1. Trim RINEX files to one obs code per band per system (gfzrnx).
-2. Run both canvodpy and gnssvod on the same trimmed RINEX.
-3. Compare SNR, azimuth, elevation, and VOD outputs.
+2. Run gnssvod on the trimmed RINEX:
+   a. ``preprocess()`` both canopy and reference (adds Azimuth/Elevation).
+   b. Save preprocessed NetCDF files.
+   c. ``gather_stations()`` pairs canopy + reference.
+   d. ``calc_vod()`` computes VOD from the paired data.
+3. Run canvodpy on the same trimmed RINEX using the **same GFZ rapid**
+   SP3/CLK files that gnssvod downloaded.
+4. Compare:
+   A. SNR, Azimuth, Elevation (canvodpy vs gnssvod preprocess output)
+   B. VOD per band (canvodpy vs gnssvod calc_vod output)
 
 Prerequisites
 -------------
 - gfzrnx installed (``/usr/local/bin/gfzrnx``)
-- gnssvod installed (``pip install gnssvod``)
-- SP3/CLK files for the observation day
+- gnssvod installed (``uv pip install gnssvod``)
+
+Ephemeris strategy
+------------------
+gnssvod forces **GFZ rapid** products (``GFZ0MGXRAP``) for GPS week >= 2038
+(i.e. all data from ~2019 onwards). To ensure a fair comparison, canvodpy
+is configured with ``agency="GFZ", product_type="rapid"`` so both tools
+use byte-identical SP3/CLK files.
+
+Elevation cutoff strategy
+-------------------------
+gnssvod applies a hard elevation cutoff of -10 deg in ``gnssDataframe()``
+(``preprocessing.py:370``), **dropping rows** with elevation <= -10 deg.
+canvodpy instead masks below-horizon (elevation < 0) observations to NaN
+but retains them in the array.
+
+For a fair comparison, the adapter aligns on shared (epoch, SID) pairs via
+``np.intersect1d``. Observations that gnssvod dropped are simply absent
+from the gnssvod dataset and excluded from comparison. Observations that
+canvodpy masked to NaN are excluded from statistics (computed on mutually
+valid pairs only). The NaN rate tolerance (``nan_rate_atol``) catches any
+systematic difference in missing-data patterns.
+
+VOD comparison strategy
+-----------------------
+gnssvod computes VOD inside ``calc_vod()`` using paired canopy/reference
+data. The formula is identical to canvodpy's ``TauOmegaZerothOrder``:
+
+    VOD = -ln(10^((SNR_canopy - SNR_reference) / 10)) * cos(zenith_canopy)
+
+Both tools use the canopy station's zenith angle. The only expected
+differences come from Hermite interpolation non-determinism (different
+satellite ECEF positions → different theta → different cos(theta)).
 """
 
 from __future__ import annotations
@@ -24,9 +63,7 @@ import xarray as xr
 
 from canvod.audit.rinex_trimmer import gps_galileo_l1_l2
 from canvod.audit.runners.common import AuditResult
-from canvod.audit.runners.vs_gnssvod import (
-    gnssvod_df_to_xarray,
-)
+from canvod.audit.runners.vs_gnssvod import audit_vs_gnssvod
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -37,16 +74,22 @@ ROSALIA_ROOT = Path(
 
 CANOPY_DIR = ROSALIA_ROOT / "02_canopy" / "01_GNSS" / "01_raw" / "25001"
 REFERENCE_DIR = ROSALIA_ROOT / "01_reference" / "01_GNSS" / "01_raw" / "25001"
-SP3_DIR = ROSALIA_ROOT / "01_SP3"
-CLK_DIR = ROSALIA_ROOT / "02_CLK"
 
 AUDIT_ROOT = Path("/Volumes/ExtremePro/canvod_audit_output")
 TIER3_DIR = AUDIT_ROOT / "tier3_vs_gnssvod" / "Rosalia"
 
-# canvodpy store from Tier 0 (already processed with the same RINEX files)
-CANVODPY_STORE = (
-    AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_RINEX_store"
-)
+# Ephemeris: match gnssvod's GFZ rapid products
+EPHEMERIS_AGENCY = "GFZ"
+EPHEMERIS_PRODUCT = "rapid"
+
+# VOD band configuration for gnssvod's calc_vod()
+# Maps band name → list of observation types to search for.
+# gnssvod uses np.intersect1d to find which exist → lex-sorted,
+# then fills NaN in that order (C before W before X).
+GNSSVOD_VOD_BANDS = {
+    "VOD_L1": ["S1", "S1C", "S1X", "S1W"],
+    "VOD_L2": ["S2", "S2C", "S2X", "S2W"],
+}
 
 
 def _find_rinex_files(directory: Path) -> list[Path]:
@@ -57,7 +100,41 @@ def _find_rinex_files(directory: Path) -> list[Path]:
     return files
 
 
-def step1_trim_rinex() -> tuple[Path, Path]:
+def _extract_date_from_rinex(rnx_path: Path) -> str:
+    """Extract YYYYDOY date string from RINEX filename or header.
+
+    Tries filename conventions first (e.g. ROSA01TUW_R_20250010000...),
+    then falls back to reading the header.
+    """
+    name = rnx_path.stem
+    # Long-name RINEX v3: ...._R_YYYYDOY0000_...
+    if "_R_" in name:
+        parts = name.split("_R_")
+        if len(parts) >= 2 and len(parts[1]) >= 7:
+            return parts[1][:7]  # YYYYDOY
+
+    # Fallback: read first few lines for TIME OF FIRST OBS
+    with open(rnx_path) as f:
+        for line in f:
+            if "TIME OF FIRST OBS" in line:
+                tokens = line.split()
+                year = int(tokens[0])
+                month = int(tokens[1])
+                day = int(tokens[2])
+                from datetime import date
+
+                doy = (date(year, month, day) - date(year, 1, 1)).days + 1
+                return f"{year}{doy:03d}"
+            if "END OF HEADER" in line:
+                break
+
+    raise ValueError(f"Cannot extract date from {rnx_path}")
+
+
+# ── Step 1: Trim RINEX ───────────────────────────────────────────────────────
+
+
+def step1_trim_rinex() -> tuple[Path, Path | None]:
     """Trim RINEX files to GPS+Galileo L1+L2, one code per band."""
     trimmer = gps_galileo_l1_l2()
 
@@ -98,57 +175,216 @@ def step1_trim_rinex() -> tuple[Path, Path]:
     return canopy_trimmed, ref_trimmed
 
 
-def step2_run_gnssvod(canopy_trimmed: Path, ref_trimmed: Path | None) -> Path:
-    """Run gnssvod on the trimmed RINEX file.
+# ── Step 2: Run gnssvod (full pipeline: preprocess + gather + calc_vod) ─────
 
-    Returns path to the saved gnssvod output (Parquet).
+
+def step2_run_gnssvod(
+    canopy_trimmed: Path,
+    ref_trimmed: Path | None,
+) -> tuple[Path, Path | None]:
+    """Run gnssvod's full pipeline on trimmed RINEX files.
+
+    1. preprocess() canopy and reference (adds Azimuth/Elevation,
+       applies elevation cutoff of -10 deg)
+    2. Save preprocessed data as NetCDF (for gather_stations)
+    3. gather_stations() to pair canopy + reference
+    4. calc_vod() to compute VOD from the paired data
+
+    Returns
+    -------
+    tuple[Path, Path | None]
+        (canopy_preprocess_parquet, vod_output_parquet_or_None)
     """
-    output_path = TIER3_DIR / "gnssvod_canopy_output.parquet"
-    if output_path.exists():
-        print(f"\n  gnssvod output exists, skipping: {output_path}")
-        return output_path
-
     import gnssvod
 
-    print("\n── Running gnssvod ──")
-    print(f"Input: {canopy_trimmed}")
-
-    # Use gnssvod.preprocess() which handles orbit download + azi/ele
-    aux_path = str(TIER3_DIR / "gnssvod_aux")
+    # Both tools share one aux directory → guarantees identical SP3/CLK files
+    aux_path = str(TIER3_DIR / "shared_aux")
     Path(aux_path).mkdir(parents=True, exist_ok=True)
 
-    results = gnssvod.preprocess(
-        filepattern={"canopy": str(canopy_trimmed)},
-        orbit=True,
-        aux_path=aux_path,
-        outputresult=True,
+    nc_dir = TIER3_DIR / "gnssvod_nc"
+
+    canopy_output = TIER3_DIR / "gnssvod_canopy_output.parquet"
+    vod_output = TIER3_DIR / "gnssvod_vod_output.parquet"
+
+    # ── 2a. Preprocess canopy ──
+    canopy_nc_dir = nc_dir / "canopy"
+    canopy_nc_dir.mkdir(parents=True, exist_ok=True)  # MUST exist before preprocess
+
+    if not canopy_output.exists():
+        print("\n── Running gnssvod preprocess: canopy ──")
+        print(f"Input: {canopy_trimmed}")
+        results = gnssvod.preprocess(
+            filepattern={"canopy": str(canopy_trimmed)},
+            orbit=True,
+            aux_path=aux_path,
+            outputdir={"canopy": str(canopy_nc_dir)},
+            outputresult=True,
+        )
+        obs = results["canopy"][0]
+        df = obs.observation
+        if df is None:
+            raise RuntimeError("gnssvod returned no observation data for canopy")
+        print(f"gnssvod canopy: {df.shape}, columns: {list(df.columns[:10])}")
+        print(f"  Index levels: {df.index.names}")
+        df.to_parquet(canopy_output)
+        print(f"Saved: {canopy_output}")
+    else:
+        print(f"\n  gnssvod canopy exists, skipping: {canopy_output}")
+
+    # ── 2b. Preprocess reference ──
+    if ref_trimmed is not None:
+        ref_nc_dir = nc_dir / "reference"
+        ref_nc_dir.mkdir(parents=True, exist_ok=True)  # MUST exist before preprocess
+
+        ref_output = TIER3_DIR / "gnssvod_reference_output.parquet"
+        if not ref_output.exists():
+            print("\n── Running gnssvod preprocess: reference ──")
+            results_ref = gnssvod.preprocess(
+                filepattern={"reference": str(ref_trimmed)},
+                orbit=True,
+                aux_path=aux_path,
+                outputdir={"reference": str(ref_nc_dir)},
+                outputresult=True,
+            )
+            ref_obs = results_ref["reference"][0]
+            ref_df = ref_obs.observation
+            if ref_df is not None:
+                ref_df.to_parquet(ref_output)
+                print(f"Saved: {ref_output}")
+            else:
+                print("  WARNING: gnssvod returned no data for reference")
+        else:
+            print(f"\n  gnssvod reference exists, skipping: {ref_output}")
+
+        # ── 2c. Gather stations + calc_vod ──
+        if not vod_output.exists():
+            _run_gnssvod_vod(canopy_nc_dir, ref_nc_dir, canopy_output, vod_output)
+        else:
+            print(f"\n  gnssvod VOD exists, skipping: {vod_output}")
+
+        return canopy_output, vod_output
+    else:
+        print("\n  No reference RINEX — skipping gnssvod VOD calculation")
+        return canopy_output, None
+
+
+def _run_gnssvod_vod(
+    canopy_nc_dir: Path,
+    ref_nc_dir: Path,
+    canopy_parquet: Path,
+    vod_output: Path,
+) -> None:
+    """Run gnssvod's gather_stations + calc_vod pipeline."""
+    from gnssvod.analysis.vod_calc import calc_vod
+    from gnssvod.io.preprocessing import gather_stations
+
+    print("\n── Running gnssvod gather_stations + calc_vod ──")
+
+    gathered_dir = TIER3_DIR / "gnssvod_gathered"
+    gathered_dir.mkdir(parents=True, exist_ok=True)
+
+    # Determine time range from canopy data for gather_stations
+    canopy_df = pd.read_parquet(canopy_parquet)
+    if isinstance(canopy_df.index, pd.MultiIndex):
+        epochs = canopy_df.index.get_level_values("Epoch")
+    elif "Epoch" in canopy_df.columns:
+        epochs = canopy_df["Epoch"]
+    else:
+        raise RuntimeError("Cannot find Epoch in gnssvod canopy output")
+
+    time_intervals = pd.interval_range(
+        start=pd.Timestamp(epochs.min()),
+        end=pd.Timestamp(epochs.max()) + pd.Timedelta("1s"),
+        freq="1D",
     )
 
-    # Extract the Observation object
-    obs_list = results["canopy"]
-    obs = obs_list[0]  # single file → single Observation
+    # gather_stations: filepattern keys MUST match station names in pairings
+    canopy_nc_pattern = str(canopy_nc_dir / "*.nc")
+    ref_nc_pattern = str(ref_nc_dir / "*.nc")
 
-    # The observation data is in obs.observation (a DataFrame)
-    df = obs.observation
-    print(f"gnssvod output shape: {df.shape}")
-    print(f"  Columns: {list(df.columns[:15])}")
-    print(f"  Index: {df.index.names}")
+    print(f"  Canopy NC: {canopy_nc_pattern}")
+    print(f"  Reference NC: {ref_nc_pattern}")
 
-    # Save as Parquet
-    output_path = TIER3_DIR / "gnssvod_canopy_output.parquet"
-    df.to_parquet(output_path)
-    print(f"Saved: {output_path}")
+    gather_stations(
+        filepattern={
+            "canopy": canopy_nc_pattern,
+            "reference": ref_nc_pattern,
+        },
+        pairings={"rosalia": ("reference", "canopy")},
+        timeintervals=time_intervals,
+        outputdir={"rosalia": str(gathered_dir)},
+    )
 
-    return output_path
+    # Verify gathered files exist
+    gathered_files = sorted(gathered_dir.glob("*.nc"))
+    if not gathered_files:
+        raise RuntimeError(f"No gathered NC files in {gathered_dir}")
+    print(f"  Gathered files: {len(gathered_files)}")
+
+    # calc_vod: pairings reference station names that must exist as
+    # Station index level in the gathered NC files.
+    # Pairing: ("reference", "canopy") → ref=reference, grn=canopy
+    # VOD = -ln(10^((SNR_canopy - SNR_reference)/10)) * cos(zenith_canopy)
+    vod_results = calc_vod(
+        filepattern=str(gathered_dir / "*.nc"),
+        pairings={"rosalia": ("reference", "canopy")},
+        bands=GNSSVOD_VOD_BANDS,
+    )
+
+    vod_df = vod_results["rosalia"]
+    print(f"gnssvod VOD: {vod_df.shape}")
+    print(f"  Columns: {list(vod_df.columns)}")
+    print(f"  Index: {vod_df.index.names}")
+    vod_df.to_parquet(vod_output)
+    print(f"Saved: {vod_output}")
 
 
-def step3_run_canvodpy_trimmed(canopy_trimmed: Path) -> Path:
-    """Run canvodpy on the trimmed RINEX file and write to a Zarr store.
+# ── Step 3: Run canvodpy ─────────────────────────────────────────────────────
 
-    Returns path to the Zarr store.
+
+def _read_and_augment(trimmed_rnx: Path, date_str: str):
+    """Read trimmed RINEX and augment with GFZ rapid ephemeris.
+
+    Uses the same GFZ rapid SP3/CLK products that gnssvod downloads,
+    ensuring identical satellite positions for a fair comparison.
+
+    Returns an xarray.Dataset with SNR, phi, theta.
     """
+    from canvodpy.functional import augment_with_ephemeris
+
+    from canvod.auxiliary.position.position import ECEFPosition
     from canvod.readers.rinex.v3_04 import Rnxv3Obs
 
+    reader = Rnxv3Obs(fpath=trimmed_rnx, completeness_mode="off")
+    ds = reader.to_ds()
+    print(f"  Read: {dict(ds.sizes)}, vars={list(ds.data_vars)}")
+
+    # Receiver position from RINEX header
+    rx_pos = ECEFPosition.from_ds_metadata(ds)
+    print(f"  Receiver ECEF: ({rx_pos.x:.2f}, {rx_pos.y:.2f}, {rx_pos.z:.2f})")
+
+    # Augment with GFZ rapid — same product and same files as gnssvod
+    ds_aug = augment_with_ephemeris(
+        ds,
+        receiver_position=rx_pos,
+        source=EPHEMERIS_PRODUCT,
+        agency=EPHEMERIS_AGENCY,
+        date=date_str,
+        aux_data_dir=TIER3_DIR / "shared_aux",
+    )
+    print(f"  Augmented: vars={list(ds_aug.data_vars)}")
+    return ds_aug
+
+
+def step3_run_canvodpy(
+    canopy_trimmed: Path,
+    ref_trimmed: Path | None,
+) -> Path:
+    """Run canvodpy on trimmed RINEX: read, augment with GFZ rapid, compute VOD.
+
+    Returns path to the Zarr store containing canvodpy output with
+    SNR, phi, theta, and (if reference available) VOD.
+    """
     store_path = TIER3_DIR / "canvodpy_trimmed_store"
 
     if store_path.exists():
@@ -157,183 +393,242 @@ def step3_run_canvodpy_trimmed(canopy_trimmed: Path) -> Path:
 
     print("\n── Running canvodpy on trimmed RINEX ──")
 
-    reader = Rnxv3Obs(fpath=canopy_trimmed, completeness_mode="off")
-    ds = reader.to_ds()
-    print(f"canvodpy: {dict(ds.sizes)}, vars={list(ds.data_vars)}")
-    print(f"  SID examples: {list(ds.sid.values[:5])}")
+    date_str = _extract_date_from_rinex(canopy_trimmed)
+    print(f"  Date: {date_str}")
 
-    # Write to a simple Zarr store (no Icechunk needed for comparison)
-    ds.to_zarr(str(store_path), mode="w")
-    print(f"Written: {store_path}")
+    # Read and augment canopy
+    print("\n  Canopy:")
+    ds_canopy = _read_and_augment(canopy_trimmed, date_str)
+
+    # Read and augment reference (if available)
+    ds_ref = None
+    if ref_trimmed is not None and ref_trimmed.exists():
+        print("\n  Reference:")
+        ds_ref = _read_and_augment(ref_trimmed, date_str)
+
+    # Compute VOD if both canopy and reference are available
+    if ds_ref is not None:
+        from canvod.vod.calculator import TauOmegaZerothOrder
+
+        print("\n  Computing VOD ...")
+        # from_datasets aligns canopy and reference via xr.align(join="inner")
+        # then computes VOD = -ln(transmissivity) * cos(canopy_theta)
+        vod_ds = TauOmegaZerothOrder.from_datasets(
+            canopy_ds=ds_canopy,
+            sky_ds=ds_ref,
+        )
+        print(f"  VOD: {dict(vod_ds.sizes)}, vars={list(vod_ds.data_vars)}")
+
+        # Merge VOD back into canopy dataset (which has SNR, phi, theta)
+        ds_out = ds_canopy.copy()
+        if "VOD" in vod_ds.data_vars:
+            ds_out["VOD"] = vod_ds["VOD"]
+    else:
+        print("\n  No reference available — skipping VOD calculation")
+        ds_out = ds_canopy
+
+    print(f"\n  Final output: {dict(ds_out.sizes)}, vars={sorted(ds_out.data_vars)}")
+
+    ds_out.to_zarr(str(store_path), mode="w")
+    print(f"  Written: {store_path}")
 
     return store_path
 
 
-def step4_compare(gnssvod_parquet: Path) -> AuditResult:
-    """Compare canvodpy output against gnssvod output.
+# ── Step 4: Compare ──────────────────────────────────────────────────────────
 
-    Both were run on the same trimmed RINEX file. We do a direct
-    variable-by-variable comparison on the shared (epoch, PRN) grid.
+
+def step4_compare(
+    canvodpy_store: Path,
+    gnssvod_canopy_parquet: Path,
+    gnssvod_vod_parquet: Path | None,
+) -> AuditResult:
+    """Compare canvodpy output against gnssvod.
+
+    Sub-comparisons:
+    A. SNR + Azimuth + Elevation (canvodpy vs gnssvod preprocess)
+    B. VOD per band (canvodpy vs gnssvod calc_vod) — if available
+
+    Note: gnssvod drops observations with elevation <= -10 deg (hard
+    filter), while canvodpy masks below-horizon to NaN. The comparison
+    engine aligns on shared (epoch, sid) pairs and computes statistics
+    only on mutually valid (non-NaN) values. The nan_rate_atol tolerance
+    detects systematic missing-data differences.
     """
+    print("\n── Tier 3A: SNR + angles comparison ──")
 
-    print("\n── Tier 3 comparison ──")
-
-    # Load canvodpy output (plain Zarr from step 3)
-    trimmed_store = TIER3_DIR / "canvodpy_trimmed_store"
-    ds_canvod = xr.open_zarr(str(trimmed_store))
-    print(f"canvodpy: {dict(ds_canvod.sizes)}, vars={list(ds_canvod.data_vars)}")
-
-    # Load gnssvod output
-    df_gnssvod = pd.read_parquet(gnssvod_parquet)
-    ds_gnssvod = gnssvod_df_to_xarray(df_gnssvod)
-    print(f"gnssvod:  {dict(ds_gnssvod.sizes)}, vars={list(ds_gnssvod.data_vars)}")
-
-    # Map canvodpy SIDs to PRNs for matching
-    # canvodpy SIDs are like "G01|L1|C", gnssvod uses "G01"
-    # With trimmed RINEX (one code per band), we can extract the PRN
-    prns = [str(s).split("|")[0] for s in ds_canvod.sid.values]
-    # Group by PRN — pick one SID per PRN (the L1 band for SNR comparison)
-    sid_to_prn = dict(zip(ds_canvod.sid.values, prns))
-
-    # For SNR comparison: match canvodpy S1C SIDs to gnssvod S1C
-    # canvodpy SNR variable contains SNR for each SID (one per code)
-    # gnssvod has separate columns: S1C, S2W, S5Q
-
-    # Compare band by band: canvodpy SID "G01|L1|C" maps to gnssvod "S1C" for PRN "G01"
-    # Map of (band_filter, gnssvod_col) pairs
-    band_map = [
-        ("L1|C", "S1C", "SNR L1C"),
-        ("L2|W", "S2W", "SNR L2W"),
-        ("L5|Q", "S5Q", "SNR L5Q"),
-    ]
-
-    shared_epochs = np.intersect1d(ds_canvod.epoch.values, ds_gnssvod.epoch.values)
-    all_passed = True
-
-    for band_filt, gnssvod_col, label in band_map:
-        if gnssvod_col not in ds_gnssvod.data_vars:
-            continue
-
-        # Select SIDs matching this band
-        band_sids = [s for s in ds_canvod.sid.values if f"|{band_filt}" in str(s)]
-        if not band_sids:
-            continue
-
-        ds_band = ds_canvod.sel(sid=band_sids)
-        band_prns = [str(s).split("|")[0] for s in band_sids]
-        ds_band = ds_band.assign_coords(sid=band_prns)
-
-        shared_prns = sorted(set(band_prns) & set(ds_gnssvod.sid.values.tolist()))
-        if not shared_prns:
-            continue
-
-        print(f"\n── {label} ({len(shared_prns)} PRNs, {len(shared_epochs)} epochs) ──")
-
-        canvod_snr = ds_band["SNR"].sel(epoch=shared_epochs, sid=shared_prns).values
-        gnssvod_snr = (
-            ds_gnssvod[gnssvod_col].sel(epoch=shared_epochs, sid=shared_prns).values
-        )
-
-        valid = ~np.isnan(canvod_snr) & ~np.isnan(gnssvod_snr)
-        n_valid = int(np.sum(valid))
-        if n_valid == 0:
-            print("  No valid pairs")
-            continue
-
-        diff = canvod_snr[valid] - gnssvod_snr[valid]
-        n_identical = int(np.sum(np.abs(diff) == 0))
-        max_diff = float(np.max(np.abs(diff)))
-        rmse = float(np.sqrt(np.mean(diff**2)))
-
-        print(f"  Valid pairs: {n_valid:,}")
-        print(f"  Identical:   {n_identical:,} ({100 * n_identical / n_valid:.1f}%)")
-        print(f"  Max diff:    {max_diff:.6f} dB-Hz")
-        print(f"  Mean diff:   {np.mean(np.abs(diff)):.6f} dB-Hz")
-        print(f"  RMSE:        {rmse:.6f} dB-Hz")
-
-        passed = max_diff < 0.01
-        print(f"  → {'PASS' if passed else 'FAIL'}")
-        if not passed:
-            all_passed = False
-
-    # Azimuth/Elevation — use L1|C SIDs (one per PRN)
-    l1c_sids = [s for s in ds_canvod.sid.values if "|L1|C" in str(s)]
-    if l1c_sids:
-        ds_l1c = ds_canvod.sel(sid=l1c_sids)
-        l1c_prns = [str(s).split("|")[0] for s in l1c_sids]
-        ds_l1c = ds_l1c.assign_coords(sid=l1c_prns)
-        shared_prns = sorted(set(l1c_prns) & set(ds_gnssvod.sid.values.tolist()))
-
-        if "Azimuth" in ds_gnssvod.data_vars and "phi" in ds_l1c.data_vars:
-            print("\n── Azimuth (canvodpy phi vs gnssvod Azimuth) ──")
-            cv = np.degrees(
-                ds_l1c["phi"].sel(epoch=shared_epochs, sid=shared_prns).values
-            )
-            gv = ds_gnssvod["Azimuth"].sel(epoch=shared_epochs, sid=shared_prns).values
-            m = ~np.isnan(cv) & ~np.isnan(gv)
-            if np.sum(m) > 0:
-                d = cv[m] - gv[m]
-                d = np.where(d > 180, d - 360, d)
-                d = np.where(d < -180, d + 360, d)
-                print(
-                    f"  Valid: {int(np.sum(m)):,}, RMSE: {np.sqrt(np.mean(d**2)):.4f} deg, "
-                    f"Max: {np.max(np.abs(d)):.4f} deg"
-                )
-
-        if "Elevation" in ds_gnssvod.data_vars and "theta" in ds_l1c.data_vars:
-            print("\n── Elevation (canvodpy 90-theta vs gnssvod Elevation) ──")
-            cv = 90.0 - np.degrees(
-                ds_l1c["theta"].sel(epoch=shared_epochs, sid=shared_prns).values
-            )
-            gv = (
-                ds_gnssvod["Elevation"].sel(epoch=shared_epochs, sid=shared_prns).values
-            )
-            m = ~np.isnan(cv) & ~np.isnan(gv)
-            if np.sum(m) > 0:
-                d = cv[m] - gv[m]
-                print(
-                    f"  Valid: {int(np.sum(m)):,}, RMSE: {np.sqrt(np.mean(d**2)):.4f} deg, "
-                    f"Max: {np.max(np.abs(d)):.4f} deg"
-                )
+    result_a = audit_vs_gnssvod(
+        canvodpy_store=canvodpy_store,
+        gnssvod_file=gnssvod_canopy_parquet,
+    )
 
     result = AuditResult()
-    print(f"\n  Overall SNR: {'PASS' if all_passed else 'FAIL'}")
+    for k, v in result_a.results.items():
+        result.results[f"3A_{k}"] = v
+
+    # ── VOD comparison ──
+    if gnssvod_vod_parquet is not None and gnssvod_vod_parquet.exists():
+        _compare_vod(canvodpy_store, gnssvod_vod_parquet, result)
+    else:
+        print("\n  No gnssvod VOD output — skipping VOD comparison")
+
+    # ── Save results ──
+    try:
+        df = result.to_polars()
+        stats_path = TIER3_DIR / "tier3_comparison_stats.csv"
+        df.write_csv(str(stats_path))
+        print(f"\nDetailed stats saved: {stats_path}")
+    except Exception as e:
+        print(f"\n  Could not save stats: {e}")
+
     return result
+
+
+def _compare_vod(
+    canvodpy_store: Path,
+    gnssvod_vod_parquet: Path,
+    result: AuditResult,
+) -> None:
+    """Compare canvodpy VOD against gnssvod calc_vod output."""
+    from canvod.audit.core import compare_datasets
+    from canvod.audit.runners.vs_gnssvod import (
+        GNSSVOD_TOLERANCES,
+        gnssvod_df_to_xarray,
+    )
+    from canvod.audit.tolerances import ToleranceTier
+
+    print("\n── Tier 3B: VOD comparison ──")
+
+    ds_canvod = xr.open_zarr(str(canvodpy_store))
+    gnssvod_vod_df = pd.read_parquet(gnssvod_vod_parquet)
+
+    print(f"  gnssvod VOD columns: {list(gnssvod_vod_df.columns)}")
+    print(f"  gnssvod VOD shape: {gnssvod_vod_df.shape}")
+    print(f"  canvodpy vars: {sorted(ds_canvod.data_vars)}")
+
+    if "VOD" not in ds_canvod.data_vars:
+        print("  canvodpy has no VOD — skipping VOD comparison")
+        return
+
+    # Convert gnssvod VOD DataFrame to xarray
+    ds_gnssvod_vod = gnssvod_df_to_xarray(gnssvod_vod_df)
+    print(f"  gnssvod VOD xarray: {dict(ds_gnssvod_vod.sizes)}")
+    print(f"    vars: {sorted(ds_gnssvod_vod.data_vars)}")
+
+    # Compare each VOD band
+    # canvodpy has one VOD variable covering all SIDs;
+    # gnssvod has VOD_L1, VOD_L2, etc. per band.
+    band_mapping = [
+        ("VOD_L1", "L1|C"),
+        ("VOD_L2", "L2|W"),
+    ]
+
+    for vod_band, canvod_band_suffix in band_mapping:
+        if vod_band not in ds_gnssvod_vod.data_vars:
+            print(f"  Skipping {vod_band}: not in gnssvod output")
+            continue
+
+        # Select canvodpy SIDs for this band
+        matching_sids = [
+            s for s in ds_canvod.sid.values if str(s).endswith(f"|{canvod_band_suffix}")
+        ]
+        if not matching_sids:
+            print(
+                f"  Skipping {vod_band}: no matching canvodpy SIDs "
+                f"for |{canvod_band_suffix}"
+            )
+            continue
+
+        # Build canvodpy VOD dataset with PRN-based sids (matching gnssvod)
+        ds_band = ds_canvod.sel(sid=matching_sids)
+        prns = [str(s).split("|")[0] for s in matching_sids]
+
+        ds_canvod_vod = xr.Dataset(
+            {vod_band: (["epoch", "sid"], ds_band["VOD"].values)},
+            coords={"epoch": ds_band.epoch.values, "sid": prns},
+        )
+
+        # Check alignment
+        shared_sids = np.intersect1d(
+            ds_canvod_vod.sid.values, ds_gnssvod_vod.sid.values
+        )
+        shared_epochs = np.intersect1d(
+            ds_canvod_vod.epoch.values, ds_gnssvod_vod.epoch.values
+        )
+
+        if len(shared_sids) == 0 or len(shared_epochs) == 0:
+            print(
+                f"  Skipping {vod_band}: no shared sids/epochs "
+                f"(canvod: {len(ds_canvod_vod.sid)} sids, "
+                f"gnssvod: {len(ds_gnssvod_vod.sid)} sids)"
+            )
+            continue
+
+        print(
+            f"\n  {vod_band}: {len(shared_sids)} shared sids, "
+            f"{len(shared_epochs)} shared epochs"
+        )
+
+        r = compare_datasets(
+            ds_canvod_vod,
+            ds_gnssvod_vod,
+            variables=[vod_band],
+            tier=ToleranceTier.SCIENTIFIC,
+            tolerance_overrides={vod_band: GNSSVOD_TOLERANCES["VOD"]},
+            label=f"canvodpy vs gnssvod: {vod_band}",
+            metadata={
+                "comparison_type": "external_vod",
+                "band": canvod_band_suffix,
+                "vod_col": vod_band,
+            },
+        )
+        result.results[f"3B_{vod_band}"] = r
+
+        for var, vs in r.variable_stats.items():
+            status = "PASS" if var not in r.failures else "FAIL"
+            print(
+                f"  [{status}] {var}: "
+                f"RMSE={vs.rmse:.6g}, MAE={vs.mae:.6g}, "
+                f"max={vs.max_abs_diff:.6g}, bias={vs.bias:.6g}, "
+                f"n={vs.n_compared:,}, "
+                f"NaN: {vs.pct_nan_a:.1%} vs {vs.pct_nan_b:.1%}"
+            )
+            if var in r.failures:
+                print(f"    !! {r.failures[var]}")
+
+
+# ── Main ─────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
     print("=" * 60)
     print("Tier 3: canvodpy vs gnssvod (Humphrey et al.)")
+    print(f"Ephemeris: {EPHEMERIS_AGENCY} {EPHEMERIS_PRODUCT}")
     print("=" * 60)
 
     # Step 1: Trim RINEX
     canopy_trimmed, ref_trimmed = step1_trim_rinex()
 
-    # Step 2: Run gnssvod
-    gnssvod_output = step2_run_gnssvod(canopy_trimmed, ref_trimmed)
+    # Step 2: Run gnssvod (full pipeline: preprocess + gather + calc_vod)
+    gnssvod_canopy, gnssvod_vod = step2_run_gnssvod(canopy_trimmed, ref_trimmed)
 
-    # Step 3: Also run canvodpy on trimmed RINEX (for direct comparison)
-    step3_run_canvodpy_trimmed(canopy_trimmed)
+    # Step 3: Run canvodpy (uses same GFZ rapid SP3/CLK)
+    canvodpy_store = step3_run_canvodpy(canopy_trimmed, ref_trimmed)
 
-    # Step 4: Compare
-    result = step4_compare(gnssvod_output)
+    # Step 4: Compare (A: SNR+angles, B: VOD)
+    result = step4_compare(canvodpy_store, gnssvod_canopy, gnssvod_vod)
 
     print("\n" + "=" * 60)
     if result.passed:
         print("TIER 3 PASSED")
     else:
         print("TIER 3: SOME COMPARISONS FAILED — review above output")
-        # Print per-variable details
         for name, r in result.results.items():
             if not r.passed:
                 print(f"\n{name}:")
                 for var, reason in r.failures.items():
                     print(f"  {var}: {reason}")
-                for var, vs in r.variable_stats.items():
-                    print(
-                        f"  {var}: rmse={vs.rmse:.6g}, max_abs={vs.max_abs_diff:.6g}, "
-                        f"bias={vs.bias:.6g}, nan_agree={vs.nan_agreement_rate:.4f}"
-                    )
+    print("=" * 60)
 
 
 if __name__ == "__main__":

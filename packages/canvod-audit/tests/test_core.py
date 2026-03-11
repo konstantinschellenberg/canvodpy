@@ -42,7 +42,7 @@ def test_nan_disagreement_detected(synthetic_ds: xr.Dataset, damaged_ds: xr.Data
         damaged_ds,
         tier=ToleranceTier.SCIENTIFIC,
         tolerance_overrides={
-            "SNR": Tolerance(atol=1.0, rtol=0.0, nan_rate_atol=0.01),
+            "SNR": Tolerance(atol=1.0, mae_atol=0.0, nan_rate_atol=0.01),
         },
     )
     assert "SNR" in result.failures
@@ -89,3 +89,21 @@ def test_specific_variables(synthetic_ds: xr.Dataset):
         tier=ToleranceTier.EXACT,
     )
     assert list(result.variable_stats.keys()) == ["SNR"]
+
+
+def test_epoch_dtype_mismatch(synthetic_ds: xr.Dataset):
+    """Datasets with different datetime64 resolutions should still align."""
+
+    # Create a copy with microsecond-resolution epochs (simulates pandas origin)
+    ds_us = synthetic_ds.copy(deep=True)
+    epochs_us = synthetic_ds.epoch.values.astype("datetime64[us]")
+    ds_us = ds_us.assign_coords(epoch=epochs_us)
+
+    # Ensure the two datasets have different datetime64 resolutions
+    assert synthetic_ds.epoch.values.dtype != ds_us.epoch.values.dtype
+
+    result = compare_datasets(
+        synthetic_ds, ds_us, tier=ToleranceTier.EXACT, label="dtype-mix"
+    )
+    assert result.passed
+    assert result.alignment.n_shared_epochs == len(synthetic_ds.epoch)
