@@ -3,6 +3,7 @@
 <!-- Build & Quality -->
 [![Platform Tests](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![Code Coverage](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml)
+[![Audit](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 <!-- Python & Platforms -->
@@ -22,6 +23,9 @@
 [![DataCite 4.5](https://img.shields.io/badge/DataCite-4.5-3F51B5)](https://schema.datacite.org/)
 [![ACDD 1.3](https://img.shields.io/badge/ACDD-1.3-4CAF50)](https://wiki.esipfed.org/Attribute_Convention_for_Data_Discovery_1-3)
 [![STAC 1.1](https://img.shields.io/badge/STAC-1.1-FF9800)](https://stacspec.org/)
+
+<!-- AI & Development -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-AI_Assisted-cc785c?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 
 <!-- Project -->
 [![CLIMERS @ TU Wien](https://img.shields.io/badge/CLIMERS-TU_Wien-006699)](https://www.tuwien.at/en/mg/geo/climers)
@@ -54,6 +58,7 @@ canVODpy is organized as a monorepo with independent, composable packages:
 | **canvod-ops** | Configurable preprocessing pipeline |
 | **canvod-utils** | Configuration, date utilities, shared tooling |
 | **canvod-virtualiconvname** | Filename mapping and pre-flight validation |
+| **canvod-audit** | Three-tier verification suite (vs gnssvodpy, internal, vs gnssvod) |
 | **canvodpy** | Umbrella package — 4 API levels, factory system, orchestrator |
 
 ## Installation
@@ -137,7 +142,8 @@ canvodpy/                       # Monorepo root
 │   ├── canvod-viz/             #   Visualisation
 │   ├── canvod-ops/             #   Preprocessing pipeline
 │   ├── canvod-utils/           #   Configuration & utilities
-│   └── canvod-virtualiconvname/#   Filename mapping
+│   ├── canvod-virtualiconvname/#   Filename mapping
+│   └── canvod-audit/          #   Three-tier verification suite
 ├── canvodpy/                   # Umbrella package + orchestrator
 ├── demo/                       # marimo notebooks (submodule)
 ├── config/                     # YAML configuration files
@@ -147,6 +153,17 @@ canvodpy/                       # Monorepo root
 ├── NOTICE                      # Apache 2.0 attribution
 └── LICENSE                     # Apache License 2.0
 ```
+
+## AI-Assisted Development
+
+This project uses [Claude Code](https://claude.com/claude-code) as a development and maintenance tool. The repository includes a comprehensive `CLAUDE.md` that provides the AI agent with:
+
+- **Scientific domain knowledge** — GNSS-T, VOD, signal processing concepts
+- **Architecture context** — monorepo structure, API levels, data contracts
+- **15+ domain skills** — xarray, Zarr, Pydantic, pytest, marimo, and more
+- **Persistent memory** — project decisions, conventions, and known issues across sessions
+
+New contributors can run `claude` in the repo root to get an AI assistant with full project context — it can explain any module, run tests, generate diagrams, and navigate the 12-package monorepo.
 
 ## Contributing
 

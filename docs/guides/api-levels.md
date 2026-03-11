@@ -359,3 +359,7 @@ Both strategies use the same core: rechunk → clear encodings → `VODFactory.c
 
     **Level 4**: `read_rinex("file.rnx")` or use the reader directly:
     `SbfReader(fpath="file.sbf").to_ds()`.
+
+---
+
+**Next in the trail:** [Getting Started](getting-started.md) · [Audit Suite](../packages/audit/overview.md) · [Architecture](../architecture.md) · [AI Development](ai-development.md)

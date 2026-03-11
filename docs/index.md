@@ -264,6 +264,10 @@ flowchart TD
 
     `Zensical` · `beautiful-mermaid` · `marimo` notebooks
 
+!!! abstract "AI-assisted development"
+
+    [`Claude Code`](guides/ai-development.md) · 15+ domain skills · persistent memory · `CLAUDE.md`
+
 </div>
 
 ---

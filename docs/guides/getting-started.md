@@ -832,3 +832,7 @@ just test-coverage
         ```bash
         git config --global core.autocrlf input
         ```
+
+---
+
+**Next in the trail:** [Audit Suite](../packages/audit/overview.md) · [API Levels](api-levels.md) · [Architecture](../architecture.md) · [AI Development](ai-development.md)

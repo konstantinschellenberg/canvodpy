@@ -812,3 +812,7 @@ canvodpy uses polars throughout its stack (not pandas). The `.to_polars()` metho
 The tolerance descriptions (`Tolerance.description`) are written to be extractable for the methods section. The LaTeX table exporter produces publication-ready tables. The figure generators use consistent styling.
 
 This is not an afterthought bolted onto the pipeline — it is an integral part of the scientific credibility of the software.
+
+---
+
+**Next in the trail:** [Findings](../../findings/rinex_vs_sbf_store_comparison.md) · [Architecture](../../architecture.md) · [API Levels](../../guides/api-levels.md) · [AI Development](../../guides/ai-development.md)

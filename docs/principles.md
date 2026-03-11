@@ -114,3 +114,7 @@ IGS long-name convention and **do not** need renaming under this scheme.
 
 *Questions or suggestions? Open a discussion on
 [GitHub](https://github.com/nfb2021/canvodpy/discussions).*
+
+---
+
+**Next in the trail:** [API Levels](guides/api-levels.md) · [Getting Started](guides/getting-started.md) · [Architecture](architecture.md) · [AI Development](guides/ai-development.md)

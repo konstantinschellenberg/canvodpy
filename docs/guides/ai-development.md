@@ -1,184 +1,199 @@
 ---
 title: Developing with Claude Code
-description: How canVODpy uses AI-assisted development with Claude Code, skills, and CLAUDE.md
+description: How canVODpy uses AI-assisted development with Claude Code, skills, and persistent memory
 ---
 
 # Developing with Claude Code
 
 canVODpy is developed with [Claude Code](https://docs.anthropic.com/en/docs/claude-code),
-Anthropic's agentic coding CLI. This page documents how we use it and how contributors
-can reproduce the same setup.
+Anthropic's agentic coding CLI. This page documents the setup, the breadcrumb trail
+Claude follows to understand the project, and how contributors can use it.
 
 ---
 
-## What is Claude Code?
-
-Claude Code is a terminal-based AI assistant that reads your codebase, runs commands,
-edits files, and executes multi-step engineering tasks. It operates inside your local
-environment — no code leaves your machine except as API calls to Anthropic.
+## Quick start
 
 ```bash
-# Install
+# Install Claude Code
 npm install -g @anthropic-ai/claude-code
 
-# Run in the project root
+# Run in the project root — CLAUDE.md loads automatically
 cd canvodpy
 claude
 ```
 
+Claude will automatically read `CLAUDE.md`, which provides scientific context,
+architecture overview, conventions, and pointers to deeper documentation.
+
+!!! tip "You don't need Claude Code to contribute"
+
+    `CLAUDE.md` is a plain markdown file that also serves as a human-readable
+    summary of project conventions. Everything documented there applies whether
+    you use Claude Code or not.
+
 ---
 
-## CLAUDE.md — Project Instructions
+## The breadcrumb trail
 
-The file `CLAUDE.md` at the repository root provides persistent instructions that
-Claude Code loads automatically in every session. It contains:
+When Claude Code starts, it follows this chain to build understanding:
 
-- **Active skills** — domain-specific knowledge modules Claude applies automatically
-- **Project overview** — package structure and key components
-- **Conventions** — tooling, testing, linting, dataset structure
-
-```markdown title="CLAUDE.md (excerpt)"
-## Skills — always apply automatically
-
-| Skill | Apply when |
-|---|---|
-| `xarray` | Working with xarray.Dataset / DataArray |
-| `zarr-python` | Working with Zarr stores, Icechunk |
-| `pydantic` | Working with Pydantic models, validators |
-| `python-testing-patterns` | Writing or reviewing pytest tests |
-| `uv-package-manager` | Running uv, editing pyproject.toml |
-| `marimo-notebook` | Writing or editing marimo notebooks |
-
-## Conventions
-
-- Monorepo managed with `uv` workspaces
-- Type checking: `uv run ty check`
-- Linting/formatting: `uv run ruff check` / `uv run ruff format`
-- Tests: `uv run pytest`; integration tests marked `@pytest.mark.integration`
-- Dataset structure: `(epoch, sid)` dims, `"File Hash"` attr required
+```
+CLAUDE.md (auto-loaded)
+├── Scientific context (GNSS-T, VOD, key domain concepts)
+├── Architecture (12 packages, 4 API levels, data contracts)
+├── Conventions (uv, ruff, ty, pytest, commitizen)
+├── Skills table (15+ domain skills, auto-applied)
+├── Guardrails (what NOT to change without running audits)
+└── Key documentation pointers:
+    ├── docs/guides/ai-development.md  ← you are here
+    ├── docs/architecture.md           ← system design & data flow
+    ├── docs/principles.md             ← design philosophy
+    ├── docs/guides/api-levels.md      ← L1-L4 API explanation
+    ├── docs/guides/getting-started.md ← setup & first run
+    ├── docs/findings/                 ← scientific comparison results
+    └── docs/packages/*/overview.md    ← per-package deep dives
 ```
 
-!!! tip "Contributors"
-
-    You do not need Claude Code to contribute. The `CLAUDE.md` file is simply a
-    markdown file — it also serves as a human-readable summary of project conventions.
+Additionally, Claude Code maintains **persistent memory** across sessions in
+`.claude/projects/<hash>/memory/`, storing architectural decisions, known issues,
+and project conventions discovered during development.
 
 ---
 
 ## Skills
 
-Skills are domain-specific knowledge modules that Claude Code applies contextually.
-They provide deep expertise in specific libraries and patterns without needing to
+Skills are domain-specific knowledge modules that Claude Code applies automatically
+when their domain is relevant. They provide deep expertise without needing to
 re-explain conventions each session.
 
-### Active skills in this project
+### Installed skills
 
-| Skill | What it provides |
-|---|---|
-| `xarray` | Correct usage of dims, coords, attrs, `.sel()`, `.where()`, chunking with Dask |
-| `zarr-python` | Zarr v3 store operations, Icechunk transactions, encoding, compression |
-| `pydantic` | BaseModel patterns, validators, `ConfigDict`, `model_dump()`, frozen models |
-| `python-testing-patterns` | pytest fixtures, parametrize, mocking, `tmp_path`, assertion patterns |
-| `uv-package-manager` | `uv run`, `uv add`, workspace management, `pyproject.toml` editing |
-| `marimo-notebook` | Marimo cell structure, reactive execution, `mo.ui` widgets |
+| Skill | What it provides | Install |
+|---|---|---|
+| `xarray` | Dims, coords, attrs, `.sel()`, `.where()`, Dask chunking | `npx skills add tondevrel/scientific-agent-skills@xarray -g -y` |
+| `zarr-python` | Zarr v3 stores, encoding, compression, parallel I/O | `npx skills add davila7/claude-code-templates@zarr-python -g -y` |
+| `icechunk` | Icechunk transactions, branching, time travel, xarray integration | Manual: copy `SKILL.md` to `~/.claude/skills/icechunk/` |
+| `pydantic` | BaseModel patterns, validators, `ConfigDict`, frozen models | `npx skills add bobmatnyc/claude-mpm-skills@pydantic -g -y` |
+| `python-testing-patterns` | pytest fixtures, parametrize, mocking, assertion patterns | `npx skills add wshobson/agents@python-testing-patterns -g -y` |
+| `uv-package-manager` | `uv run`, `uv add`, workspace management, `pyproject.toml` | `npx skills add wshobson/agents@uv-package-manager -g -y` |
+| `marimo-notebook` | Marimo cell structure, reactive execution, `mo.ui` widgets | `npx skills add marimo-team/skills@marimo-notebook -g -y` |
+| `beautiful-mermaid` | Render `.mmd` diagrams to SVG/PNG with themed output | `npx skills add intellectronica/agent-skills@beautiful-mermaid -g -y` |
+| `mermaid-diagrams` | Architecture, flow, ERD, C4 diagrams in Mermaid syntax | `npx skills add softaworks/agent-toolkit@mermaid-diagrams -g -y` |
+| `scientific-writing` | IMRAD manuscripts, citations, reporting guidelines | `npx skills add davila7/claude-code-templates@scientific-writing -g -y` |
+| `context-mode` | Large output handling, log analysis, data processing | MCP plugin (auto-configured) |
+| `notebooklm` | Generate podcasts, reports, quizzes from project sources | `pip install notebooklm-py && notebooklm skill install` |
+| `find-skills` | Discover and install new skills from the ecosystem | `npx skills add vercel-labs/skills@find-skills -g -y` |
+| `agent-browser` | Browser automation for testing and scraping | `npx skills add vercel-labs/agent-browser@agent-browser -g -y` |
+| `simplify` | Review changed code for reuse, quality, efficiency | Built-in Claude Code skill |
 
-### Installing skills
-
-Skills are installed globally and available across all projects:
+### Installing all skills at once
 
 ```bash
-# From the Claude Code CLI
-claude /install-skill <skill-name>
+# Core scientific stack
+npx skills add tondevrel/scientific-agent-skills@xarray -g -y
+npx skills add davila7/claude-code-templates@zarr-python -g -y
+npx skills add bobmatnyc/claude-mpm-skills@pydantic -g -y
+
+# Development workflow
+npx skills add wshobson/agents@python-testing-patterns -g -y
+npx skills add wshobson/agents@uv-package-manager -g -y
+npx skills add marimo-team/skills@marimo-notebook -g -y
+
+# Diagrams & documentation
+npx skills add intellectronica/agent-skills@beautiful-mermaid -g -y
+npx skills add softaworks/agent-toolkit@mermaid-diagrams -g -y
+npx skills add davila7/claude-code-templates@scientific-writing -g -y
+
+# Utilities
+npx skills add vercel-labs/skills@find-skills -g -y
+npx skills add vercel-labs/agent-browser@agent-browser -g -y
+pip install notebooklm-py && notebooklm skill install
 ```
-
----
-
-## Memory
-
-Claude Code maintains a persistent memory directory per project at
-`.claude/projects/<project-hash>/memory/`. This stores:
-
-- Architectural decisions confirmed across sessions
-- Key file paths and package structure
-- Solutions to recurring problems
-- User preferences
-
-Memory is automatically consulted at the start of each session, so Claude does not
-re-discover the same patterns repeatedly.
 
 ---
 
 ## Typical workflows
 
+### Exploring the codebase
+
+```
+> Explain how SBF broadcast ephemeris differs from SP3 agency ephemeris
+
+Claude will:
+1. Read CLAUDE.md scientific context (auto-loaded)
+2. Follow breadcrumb to docs/findings/ephemeris_source_architecture.md
+3. Read the EphemerisProvider ABC and both implementations
+4. Explain with domain-correct terminology
+```
+
 ### Code generation
 
 ```
-> Add a new reader for NMEA format that follows the GNSSDataReader ABC
+> Add a new reader for NMEA format following the GNSSDataReader ABC
 
-Claude Code will:
-1. Read the base class (GNSSDataReader)
-2. Study an existing reader (Rnxv3Obs or SbfReader) for patterns
-3. Generate the new reader with proper Pydantic model, to_ds(), iter_epochs()
-4. Write tests following existing test patterns
-5. Register the reader in the factory
+Claude will:
+1. Read GNSSDataReader base class
+2. Study Rnxv3Obs and SbfReader for patterns
+3. Generate the reader with proper Pydantic model, to_ds(), iter_epochs()
+4. Write tests following existing patterns
+5. Register in the factory
 ```
 
-### Documentation
+### Running the audit suite
 
 ```
-> Document the coordinate transform pipeline in canvod-auxiliary
+> Run the audit tests and explain any failures
 
-Claude Code will:
-1. Read the source code for compute_spherical_coordinates()
-2. Trace the ECEF → ENU → spherical conversion
-3. Write a documentation page with correct formulas and code examples
-4. Add Navipedia references for GNSS-specific terms
-```
-
-### Debugging
-
-```
-> The store write fails with "Could not serialize object of type _HLGExprSequence"
-
-Claude Code will:
-1. Search for the error in the codebase
-2. Identify it comes from calling .load() on a Dask-backed dataset
-3. Trace the call path to _prepare_store_for_overwrite()
-4. Suggest .compute() or rechunking before serialisation
+Claude will:
+1. Run: just test-audit
+2. Parse test output (60+ tests across 4 tiers)
+3. For failures: read the relevant comparison engine code
+4. Explain what scientific property was violated
 ```
 
 ---
 
-## Diagram rendering
+## Three-tier audit suite
 
-Mermaid diagrams are rendered to SVG and PNG using
-[beautiful-mermaid](https://github.com/lukilabs/beautiful-mermaid). Source files
-live in `docs/diagrams/*.mmd`.
+The [canvod-audit](../packages/audit/overview.md) package provides scientifically
+defensible verification across four tiers:
 
-```bash
-# Claude Code renders via the beautiful-mermaid skill:
-> Render docs/diagrams/01-package-structure.mmd with tokyo-night theme
-```
+| Tier | What it verifies | CI |
+|---|---|---|
+| 0 | Reader self-consistency (read twice = identical) | test_platforms.yml |
+| 1a | SBF vs RINEX structural consistency | audit.yml |
+| 1b | Broadcast vs agency ephemeris angular agreement | audit.yml |
+| 2 | Regression freeze/thaw round-trips | audit.yml |
+| 3 | vs gnssvod (Humphrey et al.) — external validation | Manual |
+
+The audit CI runs on every push that touches readers, store, auxiliary, or audit code.
+It uses real GNSS test data from a git submodule.
 
 ---
 
 ## Guidelines for AI-assisted contributions
 
-1. **Review all output.** AI-generated code and documentation must be reviewed by a
-   human before merging. The contributor submitting the change is responsible for
-   verifying its correctness.
+1. **Review all output.** AI-generated code must be reviewed by a human before merging.
+   The contributor submitting the change is responsible for correctness.
 
-2. **Run the test suite.** Always run `uv run pytest` after AI-assisted changes.
-   AI can introduce subtle bugs that pass a quick read but fail under test.
+2. **Run the test suite.** Always run `just test` after AI-assisted changes.
 
-3. **Check scientific claims.** AI may hallucinate references, formulas, or numerical
-   values. Cross-check against primary sources (IGS documentation, Navipedia,
-   peer-reviewed literature).
+3. **Check scientific claims.** AI may hallucinate references, formulas, or values.
+   Cross-check against primary sources (IGS documentation, Navipedia, literature).
 
 4. **Commit attribution.** Commits with significant AI assistance include:
    ```
    Co-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>
    ```
 
-5. **No secrets.** Never paste API keys, credentials, or private data into an AI
-   tool. Claude Code operates locally but sends prompts to Anthropic's API.
+5. **No secrets.** Never paste API keys, credentials, or private data into an AI tool.
+   Claude Code operates locally but sends prompts to Anthropic's API.
+
+---
+
+## Related pages
+
+- [Architecture](../architecture.md) — system design and data flow
+- [Getting Started](getting-started.md) — setup and first run
+- [API Levels](api-levels.md) — the four API levels explained
+- [Audit Overview](../packages/audit/overview.md) — three-tier verification suite

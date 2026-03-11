@@ -265,3 +265,7 @@ flowchart TD
     - Additional `pyproject.toml` per package
     - Developers must understand the namespace package mechanism
     - Coordinated releases required for consistent versioning
+
+---
+
+**Next in the trail:** [Design Principles](principles.md) · [API Levels](guides/api-levels.md) · [Getting Started](guides/getting-started.md) · [AI Development](guides/ai-development.md)
