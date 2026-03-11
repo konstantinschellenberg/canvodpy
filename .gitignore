@@ -1,8 +1,10 @@
 # ============================================================================
-# Claude Code
+# Claude Code — track project setup, ignore private state
 # ============================================================================
-CLAUDE.md
-.claude/
+# CLAUDE.md files are tracked (project + package instructions)
+# .claude/commands/ is tracked (slash commands ship with the repo)
+.claude/*
+!.claude/commands/
 
 # ============================================================================
 # Python
