@@ -122,6 +122,20 @@ markers = [
 
 [tool.coverage.run]
 relative_files = true
+source = [
+    "canvodpy/src",
+    "packages/canvod-auxiliary/src",
+    "packages/canvod-grids/src",
+    "packages/canvod-readers/src",
+    "packages/canvod-store/src",
+    "packages/canvod-store-metadata/src",
+    "packages/canvod-virtualiconvname/src",
+    "packages/canvod-utils/src",
+    "packages/canvod-viz/src",
+    "packages/canvod-vod/src",
+    "packages/canvod-ops/src",
+    "packages/canvod-audit/src",
+]
 
 # ============================================================================
 # Commitizen Configuration (Conventional Commits)
