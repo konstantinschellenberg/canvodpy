@@ -34,6 +34,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _clean_attrs(attrs: dict) -> dict:
+    """Convert numpy/non-JSON types to Python builtins for Zarr compatibility."""
+    clean: dict = {}
+    for k, v in attrs.items():
+        if hasattr(v, "item"):  # numpy scalar
+            clean[k] = v.item()
+        elif isinstance(v, dict):
+            clean[k] = _clean_attrs(v)
+        elif isinstance(v, (list, tuple)):
+            clean[k] = [x.item() if hasattr(x, "item") else x for x in v]
+        else:
+            clean[k] = v
+    return clean
+
+
 def _get_store(store_path: Path) -> MyIcechunkStore:
     """Lazy import and instantiate ``MyIcechunkStore``."""
     try:
@@ -863,6 +878,166 @@ class AnalysisStorage:
             f"metadata/{dataset_name}/{grid_name}/statistics",
             f"statistics for {dataset_name}/{grid_name}",
         )
+
+    # ------------------------------------------------------------------
+    # Per-cell timeseries
+    # ------------------------------------------------------------------
+
+    def store_percell_timeseries(
+        self,
+        percell_ds: xr.Dataset,
+        system: str,
+        band: str,
+        code: str,
+        branch: str = "per_cell",
+        metadata: dict[str, Any] | None = None,
+    ) -> str:
+        """Store a per-cell timeseries dataset for a system/band/code combination.
+
+        Parameters
+        ----------
+        percell_ds : xr.Dataset
+            Per-cell timeseries dataset with dims ``(cell, time)``.
+        system : str
+            GNSS system prefix (e.g. ``'G'``, ``'E'``).
+        band : str
+            Frequency band (e.g. ``'L1'``, ``'E1'``).
+        code : str
+            Tracking code (e.g. ``'C'``, ``'L'``).
+        branch : str
+            Icechunk branch name (default: ``'per_cell'``).
+        metadata : dict, optional
+            Additional metadata to attach to the dataset.
+
+        Returns
+        -------
+        str
+            Icechunk snapshot ID.
+
+        """
+        group_name = f"{system}_{band}_{code}"
+        logger.info(
+            "Storing per-cell timeseries to group '%s' on branch '%s'",
+            group_name,
+            branch,
+        )
+
+        # Ensure branch exists
+        try:
+            self.store.repo.create_branch(
+                branch, self.store.repo.ancestry(branch="main")[0]
+            )
+        except Exception:
+            pass  # Branch already exists
+
+        # Clean attributes for JSON serializability
+        ds = percell_ds.copy()
+        ds.attrs = _clean_attrs(ds.attrs)
+        for var in ds.data_vars:
+            ds[var].attrs = _clean_attrs(ds[var].attrs)
+
+        # Add processing metadata
+        ds.attrs.update(
+            {
+                "gnss_system": system,
+                "frequency_band": band,
+                "signal_code": code,
+                "group_name": group_name,
+                "data_type": "per_cell_timeseries",
+                "created_at": datetime.now().isoformat(),
+            }
+        )
+        if metadata:
+            ds.attrs.update(_clean_attrs(metadata))
+
+        # Optimized chunking for per-cell data
+        ncells = ds.sizes.get("cell", 1)
+        chunks = {"cell": min(1000, ncells), "time": -1}
+        ds = ds.chunk(chunks)
+
+        with self.store.writable_session(branch=branch) as session:
+            import dask
+            from icechunk.xarray import to_icechunk
+
+            with dask.config.set(scheduler="threads", num_workers=4):
+                to_icechunk(ds, session, group=group_name, mode="w")
+            snapshot_id: str = session.commit(
+                f"Stored per-cell timeseries for {group_name}"
+            )
+
+        logger.info("Per-cell timeseries stored (snapshot: %s)", snapshot_id[:8])
+        return snapshot_id
+
+    def load_percell_timeseries(
+        self,
+        system: str,
+        band: str,
+        code: str,
+        branch: str = "per_cell",
+    ) -> xr.Dataset:
+        """Load a per-cell timeseries dataset.
+
+        Parameters
+        ----------
+        system : str
+            GNSS system prefix.
+        band : str
+            Frequency band.
+        code : str
+            Tracking code.
+        branch : str
+            Icechunk branch name (default: ``'per_cell'``).
+
+        Returns
+        -------
+        xr.Dataset
+            Per-cell timeseries dataset.
+
+        Raises
+        ------
+        ValueError
+            If the requested group does not exist.
+
+        """
+        group_name = f"{system}_{band}_{code}"
+
+        try:
+            with self.store.readonly_session(branch=branch) as session:
+                return xr.open_zarr(session.store, group=group_name, consolidated=False)
+        except Exception as exc:
+            available = self.list_percell_datasets(branch=branch)
+            raise ValueError(
+                f"Per-cell dataset '{group_name}' not found on branch '{branch}'. "
+                f"Available: {available}"
+            ) from exc
+
+    def list_percell_datasets(self, branch: str = "per_cell") -> list[str]:
+        """List all per-cell timeseries datasets in the store.
+
+        Parameters
+        ----------
+        branch : str
+            Icechunk branch name (default: ``'per_cell'``).
+
+        Returns
+        -------
+        list of str
+            Sorted list of group names in ``system_band_code`` format.
+
+        """
+        try:
+            groups = self.store.list_groups(branch=branch)
+            return sorted(groups)
+        except Exception:
+            logger.debug("No per-cell datasets found on branch '%s'", branch)
+            return []
+
+    def has_percell_timeseries(
+        self, system: str, band: str, code: str, branch: str = "per_cell"
+    ) -> bool:
+        """Return ``True`` if a per-cell timeseries exists for the given combination."""
+        group_name = f"{system}_{band}_{code}"
+        return group_name in self.list_percell_datasets(branch=branch)
 
     def delete_all_metadata(self, dataset_name: str, grid_name: str) -> str:
         """Delete the entire metadata subtree for a dataset+grid pair."""
