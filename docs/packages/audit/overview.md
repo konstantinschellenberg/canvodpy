@@ -26,8 +26,6 @@ Traditional software testing catches many of these issues, but not all:
 ```mermaid
 graph LR
     subgraph "Tier 0: Self-Consistency"
-        A0["canvodpy"] -->|same data| C0["audit_vs_gnssvodpy()"]
-        B0["gnssvodpy"] -->|same data| C0
         D0["L1 store"] -->|same config| E0["audit_api_levels()"]
         F0["L2/L3/L4"] -->|same config| E0
     end
@@ -49,8 +47,7 @@ graph LR
         L["gnssvod output"] --> K
     end
 
-    C0 --> M{{"PASS / FAIL"}}
-    E0 --> M
+    E0 --> M{{"PASS / FAIL"}}
     C --> M
     E --> M
     H --> M
@@ -59,7 +56,7 @@ graph LR
 
 | Tier | What it answers | When to run |
 |------|----------------|-------------|
-| **Tier 0: Self-consistency** | Does canvodpy match gnssvodpy? Do API levels agree? | After any algorithm or API change |
+| **Tier 0: Self-consistency** | Do all API levels produce identical output? | After any algorithm or API change |
 | **Tier 1: Internal consistency** | Do different code paths through canvodpy agree? | After changing readers, ephemeris providers, or coordinate transforms |
 | **Tier 2: Regression** | Did a code change alter the outputs? | After any code change (CI) |
 | **Tier 3: External** | Does canvodpy agree with independent implementations? | Before publication, after major algorithm changes |
@@ -148,47 +145,7 @@ This is critical for honest reporting. If you drop 50% of the data to make the c
 
 ### Tier 0: Self-consistency
 
-Self-consistency checks verify that **canvodpy agrees with its predecessor** and that **all API levels produce identical output**.
-
-#### canvodpy vs gnssvodpy
-
-gnssvodpy is canvodpy's predecessor implementation. canvodpy's coordinate transform module was migrated directly from gnssvodpy — the algorithms are identical (`scipy.interpolate.CubicHermiteSpline` for SP3 orbit interpolation, `pymap3d.ecef2enu` for the ECEF→ENU transform, `arctan2(East, North)` for navigation-convention azimuth). Both tools use the shared canopy receiver position for all receivers (`receiver_position_mode: shared`).
-
-**Canopy group: bit-identical.** SNR, phi, and theta are exactly zero-difference between canvodpy and gnssvodpy for the canopy receiver. This confirms that the RINEX reader, SP3 interpolation, and coordinate transform chain are correct.
-
-**Reference group: known differences (~20 arcseconds).** All reference phi and theta values differ by approximately 1×10⁻⁴ rad (~20 arcseconds, ~6×10⁻³ degrees). This affects 100% of reference-frame values. The root cause is **non-deterministic floating-point accumulation** in the SP3 Hermite interpolation: each tool independently preprocesses SP3 orbits into an auxiliary Zarr cache (`aux_{YYYYDDD}.zarr`), and `CubicHermiteSpline` evaluated via `ThreadPoolExecutor` produces subtly different satellite ECEF positions across runs due to floating-point non-associativity. The satellite position differences are sub-nanometer but propagate to ~20 arcsecond angular differences at 20,000 km range. Additionally, 9 cells exhibit ~2π (360°) wrap-around differences where the azimuth falls near the 0°/360° boundary — both values are geometrically equivalent.
-
-**canvodpy is correct.** Independent recomputation from the auxiliary data confirms that canvodpy's stored values match to within 1×10⁻⁸ rad (~0.002 arcseconds), while the gnssvodpy store values diverge by ~1×10⁻⁴ rad from the same recomputation. The gnssvodpy store was produced in an earlier session whose auxiliary cache has since been overwritten.
-
-**These differences do not affect VOD.** The VOD retrieval algorithm uses only canopy-frame angles (`canopy_ds["phi"]`, `canopy_ds["theta"]`), never the reference group angles. The reference group serves as a baseline for separating vegetation attenuation from atmospheric effects, and the ~20 arcsecond offset is well below the angular resolution relevant to VOD computation.
-
-| Variable | Canopy group | Reference group | Impact on VOD |
-|----------|-------------|-----------------|---------------|
-| SNR | bit-identical | bit-identical | None |
-| phi (azimuth) | bit-identical | ~1×10⁻⁴ rad (~20") all cells | None (not used in VOD) |
-| theta (elevation) | bit-identical | ~1×10⁻⁴ rad (~20") all cells | None (not used in VOD) |
-| NaN mask | bit-identical | 165/5.5M cells disagree | None |
-| VOD | bit-identical | N/A | — |
-
-#### Known issue: `overwrite` store strategy is broken
-
-The `rinex_store_strategy: overwrite` option in `processing.yaml` is non-functional. The `_prepare_store_for_overwrite()` method calls `.load()` on a Dask-backed dataset to preserve existing data before clearing the store, but the Icechunk session object cannot be pickled for Dask's distributed scheduler, raising `ValueError: You must opt-in to pickle writable sessions`.
-
-**Workaround**: Use `rinex_store_strategy: append` instead. However, appending to an existing store that already contains data from a previous run will mix old and new epochs (e.g. 120,960 epochs instead of the expected 17,280). For clean audit runs, either delete the store directory first or use a fresh `rinex_store_name`.
-
-**Impact on audit**: All audit stores are now produced into scenario-specific subdirectories under `/Volumes/ExtremePro/canvod_audit_output/` (e.g. `tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store`), ensuring a clean store for each run.
-
-```python
-from canvod.audit.runners import audit_vs_gnssvodpy
-
-result = audit_vs_gnssvodpy(
-    canvodpy_rinex="/path/to/canvodpy_store",
-    gnssvodpy_rinex="/path/to/gnssvodpy_store",
-    canvodpy_vod="/path/to/canvodpy_vod",    # optional
-    gnssvodpy_vod="/path/to/gnssvodpy_vod",  # optional
-)
-print(result.summary())
-```
+Self-consistency checks verify that **all API levels produce identical output** from the same input data.
 
 #### API level consistency
 
@@ -208,6 +165,15 @@ print(result.summary())
 ### Tier 1: Internal consistency
 
 Internal consistency checks verify that **different paths through canvodpy produce equivalent results** for the same underlying data. This is the strongest form of self-validation: if your SBF and RINEX readers produce the same dataset from the same observation session, both are probably correct (or both are wrong in the same way — which is why Tier 3 exists).
+
+!!! warning "Extending the audit is mandatory"
+
+    Adding a new reader, ephemeris source, or processing path is **not complete**
+    until a corresponding Tier 1 audit runner exists. Every new code path must be
+    cross-validated against at least one existing path on shared test data. Define
+    tolerances, document expected differences, and add integration tests. See the
+    [Extending Readers](../readers/extending.md#audit-integration) guide for the
+    full checklist.
 
 #### SBF vs RINEX
 
@@ -667,7 +633,6 @@ Run all tiers for a single site:
 
 ```python
 from canvod.audit.runners import (
-    audit_vs_gnssvodpy,
     audit_api_levels,
     audit_sbf_vs_rinex,
     audit_ephemeris_sources,
@@ -677,8 +642,7 @@ from canvod.audit.runners import (
 )
 
 # Tier 0: Self-consistency
-r0a = audit_vs_gnssvodpy(canvodpy_rinex="stores/canvodpy", gnssvodpy_rinex="stores/gnssvodpy")
-r0b = audit_api_levels({"l1": "stores/l1", "l2": "stores/l2"})
+r0 = audit_api_levels({"l1": "stores/l1", "l2": "stores/l2"})
 
 # Tier 1: Internal consistency
 r1a = audit_sbf_vs_rinex(sbf_store="stores/sbf", rinex_store="stores/rinex")

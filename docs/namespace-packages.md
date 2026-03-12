@@ -157,16 +157,3 @@ print(readers.__file__)  # e.g. …/site-packages/canvod/readers/__init__.py
     # CORRECT — creates a namespace sub-package
     module-name = "canvod.readers"
     ```
-
----
-
-## Prior Art
-
-Namespace packages are used by major Python ecosystems:
-
-| Project | Namespace |
-|---------|-----------|
-| Azure SDK | `azure.storage`, `azure.compute`, `azure.ai` |
-| Google Cloud | `google.cloud.storage`, `google.cloud.compute` |
-| Zope | `zope.interface`, `zope.component` |
-| Sphinx extensions | `sphinxcontrib.*` |

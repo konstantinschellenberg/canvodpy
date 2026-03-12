@@ -2,8 +2,8 @@ flowchart TD
     Start([🚀 Start Processing]) --> Input
 
     subgraph Input[📥 Data Ingestion]
-        RINEX["📄 RINEX OBS Files<br/>(.XXo, .rnx)"]
-        SBF["📦 SBF Binary Files<br/>(.XX_, .sbf)"]
+        RINEX["📄 RINEX OBS Files<br/>(.rnx)"]
+        SBF["📦 SBF Binary Files<br/>(.sbf)"]
     end
 
     subgraph Ephemeris[🛰️ Ephemeris Sources]

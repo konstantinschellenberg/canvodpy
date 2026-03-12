@@ -277,7 +277,7 @@ flowchart TD
 
     subgraph Analysis["VOD Analysis"]
         VOD["VodComputer<br/>tau-omega model"]
-        GRID["Grid Assignment<br/>equal-area / HEALPix"]
+        GRID["Grid Assignment<br/>equal-area / geodesic"]
     end
 
     FILES --> FM --> READER

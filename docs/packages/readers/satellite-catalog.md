@@ -5,6 +5,28 @@ description: Time-aware GNSS satellite metadata from the IGS igs_satellite_metad
 
 # Satellite Catalog — IGS SINEX Metadata
 
+## Why satellite metadata matters for GNSS-T
+
+GNSS-Transmissometry derives vegetation properties from the **attenuation** of
+satellite signals passing through a canopy. Several satellite-level properties
+directly affect signal interpretation:
+
+- **Transmit power (TX)** — different satellite generations broadcast at different
+  power levels (e.g. GPS-IIF: 240 W, GPS-III: 370 W). When computing transmittance
+  as the ratio of canopy-to-reference SNR, the absolute power cancels — but mixed
+  constellations and satellite replacements can introduce systematic biases if not
+  accounted for.
+- **PRN reassignments** — a PRN code (e.g. `G01`) is not permanently bound to one
+  satellite vehicle. When a satellite is decommissioned and its PRN reassigned to a
+  new vehicle, the TX power, antenna pattern, and orbital characteristics change.
+  Long time series that span a reassignment must be flagged to avoid false trends.
+- **Orbital plane and slot** — the satellite's position in the constellation
+  determines its sky track over the receiver site, which affects the zenith angle
+  distribution and therefore the VOD sampling geometry.
+
+The IGS SINEX catalog provides all of this information in a single, authoritative,
+machine-readable file — enabling canvodpy to track these properties automatically.
+
 ## Overview
 
 The `SatelliteCatalog` class parses the IGS `igs_satellite_metadata.snx` SINEX file —

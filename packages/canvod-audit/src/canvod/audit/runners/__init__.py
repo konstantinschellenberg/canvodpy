@@ -4,7 +4,6 @@ Each runner takes store paths, runs comparisons, prints progress, and
 returns an ``AuditResult`` with ``.passed``, ``.summary()``, ``.to_polars()``.
 
 Tier 0 — canvodpy self-consistency:
-    ``audit_vs_gnssvodpy``       canvodpy vs gnssvodpy (predecessor)
     ``audit_api_levels``         L1 vs L2 vs L3 vs L4
 
 Tier 1 — internal consistency:
@@ -35,7 +34,6 @@ from canvod.audit.runners.round_trip import audit_store_round_trip
 from canvod.audit.runners.sbf_vs_rinex import audit_sbf_vs_rinex
 from canvod.audit.runners.temporal_chunking import audit_temporal_chunking
 from canvod.audit.runners.vs_gnssvod import audit_vs_gnssvod, gnssvod_df_to_xarray
-from canvod.audit.runners.vs_gnssvodpy import audit_vs_gnssvodpy
 
 __all__ = [
     "AuditResult",
@@ -48,7 +46,6 @@ __all__ = [
     "audit_store_round_trip",
     "audit_temporal_chunking",
     "audit_vs_gnssvod",
-    "audit_vs_gnssvodpy",
     "freeze_checkpoint",
     "gnssvod_df_to_xarray",
     "load_group",

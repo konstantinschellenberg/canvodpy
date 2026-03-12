@@ -33,7 +33,7 @@ The `canvod-readers` package provides validated parsers for [GNSS](https://gssc.
 | Feature | `Rnxv3Obs` | `SbfReader` |
 | ------- | ---------- | ----------- |
 | Format | Plain text | Binary |
-| Extension | `.rnx`, `.XXo` | `.XX_`, `*.sbf` |
+| Extension | `.rnx` | `.sbf` |
 | Satellite geometry (θ, φ) | SP3 download | **Embedded** |
 | Extra metadata | Header only | PVT · DOP · quality |
 | `to_ds()` | ✓ | ✓ |
@@ -54,8 +54,8 @@ The `canvod-readers` package provides validated parsers for [GNSS](https://gssc.
 
 ```mermaid
 graph TD
-    A1["RINEX v3 File (.XXo)"] --> B1["Rnxv3Obs (+ SP3/CLK)"]
-    A2["SBF File (.XX_)"] --> B2["SbfReader"]
+    A1["RINEX v3 File (.rnx)"] --> B1["Rnxv3Obs (+ SP3/CLK)"]
+    A2["SBF File (.sbf)"] --> B2["SbfReader"]
     B1 --> C["validate_dataset()"]
     B2 --> C
     C --> D["`**xarray.Dataset**
@@ -172,7 +172,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 
     datasets = [
         Rnxv3Obs(fpath=f).to_ds(keep_data_vars=["SNR"])
-        for f in sorted(Path("/data/").glob("*.25o"))
+        for f in sorted(Path("/data/").glob("*.rnx"))
     ]
 
     time_series = xr.concat(datasets, dim="epoch")

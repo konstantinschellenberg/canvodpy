@@ -22,12 +22,8 @@ AUDIT_ROOT = Path("/Volumes/ExtremePro/canvod_audit_output")
 CHECKPOINT_DIR = AUDIT_ROOT / "tier2_checkpoints"
 
 STORES = {
-    "tier0_rinex": (
-        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_RINEX_store",
-    ),
-    "tier0_vod": (
-        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_VOD_store",
-    ),
+    "tier0_rinex": (AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_RINEX_store",),
+    "tier0_vod": (AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_VOD_store",),
     "tier1_sbf_agency": (
         AUDIT_ROOT / "tier1_sbf_vs_rinex" / "Rosalia" / "canvodpy_SBF_allvars_store",
     ),

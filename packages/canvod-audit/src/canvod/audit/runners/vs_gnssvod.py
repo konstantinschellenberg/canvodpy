@@ -59,42 +59,60 @@ from canvod.audit.tolerances import Tolerance, ToleranceTier
 # ---------------------------------------------------------------------------
 
 GNSSVOD_TOLERANCES = {
-    # Both tools read the same trimmed RINEX → SNR must be identical.
-    # Any difference means a parsing bug, not a physical effect.
+    # Both tools read the same trimmed RINEX → SNR must agree.
+    # canvodpy stores SNR as float32 (~7 sig digits), gnssvod uses float64.
+    # RINEX SNR precision is ~0.001 dB (3 decimal places); float32
+    # truncation introduces max ~2e-6 dB error — 1000x below measurement
+    # resolution. Not a bug: float32 is deliberate (halves memory for
+    # large (epoch, sid) arrays).
     "SNR": Tolerance(
-        atol=0.001,
+        atol=1e-5,
         mae_atol=0.0,
         nan_rate_atol=0.05,
-        description="SNR from same RINEX: must agree to parsing precision. "
-        "0.001 dB margin for float representation only.",
+        description="SNR from same RINEX: differs only by float32 vs float64 "
+        "dtype truncation (~1e-6 dB). RINEX precision is ~0.001 dB, so "
+        "float32 error is 1000x below measurement resolution.",
     ),
-    # VOD = -ln(T) * cos(theta). Different ephemeris → different theta →
-    # different cos(theta) scaling. Also sensitive to SNR reference selection.
+    # VOD = -ln(T) * cos(theta). Both tools use the same SNR (identical
+    # RINEX, same formula), so T is identical. VOD differs only because
+    # theta differs — canvodpy uses scipy CubicHermiteSpline (piecewise
+    # cubic, uses SP3 velocities), gnssvod uses numpy degree-16 polyfit
+    # on 4-hour windows (no SP3 velocities). Different interpolation
+    # methods → different satellite ECEF → different theta → different
+    # cos(theta) → systematic VOD difference.
     "VOD": Tolerance(
         atol=0.05,
         mae_atol=0.01,
         nan_rate_atol=0.10,
-        description="VOD retrieval: independent ephemeris and reference "
-        "selection may cause differences. 0.05 is below typical "
-        "measurement uncertainty (~0.1 for forest canopies). "
-        "Higher NaN tolerance because tools may mask different epochs.",
+        description="VOD differs because theta differs (different SP3 "
+        "interpolation methods, not different SP3 files). "
+        "0.05 is below typical measurement uncertainty "
+        "(~0.1 for forest canopies).",
     ),
-    # Azimuth: both tools compute from SP3 → ECEF → ENU → atan2.
-    # Different SP3 products or interpolation → small angular diffs.
+    # Azimuth/Elevation: systematic differences from fundamentally
+    # different SP3 interpolation algorithms (same SP3 file):
+    #   canvodpy: scipy CubicHermiteSpline (uses SP3 positions + velocities)
+    #   gnssvod:  numpy degree-16 polyfit on 4h windows (positions only)
+    # These are NOT floating-point noise — they are real, reproducible
+    # differences between two valid interpolation approaches.
     # Wrap-around at 0°/360° handled by comparison adapter.
     "Azimuth": Tolerance(
         atol=0.5,
-        mae_atol=0.0,
-        nan_rate_atol=0.05,
-        description="Azimuth (degrees): SP3 interpolation differences. "
-        "0.5° ≈ 0.009 rad, well within one hemigrid cell (2°).",
+        mae_atol=0.01,
+        nan_rate_atol=0.15,
+        description="Azimuth (degrees): systematic difference from different "
+        "SP3 interpolation methods (Hermite cubic vs degree-16 polyfit). "
+        "0.5° well within one hemigrid cell (2°). "
+        "NaN rate tolerance 15%: gnssvod drops elev <= -10°, "
+        "canvodpy retains as NaN.",
     ),
-    # Elevation: same source of error as azimuth.
     "Elevation": Tolerance(
         atol=0.5,
-        mae_atol=0.0,
-        nan_rate_atol=0.05,
-        description="Elevation (degrees): SP3 interpolation differences.",
+        mae_atol=0.01,
+        nan_rate_atol=0.15,
+        description="Elevation (degrees): same root cause as Azimuth — "
+        "different SP3 interpolation methods. "
+        "NaN rate tolerance 15% for gnssvod elevation cutoff difference.",
     ),
 }
 
@@ -325,13 +343,19 @@ def detect_band_map(
         if not matching_snr:
             continue
 
-        # Pick the lexicographically first code (matches gnssvod priority)
-        sorted_codes = sorted(codes)
-        primary_code = sorted_codes[0]
-
-        snr_col = f"S{band_num}{primary_code}"
-        if snr_col not in ds_gnssvod.data_vars:
-            # Fallback: use any matching gnssvod column
+        # Match canvodpy code to the gnssvod SNR column's tracking code
+        # e.g. gnssvod has S1C → code "C", so pick canvodpy code "C"
+        snr_col = None
+        primary_code = None
+        for mc in matching_snr:
+            gnssvod_code = mc[2]  # e.g. "C" from "S1C"
+            if gnssvod_code in codes:
+                snr_col = mc
+                primary_code = gnssvod_code
+                break
+        if snr_col is None:
+            # Fallback: lex-first code with first matching gnssvod column
+            primary_code = sorted(codes)[0]
             snr_col = matching_snr[0]
 
         vod_col = gnssvod_vod_cols.get(band_num)
@@ -462,7 +486,11 @@ def _load_canvodpy(canvodpy_store, canvodpy_ds, group):
         raise ValueError("Provide either canvodpy_store or canvodpy_ds.")
 
     store_path = Path(canvodpy_store)
-    if (store_path / ".zgroup").exists() or (store_path / ".zmetadata").exists():
+    if (
+        (store_path / ".zgroup").exists()
+        or (store_path / ".zmetadata").exists()
+        or (store_path / "zarr.json").exists()
+    ):
         ds = xr.open_zarr(str(store_path))
         print(f"canvodpy (Zarr): {dict(ds.sizes)}")
     else:
@@ -524,6 +552,17 @@ def _compare_band(
     if not compare_vars:
         print("  No shared variables to compare")
         return None
+
+    # Align on shared SIDs and epochs before comparison
+    shared_sids = np.intersect1d(ds_canvod_band.sid.values, ds_gnssvod.sid.values)
+    shared_epochs = np.intersect1d(ds_canvod_band.epoch.values, ds_gnssvod.epoch.values)
+    if len(shared_sids) == 0 or len(shared_epochs) == 0:
+        print(
+            f"  No shared sids/epochs (canvod: {len(ds_canvod_band.sid)}, gnssvod: {len(ds_gnssvod.sid)})"
+        )
+        return None
+    ds_canvod_band = ds_canvod_band.sel(sid=shared_sids, epoch=shared_epochs)
+    ds_gnssvod = ds_gnssvod.sel(sid=shared_sids, epoch=shared_epochs)
 
     # Handle azimuth wrap-around
     ds_canvod_band = _wrap_aware_azimuth_diff(ds_canvod_band, ds_gnssvod)

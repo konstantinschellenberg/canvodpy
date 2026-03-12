@@ -5,7 +5,7 @@ verifies bit-identical results.
 
 Stores used
 -----------
-canvodpy RINEX : same as ``run_tier0_vs_gnssvodpy.py``
+canvodpy RINEX : produced by ``produce_canvodpy_store.py``
 
 Results (2026-03-10)
 --------------------
@@ -19,8 +19,7 @@ from canvod.audit.runners import audit_store_round_trip
 from canvod.audit.runners.common import open_store
 
 CANVODPY_RINEX = (
-    "/Volumes/ExtremePro/canvod_audit_output"
-    "/tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store"
+    "/Volumes/ExtremePro/canvod_audit_output/tier0_rinex/Rosalia/canvodpy_RINEX_store"
 )
 
 store = open_store(CANVODPY_RINEX)

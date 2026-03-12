@@ -6,7 +6,7 @@ alongside the audit output.
 
 Prerequisites
 -------------
-1. Tier 0 store: ``tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_store``
+1. Tier 0 store: ``tier0_rinex/Rosalia/canvodpy_store``
 2. Tier 1a store: ``tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_allvars_store``
 3. Tier 1b store: ``tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store``
 """
@@ -29,11 +29,11 @@ VERSION = "0.1.0"
 STORES = {
     # (store_path, groups_to_freeze)
     "tier0_rinex": (
-        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_RINEX_store",
+        AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_RINEX_store",
         ["canopy_01", "reference_01_canopy_01"],
     ),
     "tier0_vod": (
-        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_VOD_store",
+        AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_VOD_store",
         ["canopy_01_vs_reference_01"],
     ),
     "tier1_sbf_agency": (

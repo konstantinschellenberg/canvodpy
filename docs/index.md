@@ -49,7 +49,7 @@ signal-to-noise ratio observations.
 
     ---
 
-    Equal-area, HEALPix, geodesic and four more grid types.
+    Equal-area, geodesic, HTM and four more grid types.
     KDTree cell assignment in O(n log m).
 
     [:octicons-arrow-right-24: canvod-grids](packages/grids/overview.md)
@@ -184,7 +184,7 @@ flowchart TD
 
     ---
 
-    7 hemispheric grid types — equal-area, HEALPix, geodesic and more.
+    7 hemispheric grid types — equal-area, geodesic, HTM and more.
     KDTree-backed O(n log m) cell assignment.
 
 -   :fontawesome-solid-leaf: &nbsp; **canvod-vod**

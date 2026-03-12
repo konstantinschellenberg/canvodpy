@@ -1,7 +1,7 @@
 """Produce the canvodpy RINEX Icechunk store used for Tier 0 audits.
 
 This script runs the canvodpy processing pipeline on the test RINEX data
-to create the store that is compared against the gnssvodpy truth store.
+to create the store used in audit comparisons.
 
 Prerequisites
 -------------

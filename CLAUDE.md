@@ -99,7 +99,7 @@ RINEX/SBF files → Reader → xarray.Dataset(epoch, sid)
 | `canvod-viz` | `canvod.viz` | Visualization and store viewer |
 | `canvod-ops` | `canvod.ops` | Operational pipeline (streaming, monitoring) |
 | `canvod-virtualiconvname` | `canvod.virtualiconvname` | GNSS filename convention parsing and validation |
-| `canvod-audit` | `canvod.audit` | Three-tier verification suite (canvodpy vs gnssvodpy vs gnssvod) |
+| `canvod-audit` | `canvod.audit` | Three-tier verification suite (internal consistency, regression, vs gnssvod) |
 | `canvodpy` | `canvodpy` | Orchestrator, API levels (L1-L4), VodComputer |
 
 ### API levels

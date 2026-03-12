@@ -339,7 +339,7 @@ interoperability and scientific reproducibility.
     ```python
     import xarray as xr
 
-    readers = [SbfReader(fpath=f) for f in sorted(sbf_dir.glob("*.25_"))]
+    readers = [SbfReader(fpath=f) for f in sorted(sbf_dir.glob("*.sbf"))]
 
     obs_list, meta_list = [], []
     for r in readers:
@@ -497,7 +497,7 @@ See [:octicons-arrow-right-24: Satellite Catalog](satellite-catalog.md) for the 
 | Aspect | RINEX v3 (`Rnxv3Obs`) | SBF (`SbfReader`) |
 | ------ | --------------------- | ----------------- |
 | Format | Plain text | Binary |
-| File extension | `.rnx`, `.XXo` | `.XX_`, `*.sbf` |
+| File extension | `.rnx` | `.sbf` |
 | Header | Structured text | `ReceiverSetup` block |
 | Geometry (θ, φ) | Requires SP3 download | **Embedded in file** |
 | Metadata | Header only | Full PVT + quality monitoring |

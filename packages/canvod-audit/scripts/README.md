@@ -9,16 +9,14 @@ Run in this order to reproduce the full audit from scratch:
 ### Tier 0 (RINEX config — see `produce_canvodpy_store.py` docstring)
 
 1. `uv run python produce_canvodpy_store.py` — creates the canvodpy RINEX store
-2. `uv run python run_tier0_vs_gnssvodpy.py` — compares canvodpy vs gnssvodpy RINEX
-3. `uv run python run_tier0_vod.py` — compares canvodpy vs gnssvodpy VOD (auto-computes if needed)
-4. `uv run python run_round_trip.py` — verifies store round-trip integrity
+2. `uv run python run_round_trip.py` — verifies store round-trip integrity
 
 ### Tier 1 (SBF config — see `produce_sbf_store_final.py` docstring)
 
-5. `uv run python produce_sbf_store_final.py` — creates SBF store with agency ephemeris
-6. `uv run python run_tier1_sbf_vs_rinex.py` — compares SBF vs RINEX stores
-7. `uv run python produce_sbf_store_broadcast.py` — creates SBF store with broadcast ephemeris
-8. `uv run python run_tier1_broadcast_vs_agency.py` — compares broadcast vs agency ephemeris
+3. `uv run python produce_sbf_store_final.py` — creates SBF store with agency ephemeris
+4. `uv run python run_tier1_sbf_vs_rinex.py` — compares SBF vs RINEX stores
+5. `uv run python produce_sbf_store_broadcast.py` — creates SBF store with broadcast ephemeris
+6. `uv run python run_tier1_broadcast_vs_agency.py` — compares broadcast vs agency ephemeris
 
 ## Scripts
 
@@ -31,47 +29,6 @@ Runs `process_date('Rosalia', '2025001')` to process 192 RINEX v3.04 files
 `SNR`, `phi`, `theta`.
 
 Requires config changes documented in the script's docstring.
-
-### `run_tier0_vs_gnssvodpy.py` — Tier 0: canvodpy vs gnssvodpy
-
-Three-part comparison:
-
-- **Part 1**: Automatic audit via `audit_vs_gnssvodpy()`. Discovers shared groups
-  (finds `canopy_01`) and compares at EXACT tier. Expected result: **PASS** —
-  SNR, phi, theta are bit-identical.
-
-- **Part 2**: Manual reference-group comparison. canvodpy stores the reference as
-  `reference_01_canopy_01`, gnssvodpy as `reference_01`. Compares at EXACT tier.
-  Expected result: **FAIL** on phi and theta — known ~20 arcsecond difference from
-  non-deterministic Hermite interpolation across independent runs. SNR is bit-identical.
-
-- **Part 3**: Deep-dive statistics for the reference group. Reports per-variable:
-  count of non-zero diffs, max/mean/percentile absolute differences, NaN disagreement
-  counts, and 2π wrap-around cases for phi.
-
-Expected output (2026-03-10):
-
-```
-canopy_01 (auto):  PASS — all three variables bit-identical
-reference (manual): FAIL —
-  SNR:   0 / 1,896,979 non-zero (0.00%)
-  phi:   1,971,909 / 1,971,909 non-zero (100%), max 6.28 rad (2π wrap), mean 1.2e-4 rad
-  theta: 1,971,909 / 1,971,909 non-zero (100%), max 1.2e-4 rad (~20 arcsec)
-  NaN disagreement: 165 cells (133 canvodpy-extra, 32 gnssvodpy-extra)
-  2π wrap-around: 9 cells
-```
-
-### `run_tier0_vod.py` — Tier 0: VOD comparison
-
-Compares VOD, phi, and theta from the canvodpy VOD store against the gnssvodpy
-truth VOD store. Group names differ between tools: canvodpy uses
-`canopy_01_vs_reference_01`, gnssvodpy uses `reference_01_canopy_01`.
-
-If the canvodpy VOD store is empty, the script computes VOD automatically via
-`site.vod.compute_bulk()`.
-
-Expected result: **PASS** — all three variables (VOD, phi, theta) bit-identical.
-1,226,667 VOD values, 1,972,042 phi/theta values compared.
 
 ### `run_round_trip.py` — Infrastructure: store round-trip
 
@@ -114,10 +71,7 @@ All audit stores live under `/Volumes/ExtremePro/canvod_audit_output/`, organize
 
 ```
 canvod_audit_output/
-├── gnssvodpy_based/                              # truth stores (pre-existing)
-│   ├── gnssvodpy_Rinex_Icechunk_Store/
-│   └── gnssvodpy_VOD_Icechunk_Store/
-├── tier0_rinex_vs_gnssvodpy/                     # Tier 0
+├── tier0_rinex/                                   # Tier 0
 │   └── Rosalia/
 │       ├── canvodpy_RINEX_store/
 │       └── canvodpy_VOD_store/
@@ -131,10 +85,8 @@ canvod_audit_output/
 
 | Store | Path | Groups |
 |-------|------|--------|
-| canvodpy RINEX | `.../tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store` | `canopy_01`, `reference_01_canopy_01` |
-| canvodpy VOD | `.../tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_VOD_store` | `canopy_01_vs_reference_01` |
-| gnssvodpy RINEX (truth) | `.../gnssvodpy_based/gnssvodpy_Rinex_Icechunk_Store` | `canopy_01`, `reference_01` |
-| gnssvodpy VOD (truth) | `.../gnssvodpy_based/gnssvodpy_VOD_Icechunk_Store` | `reference_01_canopy_01` |
+| canvodpy RINEX | `.../tier0_rinex/Rosalia/canvodpy_RINEX_store` | `canopy_01`, `reference_01_canopy_01` |
+| canvodpy VOD | `.../tier0_rinex/Rosalia/canvodpy_VOD_store` | `canopy_01_vs_reference_01` |
 | canvodpy RINEX (allvars) | `.../tier1_sbf_vs_rinex/Rosalia/canvodpy_RINEX_allvars_store` | `canopy_01`, `reference_01_canopy_01` |
 | canvodpy SBF (allvars) | `.../tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_allvars_store` | `canopy_01`, `reference_01_canopy_01` |
 | canvodpy SBF (broadcast) | `.../tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store` | `canopy_01`, `reference_01_canopy_01` |

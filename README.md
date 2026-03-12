@@ -50,7 +50,7 @@ canVODpy is organized as a monorepo with independent, composable packages:
 |---|---|
 | **canvod-readers** | RINEX v3.04 and SBF binary file readers |
 | **canvod-auxiliary** | SP3/CLK ephemeris download, interpolation, coordinate transforms |
-| **canvod-grids** | 7 hemispheric grid types (equal-area, HEALPix, geodesic, ...) |
+| **canvod-grids** | 7 hemispheric grid types (equal-area, geodesic, HTM, ...) |
 | **canvod-vod** | Tau-omega VOD retrieval algorithms |
 | **canvod-store** | Versioned storage via Icechunk (Zarr v3) |
 | **canvod-store-metadata** | Store-level provenance (DataCite, ACDD, STAC) |
@@ -58,7 +58,7 @@ canVODpy is organized as a monorepo with independent, composable packages:
 | **canvod-ops** | Configurable preprocessing pipeline |
 | **canvod-utils** | Configuration, date utilities, shared tooling |
 | **canvod-virtualiconvname** | Filename mapping and pre-flight validation |
-| **canvod-audit** | Three-tier verification suite (vs gnssvodpy, internal, vs gnssvod) |
+| **canvod-audit** | Three-tier verification suite (internal consistency, regression, vs gnssvod) |
 | **canvodpy** | Umbrella package — 4 API levels, factory system, orchestrator |
 
 ## Installation

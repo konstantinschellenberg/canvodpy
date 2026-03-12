@@ -26,6 +26,30 @@ gnssvod forces **GFZ rapid** products (``GFZ0MGXRAP``) for GPS week >= 2038
 is configured with ``agency="GFZ", product_type="rapid"`` so both tools
 use byte-identical SP3/CLK files.
 
+SP3 interpolation methods
+-------------------------
+Although both tools read the same SP3 file, they use **fundamentally
+different interpolation algorithms** to compute satellite ECEF positions
+at observation epochs:
+
+- **canvodpy**: ``scipy.interpolate.CubicHermiteSpline`` — piecewise cubic,
+  uses both SP3 positions **and velocities** as constraints.
+- **gnssvod**: ``numpy.polyfit`` with degree-16 polynomial on 4-hour windows
+  (17 SP3 epochs at 15-min spacing). Velocities derived by finite
+  differencing the interpolated positions, not from SP3 velocity data.
+
+This produces systematic (not random) differences in satellite ECEF
+positions → different theta/phi → different cos(theta) in the VOD formula.
+The differences are real, reproducible, and expected.
+
+SNR dtype difference
+--------------------
+canvodpy stores SNR as ``float32`` (deliberate — halves memory for large
+``(epoch, sid)`` arrays). gnssvod uses ``float64``. The RINEX file contains
+SNR values with ~0.001 dB precision (3 decimal places). ``float32``
+truncation introduces max ~2e-6 dB error — 1000x below measurement
+resolution. This is not a bug.
+
 Elevation cutoff strategy
 -------------------------
 gnssvod applies a hard elevation cutoff of -10 deg in ``gnssDataframe()``
@@ -48,8 +72,9 @@ data. The formula is identical to canvodpy's ``TauOmegaZerothOrder``:
     VOD = -ln(10^((SNR_canopy - SNR_reference) / 10)) * cos(zenith_canopy)
 
 Both tools use the canopy station's zenith angle. The only expected
-differences come from Hermite interpolation non-determinism (different
-satellite ECEF positions → different theta → different cos(theta)).
+differences come from the different SP3 interpolation methods described
+above (different satellite ECEF → different theta → different cos(theta)).
+SNR itself is identical (same RINEX, same formula).
 """
 
 from __future__ import annotations
@@ -293,8 +318,8 @@ def _run_gnssvod_vod(
         raise RuntimeError("Cannot find Epoch in gnssvod canopy output")
 
     time_intervals = pd.interval_range(
-        start=pd.Timestamp(epochs.min()),
-        end=pd.Timestamp(epochs.max()) + pd.Timedelta("1s"),
+        start=pd.Timestamp(epochs.min()).normalize(),
+        end=pd.Timestamp(epochs.max()).normalize() + pd.Timedelta("1D"),
         freq="1D",
     )
 
@@ -342,6 +367,22 @@ def _run_gnssvod_vod(
 # ── Step 3: Run canvodpy ─────────────────────────────────────────────────────
 
 
+def _parse_approx_position(rnx_path: Path):
+    """Extract APPROX POSITION XYZ from RINEX header."""
+    from canvod.auxiliary.position.position import ECEFPosition
+
+    with open(rnx_path) as f:
+        for line in f:
+            if "APPROX POSITION XYZ" in line:
+                tokens = line.split()
+                return ECEFPosition(
+                    x=float(tokens[0]), y=float(tokens[1]), z=float(tokens[2])
+                )
+            if "END OF HEADER" in line:
+                break
+    raise ValueError(f"No APPROX POSITION XYZ in {rnx_path}")
+
+
 def _read_and_augment(trimmed_rnx: Path, date_str: str):
     """Read trimmed RINEX and augment with GFZ rapid ephemeris.
 
@@ -359,8 +400,12 @@ def _read_and_augment(trimmed_rnx: Path, date_str: str):
     ds = reader.to_ds()
     print(f"  Read: {dict(ds.sizes)}, vars={list(ds.data_vars)}")
 
-    # Receiver position from RINEX header
-    rx_pos = ECEFPosition.from_ds_metadata(ds)
+    # Receiver position from RINEX header (reader doesn't propagate to attrs,
+    # so parse directly from the file header)
+    try:
+        rx_pos = ECEFPosition.from_ds_metadata(ds)
+    except KeyError:
+        rx_pos = _parse_approx_position(trimmed_rnx)
     print(f"  Receiver ECEF: ({rx_pos.x:.2f}, {rx_pos.y:.2f}, {rx_pos.z:.2f})")
 
     # Augment with GFZ rapid — same product and same files as gnssvod

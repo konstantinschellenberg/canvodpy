@@ -19,7 +19,7 @@ Three-tier verification framework for GNSS-VOD pipeline correctness.
 
 | Tier | What | Status |
 |---|---|---|
-| 0 | canvodpy vs gnssvodpy (bit-identical VOD) | Done |
+| 0 | API level consistency (L1 = L2 = L3 = L4) | Done |
 | 1a | SBF vs RINEX internal consistency | Done |
 | 1b | Broadcast vs agency ephemeris | Done |
 | 2 | Regression freeze/check | Done |
@@ -29,7 +29,6 @@ Three-tier verification framework for GNSS-VOD pipeline correctness.
 
 Output dir: `/Volumes/ExtremePro/canvod_audit_output/`
 - **CRITICAL**: NEVER modify `main` branch of any store there
-- `gnssvodpy_based/` = truth stores (read-only)
 
 ## RinexTrimmer
 

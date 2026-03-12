@@ -5,6 +5,27 @@ description: Store-level provenance, compliance validation, and inventory for Ic
 
 # canvod-store-metadata
 
+## Why store-level metadata?
+
+GNSS-T VOD retrievals produce versioned Icechunk stores that may be shared,
+published, or revisited years later. Without embedded provenance, critical
+questions become unanswerable:
+
+- **Reproducibility** — which software version, config, and ephemeris source
+  produced this store? The `ProcessingProvenance` and `ConfigSnapshot` sections
+  capture the full environment (down to Python version, uv lockfile hash, and
+  Dask scheduler config) so any store can be reproduced from scratch.
+- **DOI registration** — TU Wien Repositum and Zenodo require DataCite 4.5
+  metadata (creator, title, identifier, rights). Rather than filling these
+  manually at publication time, canvodpy collects them automatically during
+  ingestion.
+- **Discovery** — STAC and ACDD metadata enable stores to be found by
+  spatiotemporal queries, indexed in geospatial catalogs, and opened by tools
+  that understand these conventions (e.g. `pystac`, `intake-stac`).
+- **Audit trail** — the `Instruments` section records which receivers, file
+  formats, and observation counts went into the store, linking the data product
+  back to the physical hardware.
+
 ## Overview
 
 `canvod-store-metadata` manages **store-level provenance** — the metadata that

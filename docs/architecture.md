@@ -223,7 +223,7 @@ flowchart TD
 
     subgraph GRID["Grid Assignment"]
         BUILD_GRID["`**Build Grid**
-        equal-area / HEALPix / ...`"]
+        equal-area / geodesic / ...`"]
         KDTREE["`**KDTree Assign**
         O(n log m)`"]
     end
