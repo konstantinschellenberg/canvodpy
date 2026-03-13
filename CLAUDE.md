@@ -52,7 +52,7 @@ the Tau-Omega Radiative Transfer Model:
 
     VOD = -ln(T) · cos(θ)
 
-where T is transmittance and θ is the zenith angle. VOD is a proxy for
+where T is transmittance and θ is the polar angle. VOD is a proxy for
 **vegetation biomass and fuel moisture content**. Unlike optical sensors (NDVI),
 L-band signals penetrate the entire canopy — invaluable for monitoring forest
 health, carbon stocks, and drought stress.
@@ -64,7 +64,7 @@ health, carbon stocks, and drought stress.
 | **SNR** | Signal-to-Noise Ratio (dB-Hz), the primary observable | SBF: 0.25 dB quantization; RINEX: ~0.001 dB |
 | **SID** | Signal ID: `SV\|Band\|Code` (e.g. `G01\|L1\|C`) | Unique key identifying satellite + frequency + tracking code |
 | **PRN** | Satellite identifier (e.g. `G01`) | Used by external tools; canvodpy uses SID internally |
-| **Zenith angle (θ)** | Angle from vertical to satellite (0°=overhead, 90°=horizon) | Used in VOD formula; internally prefer zenith over elevation |
+| **Polar angle (θ)** | Angle from vertical to satellite (0°=overhead, 90°=horizon) | Used in VOD formula; internally prefer polar angle over elevation |
 | **Azimuth (φ)** | Compass direction to satellite (0°=N, 90°=E) | Used for hemispheric gridding |
 | **Ephemeris** | Satellite orbital data for position computation | Agency final (SP3/CLK, ~3 cm, 12-18 day latency) or broadcast (~1-2 m, real-time) |
 | **Constellations** | GPS (G), Galileo (E), GLONASS (R), BeiDou (C) | System prefix in SID string |

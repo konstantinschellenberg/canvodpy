@@ -738,7 +738,7 @@ class TemporalAnalysis:
 
         ts_solar["solar_zenith"].attrs = {
             "units": "degrees",
-            "description": "Solar zenith angle (0° = overhead)",
+            "description": "Solar polar angle (0° = overhead)",
         }
         ts_solar["solar_azimuth"].attrs = {
             "units": "degrees",

@@ -126,7 +126,7 @@ broadcast navigation message and embeds them in the `SatVisibility` block.
 
 !!! info "Theta and phi convention"
 
-    SBF SatVisibility provides zenith angle (theta = 90° - elevation)
+    SBF SatVisibility provides polar angle (theta = 90° - elevation)
     and geographic azimuth (0° = North, clockwise). Same convention
     used throughout canvodpy — no conversion needed.
 

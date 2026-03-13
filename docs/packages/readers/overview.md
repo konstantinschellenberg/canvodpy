@@ -134,7 +134,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
     obs_ds, aux = reader.to_ds_and_auxiliary(keep_data_vars=["SNR"])
     meta_ds = aux["sbf_obs"]
 
-    # Zenith angle filter: elevation ≥ 20°
+    # Polar angle filter: elevation ≥ 20°
     snr_filtered = obs_ds["SNR"].where(meta_ds["theta"] <= 70)
     ```
 

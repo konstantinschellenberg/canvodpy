@@ -164,13 +164,91 @@ When `just config-init` copies configuration templates, recipe files are include
 ## FilenameMapper
 
 The `FilenameMapper` discovers physical files and maps them to VirtualFiles. It
-handles three directory layouts:
+handles three directory layouts, configured via `directory_layout` in the receiver
+config or recipe.
 
-| Layout | Structure | Example |
-|--------|-----------|---------|
-| `yyddd_subdirs` | `YY000/`, `YY001/`, ... | `25001/rref001a00.25_` |
-| `yyyyddd_subdirs` | `YYYY000/`, ... | `2025001/rref001a00.25_` |
-| `flat` | All files in root directory | `rref001a00.25_` |
+### Directory layouts
+
+Most GNSS receivers output files into per-day subdirectories named by day-of-year.
+The `directory_layout` setting tells the mapper where to look for files.
+
+| Layout | Structure | When to use |
+|--------|-----------|-------------|
+| `yyddd_subdirs` | `25001/`, `25002/`, ... | **Default.** Septentrio and most receivers output into 5-digit YYDDD subdirectories. |
+| `yyyyddd_subdirs` | `2025001/`, `2025002/`, ... | Some post-processing tools or manual organisation use 7-digit YYYYDDD subdirectories. |
+| `flat` | All files in one directory | Data dumped into a single folder (e.g. copied from USB, downloaded archive). |
+
+#### How discovery differs
+
+The layout controls **where** the mapper searches — it does **not** affect how
+filenames are parsed (that is determined by the source pattern or recipe).
+
+=== "yyddd_subdirs (default)"
+
+    ```
+    receiver_base_dir/
+    ├── 25001/
+    │   ├── rref001a00.25_     ← discovered
+    │   └── rref001a15.25_     ← discovered
+    ├── 25002/
+    │   └── rref002a00.25_     ← discovered
+    └── rref003a00.25_         ← NOT discovered (at root level)
+    ```
+
+    Only files **inside** `YYDDD/` subdirectories are found.
+    Files at the root level are silently ignored.
+
+=== "yyyyddd_subdirs"
+
+    ```
+    receiver_base_dir/
+    ├── 2025001/
+    │   └── rref001a00.25_     ← discovered
+    └── 2025002/
+        └── rref002a00.25_     ← discovered
+    ```
+
+    Same behaviour, but expects 7-digit directory names.
+
+=== "flat"
+
+    ```
+    receiver_base_dir/
+    ├── rref001a00.25_         ← discovered
+    ├── rref002a00.25_         ← discovered
+    └── notes.txt              ← ignored (not a GNSS file)
+    ```
+
+    All GNSS files directly in `receiver_base_dir` are found.
+    Subdirectories are **not** traversed.
+
+!!! warning "Choosing the wrong layout"
+
+    If you set `flat` but your files are in `25001/` subdirectories (or vice
+    versa), the mapper will find **zero files** and the directory will appear
+    empty. The validator will pass (empty is valid), but no data will be
+    processed. If you expect data but the pipeline produces nothing, check
+    `directory_layout` first.
+
+#### Configuration
+
+In `sites.yaml` (legacy naming config):
+
+```yaml
+receivers:
+  reference_01:
+    receiver_number: 1
+    source_pattern: auto
+    directory_layout: yyddd_subdirs   # or flat, yyyyddd_subdirs
+```
+
+In a NamingRecipe:
+
+```yaml
+layout: yyddd_subdirs   # default if omitted
+```
+
+### Usage
 
 ```python
 from canvod.virtualiconvname import FilenameMapper

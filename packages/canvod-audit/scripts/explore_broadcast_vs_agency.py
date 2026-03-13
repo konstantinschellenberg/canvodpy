@@ -174,13 +174,13 @@ def _(angular_sep_deg, mismatch, mo, np, theta_a_v):
 
     Mismatched observations have angular sep: mean {np.mean(_sep_mm):.3f} deg, min {np.min(_sep_mm):.4f} deg
 
-    ### Mismatch rate by zenith angle
+    ### Mismatch rate by polar angle
 
     | Band | Mismatches | Rate |
     |------|-----------|------|
     {chr(10).join(_rows)}
 
-    The rate is uniform across all zenith angles (~6%), confirming this is a
+    The rate is uniform across all polar angles (~6%), confirming this is a
     resolution artefact (0.01 deg SBF quantisation), not a geometry-dependent effect.
     """)
     return
@@ -561,7 +561,7 @@ def _(mo):
 
     **~6% of observations shift to a neighbouring grid cell** when using broadcast
     instead of agency ephemeris on a 2 deg equal-area hemigrid. The effect is uniform
-    across all zenith angles, driven by the 0.01 deg quantisation of the SBF
+    across all polar angles, driven by the 0.01 deg quantisation of the SBF
     azimuth/elevation fields.
 
     The displacement vector plot confirms the offsets are **randomly oriented** —

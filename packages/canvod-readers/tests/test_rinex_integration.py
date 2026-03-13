@@ -134,8 +134,8 @@ class TestRINEXIntegration:
         # Check band names are valid
         for band in ds.band.values:
             band_str = str(band)
-            # Common band names: L1, L2, L5, E1, E5a, E5b, G1, G2, B1I, etc.
-            assert len(band_str) >= 2, f"Invalid band name: {band_str}"
+            # Common band names: L1, L2, L5, E1, E5a, E5b, G1, G2, B1I, S (IRNSS S-band)
+            assert len(band_str) >= 1, f"Invalid band name: {band_str}"
 
     def test_system_coordinate_matches_signal_ids(self, rinex_file):
         """Test system coordinate matches signal ID system letters."""

@@ -92,27 +92,27 @@ class Sp3File(AuxFile):
         return Path(f"{prefix}_{self.date}0000_{duration}_{sampling}_ORB.SP3")
 
     def download_aux_file(self) -> None:
-        """Download using product-specific path pattern.
+        """Download SP3 file, trying all servers from the product registry.
+
+        Servers are tried in priority order from products.toml. Auth-required
+        servers are skipped when no credentials are configured. Warnings are
+        printed when falling back to alternate servers.
 
         Raises
         ------
         RuntimeError
-            If download fails from all servers.
+            If download fails from all available servers.
         ValueError
             If GPS week calculation fails.
         """
         orbit_file = self.generate_filename_based_on_type()
         gps_week = get_gps_week_from_filename(orbit_file)
 
-        # Use product spec's path pattern
         ftp_path = self.product_spec.ftp_path_pattern.format(
             gps_week=gps_week,
             file=f"{orbit_file}.gz",
         )
-
-        full_url = f"{self.ftp_server}{ftp_path}"
         destination = self.local_dir / orbit_file
-
         file_info = {
             "gps_week": gps_week,
             "filename": orbit_file,
@@ -120,13 +120,8 @@ class Sp3File(AuxFile):
             "agency": self.agency,
         }
 
-        try:
-            self.download_file(full_url, destination, file_info)
-            print(f"Downloaded orbit file for {self.agency} on date {self.date}")
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to download SP3 file from all available servers: {e!s}"
-            ) from e
+        self.download_with_fallback(ftp_path, destination, file_info, self.product_spec)
+        print(f"Downloaded orbit file for {self.agency} on date {self.date}")
 
     def read_file(self) -> xr.Dataset:
         """Read and validate SP3 file.

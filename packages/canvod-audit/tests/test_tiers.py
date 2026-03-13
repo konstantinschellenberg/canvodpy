@@ -31,7 +31,7 @@ def canopy_ds():
     )
     sids = [f"G{i:02d}|L1|C" for i in range(1, n_sids + 1)]
 
-    theta = rng.uniform(0, np.pi / 2, (n_epochs, n_sids))  # zenith angle
+    theta = rng.uniform(0, np.pi / 2, (n_epochs, n_sids))  # polar angle
     phi = rng.uniform(0, 2 * np.pi, (n_epochs, n_sids))  # azimuth
 
     return xr.Dataset(

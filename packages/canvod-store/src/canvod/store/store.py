@@ -2980,7 +2980,19 @@ class MyIcechunkStore:
         drop_empty: bool = True,
         branch: str = "main",
     ) -> xr.Dataset:
-        """Safely aggregate temporally irregular VOD data.
+        """Aggregate temporally irregular VOD data per SID.
+
+        Each satellite (SID) is aggregated independently within each
+        time bin.  Mixing observations across satellites is physically
+        meaningless because each observes a different part of the canopy
+        from a different sky position.
+
+        .. note::
+
+           For production use, prefer ``canvod.ops.TemporalAggregate``
+           which uses Polars groupby and handles all coordinate types
+           explicitly.  This method is a convenience wrapper for quick
+           interactive exploration.
 
         Parameters
         ----------
@@ -2991,7 +3003,8 @@ class MyIcechunkStore:
         vars_to_aggregate : Sequence[str], optional
             Variables to aggregate using mean.
         geometry_vars : Sequence[str], optional
-            Geometry variables to preserve via first() per bin.
+            Geometry variables to aggregate using mean (centroid of
+            contributing sky positions).
         drop_empty : bool, default True
             Drop empty epochs after aggregation.
         branch : str, default "main"
@@ -3000,41 +3013,46 @@ class MyIcechunkStore:
         Returns
         -------
         xr.Dataset
-            Aggregated dataset.
+            Aggregated dataset with independent per-SID aggregation.
         """
+        log = get_logger(__name__)
 
         with self.readonly_session(branch=branch) as session:
             ds = xr.open_zarr(session.store, group=group, consolidated=False)
 
-            print(
-                f"📦 Aggregating group '{group}' from branch '{branch}' → freq={freq}"
+            log.info(
+                "Aggregating group",
+                group=group,
+                branch=branch,
+                freq=freq,
             )
 
-            # 1️⃣ Aggregate numeric variables
+            # Aggregate data and geometry vars with mean (per SID
+            # independently — resample preserves the sid dimension).
+            all_vars = list(vars_to_aggregate) + list(geometry_vars)
             merged_vars = []
-            for var in vars_to_aggregate:
+            for var in all_vars:
                 if var in ds:
                     merged_vars.append(ds[var].resample(epoch=freq).mean())
                 else:
-                    print(f"⚠️ Skipping missing variable: {var}")
+                    log.warning("Skipping missing variable", var=var)
             ds_agg = xr.merge(merged_vars)
 
-            # 2️⃣ Preserve geometry variables (use first() per bin)
-            for var in geometry_vars:
-                if var in ds:
-                    ds_agg[var] = ds[var].resample(epoch=freq).first()
-
-            # 3️⃣ Add remaining coordinates
+            # Preserve sid-only coordinates (sv, band, code, etc.)
             for coord in ds.coords:
-                if coord not in ds_agg.coords and coord != "epoch":
+                if coord in ds_agg.coords or coord == "epoch":
+                    continue
+                coord_dims = ds.coords[coord].dims
+                # Only copy coords whose dims all survive in ds_agg
+                if all(d in ds_agg.dims for d in coord_dims):
                     ds_agg[coord] = ds[coord]
 
-            # 4️⃣ Drop all-NaN epochs if requested
+            # Drop all-NaN epochs if requested
             if drop_empty and "VOD" in ds_agg:
                 valid_mask = ds_agg["VOD"].notnull().any(dim="sid").compute()
                 ds_agg = ds_agg.isel(epoch=valid_mask)
 
-            print(f"✅ Aggregation done: {dict(ds_agg.sizes)}")
+            log.info("Aggregation done", sizes=dict(ds_agg.sizes))
             return ds_agg
 
     def safe_temporal_aggregate_to_branch(

@@ -116,7 +116,7 @@ class SolarPositionCalculator:
         Returns
         -------
         solar_zenith : np.ndarray
-            Solar zenith angles in degrees (0° = directly overhead).
+            Solar polar angles in degrees (0° = directly overhead).
         solar_azimuth : np.ndarray
             Solar azimuth angles in degrees (0° = North, 90° = East).
 
@@ -224,7 +224,7 @@ class SolarPositionCalculator:
         hour_angle = true_solar_time / 4 - 180
         hour_angle = np.where(hour_angle < 0, hour_angle + 360, hour_angle)
 
-        # Solar zenith angle (degrees)
+        # Solar polar angle (degrees)
         lat_rad = np.radians(self.lat)
         decl_rad = np.radians(sun_decl)
         ha_rad = np.radians(hour_angle)
@@ -342,7 +342,7 @@ class SolarPositionCalculator:
               ``'normalize'`` for multi-dimensional data).
             * ``'cos_correction'`` – simple cosine correction.
         reference_zenith : float
-            Reference zenith angle for normalisation (degrees).
+            Reference polar angle for normalisation (degrees).
 
         Returns
         -------
@@ -502,7 +502,7 @@ class SolarPositionCalculator:
 def compute_solar_zenith(
     lat: float, lon: float, times: np.ndarray | pd.DatetimeIndex
 ) -> np.ndarray:
-    """Quick computation of solar zenith angles.
+    """Quick computation of solar polar angles.
 
     Parameters
     ----------
@@ -516,7 +516,7 @@ def compute_solar_zenith(
     Returns
     -------
     np.ndarray
-        Solar zenith angles in degrees.
+        Solar polar angles in degrees.
 
     """
     calc = SolarPositionCalculator(lat, lon)

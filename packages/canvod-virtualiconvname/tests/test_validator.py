@@ -124,6 +124,132 @@ class TestValidationPasses:
         assert len(report.matched) == 0
 
 
+class TestDirectoryLayouts:
+    """Validation works for all three DirectoryLayout modes."""
+
+    def test_yyddd_subdirs(self, tmp_path, validator, site_naming):
+        """Files in YYDDD subdirectories are discovered."""
+        subdir = tmp_path / "25001"
+        subdir.mkdir()
+        _create_file(subdir, "ROSR01TUW_R_20250010000_01D_05S_AA.rnx")
+
+        subdir2 = tmp_path / "25002"
+        subdir2.mkdir()
+        _create_file(subdir2, "ROSR01TUW_R_20250020000_01D_05S_AA.rnx")
+
+        receiver_naming = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout="yyddd_subdirs",
+        )
+
+        report = validator.validate_receiver(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type="reference",
+            receiver_base_dir=tmp_path,
+        )
+        assert report.is_valid
+        assert len(report.matched) == 2
+
+    def test_yyyyddd_subdirs(self, tmp_path, validator, site_naming):
+        """Files in YYYYDDD subdirectories are discovered."""
+        subdir = tmp_path / "2025001"
+        subdir.mkdir()
+        _create_file(subdir, "ROSR01TUW_R_20250010000_01D_05S_AA.rnx")
+
+        subdir2 = tmp_path / "2025002"
+        subdir2.mkdir()
+        _create_file(subdir2, "ROSR01TUW_R_20250020000_01D_05S_AA.rnx")
+
+        receiver_naming = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout="yyyyddd_subdirs",
+        )
+
+        report = validator.validate_receiver(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type="reference",
+            receiver_base_dir=tmp_path,
+        )
+        assert report.is_valid
+        assert len(report.matched) == 2
+
+    def test_yyddd_subdirs_ignores_files_in_wrong_subdir(
+        self, tmp_path, validator, site_naming
+    ):
+        """Files in non-matching subdirectory names are not discovered."""
+        # Valid subdir
+        subdir = tmp_path / "25001"
+        subdir.mkdir()
+        _create_file(subdir, "ROSR01TUW_R_20250010000_01D_05S_AA.rnx")
+
+        # Invalid subdir name
+        bad_subdir = tmp_path / "random"
+        bad_subdir.mkdir()
+        _create_file(bad_subdir, "ROSR01TUW_R_20250020000_01D_05S_AA.rnx")
+
+        receiver_naming = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout="yyddd_subdirs",
+        )
+
+        report = validator.validate_receiver(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type="reference",
+            receiver_base_dir=tmp_path,
+        )
+        assert report.is_valid
+        assert len(report.matched) == 1
+
+    def test_yyddd_subdirs_overlap_detected(self, tmp_path, validator, site_naming):
+        """Temporal overlaps are caught even with subdirectory layout."""
+        subdir = tmp_path / "25001"
+        subdir.mkdir()
+        _create_file(subdir, "ROSR01TUW_R_20250010000_01D_05S_AA.rnx")
+        _create_file(subdir, "ROSR01TUW_R_20250010000_15M_05S_AA.rnx")
+
+        receiver_naming = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout="yyddd_subdirs",
+        )
+
+        with pytest.raises(ValueError, match="overlap"):
+            validator.validate_receiver(
+                site_naming=site_naming,
+                receiver_naming=receiver_naming,
+                receiver_type="reference",
+                receiver_base_dir=tmp_path,
+            )
+
+    def test_flat_files_not_found_in_subdirs_mode(
+        self, tmp_path, validator, site_naming
+    ):
+        """Files at root level are not discovered when layout expects subdirs."""
+        _create_file(tmp_path, "ROSR01TUW_R_20250010000_01D_05S_AA.rnx")
+
+        receiver_naming = ReceiverNamingConfig(
+            receiver_number=1,
+            source_pattern="auto",
+            directory_layout="yyddd_subdirs",
+        )
+
+        report = validator.validate_receiver(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type="reference",
+            receiver_base_dir=tmp_path,
+        )
+        # File at root, but layout expects subdirs → not discovered
+        assert report.is_valid
+        assert len(report.matched) == 0
+
+
 class TestValidationRejectsUnmatched:
     """Validation rejects directories with unmappable files."""
 

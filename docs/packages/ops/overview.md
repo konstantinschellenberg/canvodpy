@@ -63,6 +63,34 @@ ds_out, result = op(ds_in)
 If the dataset is already at or coarser than the target frequency, the operation
 is a no-op and returns the dataset unchanged.
 
+#### Per-SID independence
+
+`TemporalAggregate` groups by `(time_bin, sid)` before computing the aggregate.
+This is critical because each SID (satellite + band + code) observes the canopy
+from a different sky position (θ, φ). Mixing VOD or SNR values across satellites
+within a time bin conflates spatial variability (different view angles) with
+temporal variability — producing a physically meaningless average.
+
+Geometry coordinates (θ, φ) are averaged per-SID to produce the **centroid** of
+all contributing sky positions. Using `.first()` instead would assign an arbitrary
+single observation's geometry to the averaged value — misleading because it does
+not represent where the average came from.
+
+Coordinate handling:
+
+| Coordinate type | Example | Aggregation |
+|----------------|---------|-------------|
+| Data variables | `VOD`, `SNR` | Mean or median per `(time_bin, sid)` |
+| Epoch×SID coords | `phi`, `theta` | Mean per `(time_bin, sid)` (centroid) |
+| SID-only coords | `sv`, `band`, `code` | Preserved unchanged |
+
+!!! warning "Anti-pattern: naive xarray resampling"
+    A plain `ds.resample(epoch="1D").mean()` preserves the `sid` dimension
+    (xarray resamples along `epoch` only), so per-SID independence is maintained.
+    However, it does not distinguish between data variables and geometry
+    coordinates, and does not handle sid-only coords explicitly.
+    For production use, prefer `TemporalAggregate`.
+
 ### GridAssignment
 
 Assigns each observation to a spatial grid cell based on its spherical coordinates

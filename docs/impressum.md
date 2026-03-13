@@ -16,7 +16,7 @@ In accordance with Austrian law (E-Commerce-Gesetz, ECG; Mediengesetz, MedienG).
 Climate and Environmental Remote Sensing Research Unit (CLIMERS)
 Department of Geodesy and Geoinformation
 TU Wien — Vienna University of Technology
-Wiedner Hauptstraße 8/E120.1
+Wiedner Hauptstraße 8/E120.8
 1040 Wien, Austria
 
 :fontawesome-solid-envelope: &nbsp; [nicolas.bader@geo.tuwien.ac.at](mailto:nicolas.bader@geo.tuwien.ac.at)
@@ -44,8 +44,7 @@ completeness, or timeliness of the information provided.
 
 Neither the original author, TU Wien, nor any individual contributor shall be held
 liable for damages arising from the use or non-use of the software or information
-offered, or from the use of incorrect or incomplete information, except in cases of
-demonstrable intentional or grossly negligent fault.
+offered, or from the use of incorrect or incomplete information.
 
 Individual contributors are recorded in the project's
 [Git history](https://github.com/nfb2021/canvodpy) and `NOTICE` file. Each

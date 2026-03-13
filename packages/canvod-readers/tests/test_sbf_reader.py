@@ -366,7 +366,7 @@ class TestToMetadataDs:
         valid_phi = phi[~np.isnan(phi)]
         if len(valid_theta) > 0:
             assert np.all(valid_theta >= 0), "theta values must be >= 0"
-            assert np.all(valid_theta <= 90), "theta (zenith angle) must be <= 90"
+            assert np.all(valid_theta <= 90), "theta (polar angle) must be <= 90"
         if len(valid_phi) > 0:
             assert np.all(valid_phi >= 0), "phi values must be >= 0"
             assert np.all(valid_phi < 360), "phi (azimuth) must be < 360"

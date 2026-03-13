@@ -69,11 +69,11 @@ VOD comparison strategy
 gnssvod computes VOD inside ``calc_vod()`` using paired canopy/reference
 data. The formula is identical to canvodpy's ``TauOmegaZerothOrder``:
 
-    VOD = -ln(10^((SNR_canopy - SNR_reference) / 10)) * cos(zenith_canopy)
+    VOD = -ln(10^((SNR_canopy - SNR_reference) / 10)) * cos(polar_angle_canopy)
 
-Both tools use the canopy station's zenith angle. The only expected
+Both tools use the canopy station's polar angle. The only expected
 differences come from the different SP3 interpolation methods described
-above (different satellite ECEF → different theta → different cos(theta)).
+above (different satellite ECEF → different theta → different cos(theta) in the polar angle correction).
 SNR itself is identical (same RINEX, same formula).
 """
 

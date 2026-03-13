@@ -21,7 +21,7 @@ directly affect signal interpretation:
   new vehicle, the TX power, antenna pattern, and orbital characteristics change.
   Long time series that span a reassignment must be flagged to avoid false trends.
 - **Orbital plane and slot** — the satellite's position in the constellation
-  determines its sky track over the receiver site, which affects the zenith angle
+  determines its sky track over the receiver site, which affects the polar angle
   distribution and therefore the VOD sampling geometry.
 
 The IGS SINEX catalog provides all of this information in a single, authoritative,

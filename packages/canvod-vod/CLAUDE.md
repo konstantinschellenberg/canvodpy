@@ -14,7 +14,7 @@ VOD (Vegetation Optical Depth) retrieval algorithms.
 Zeroth-order Tau-Omega radiative transfer model:
 - Compares SNR through canopy vs open-sky reference
 - `VOD = -ln(SNR_canopy / SNR_reference) / (2 * cos(theta))`
-- theta = zenith angle of satellite signal path through canopy
+- theta = polar angle of satellite signal path through canopy
 
 ## Input requirements
 

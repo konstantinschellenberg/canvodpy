@@ -19,7 +19,7 @@ Comparison strategy:
 Coordinate conventions
 ----------------------
 canvodpy:
-    theta = zenith angle from Up, [0, π/2] rad (0=zenith, π/2=horizon)
+    theta = polar angle from Up, [0, π/2] rad (0=zenith, π/2=horizon)
     phi   = azimuth from North clockwise, [0, 2π) rad
 
 gnssvod:
@@ -197,7 +197,7 @@ class GnssvodAdapter:
             az_deg = np.degrees(self.ds["phi"].values) % 360.0
             data_vars["Azimuth"] = (["epoch", "sid"], az_deg)
 
-        # Elevation: theta (rad, zenith angle) → 90 - degrees(theta)
+        # Elevation: theta (rad, polar angle) → 90 - degrees(theta)
         if "theta" in self.ds.data_vars:
             el_deg = 90.0 - np.degrees(self.ds["theta"].values)
             data_vars["Elevation"] = (["epoch", "sid"], el_deg)

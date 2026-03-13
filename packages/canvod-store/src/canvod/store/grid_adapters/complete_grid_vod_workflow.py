@@ -656,7 +656,7 @@ class StoredHemiGrid:
         phi : float
             Azimuth angle in radians.
         theta : float
-            Zenith angle in radians.
+            Polar angle in radians.
 
         Returns
         -------
@@ -673,7 +673,7 @@ class StoredHemiGrid:
         phi : np.ndarray
             Azimuth angles in radians.
         theta : np.ndarray
-            Zenith angles in radians.
+            Polar angles in radians.
 
         Returns
         -------

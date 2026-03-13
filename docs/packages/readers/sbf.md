@@ -12,7 +12,7 @@ output of Septentrio GNSS receivers (AsteRx SB3, mosaic-X5, PolaRx, etc.).
     The SBF reader differs from `Rnxv3Obs` (RINEX) in one fundamental respect:
     **satellite geometry is embedded in the binary stream**.
     No SP3 ephemeris download is required for quick-look analysis —
-    the receiver's own navigation solution provides azimuth and zenith angle
+    the receiver's own navigation solution provides azimuth and polar angle
     for every tracked signal.
 
 ---
@@ -73,7 +73,7 @@ output of Septentrio GNSS receivers (AsteRx SB3, mosaic-X5, PolaRx, etc.).
     ---
 
     Per-satellite azimuth and elevation for each tracked SV.
-    Converted to geographic azimuth φ and zenith angle θ.
+    Converted to geographic azimuth φ and polar angle θ.
 
 -   :fontawesome-solid-wave-square: &nbsp; **MeasExtra**
 
@@ -125,7 +125,7 @@ under `{receiver}/metadata/sbf_obs` in the Icechunk store.
 
 | Variable | SBF Source | CF `units` | Description |
 | -------- | ---------- | ---------- | ----------- |
-| `theta` | SatVisibility | `degrees` | Zenith angle (0 = overhead, 90 = horizon) |
+| `theta` | SatVisibility | `degrees` | Polar angle (0 = overhead, 90 = horizon) |
 | `phi` | SatVisibility | `degrees` | Geographic azimuth (0 = North, clockwise) |
 | `rise_set` | SatVisibility | `1` | 1 = rising, 0 = setting |
 | `mp_correction_m` | MeasExtra | `m` | Multipath path-delay correction |
@@ -203,7 +203,7 @@ Test a specific flag with `(rx_error & flag_mask) != 0`.
 
 ## Coordinate Conventions
 
-### Zenith angle θ (theta)
+### Polar angle θ (theta)
 
 $$\theta = 90° - \text{elevation}$$
 
@@ -261,8 +261,8 @@ interoperability and scientific reproducibility.
     ```python
     meta_ds["theta"].attrs
     # {
-    #     "long_name":     "Zenith angle",
-    #     "standard_name": "zenith_angle",
+    #     "long_name":     "Polar angle",
+    #     "standard_name": "polar_angle",
     #     "units":         "degrees",
     #     "source":        "SBF SatVisibility block",
     #     "comment":       "theta = 90 - elevation; 0 = overhead, 90 = horizon",
@@ -360,7 +360,7 @@ interoperability and scientific reproducibility.
     # L1C band only
     l1c = daily_obs.sel(sid=[s for s in daily_obs.sid.values if "|L1C|" in s])
 
-    # Zenith angle filter: elevation ≥ 20° → theta ≤ 70°
+    # Polar angle filter: elevation ≥ 20° → theta ≤ 70°
     theta_mask = daily_meta["theta"] <= 70
     snr_high_el = daily_obs["SNR"].where(theta_mask)
     ```
@@ -435,7 +435,7 @@ obs_ds, aux = reader.to_ds_and_auxiliary(keep_data_vars=["SNR"])
 sbf_obs = aux["sbf_obs"]
 
 # theta/phi are already in sbf_obs — no coordinate transform needed
-theta = sbf_obs["theta"]  # zenith angle (degrees)
+theta = sbf_obs["theta"]  # polar angle (degrees)
 phi = sbf_obs["phi"]      # geographic azimuth (degrees)
 ```
 
