@@ -1,31 +1,24 @@
 """Signal ID mapping for GNSS observations.
 
 Maps RINEX observation codes to standardized Signal IDs with frequency
-and bandwidth information. Handles all major GNSS constellations and
-special cases like auxiliary observations.
+and bandwidth information. Handles all major GNSS constellations.
 """
 
 from canvod.readers.gnss_specs.bands import Bands
-
-OBS_CODE_LEN = 3
-SIGNAL_ID_PARTS = 3
 
 
 class SignalIDMapper:
     """Signal ID mapper with bandwidth-aware properties.
 
-    Maps RINEX observation codes to standardized Signal IDs (sids) with
-    associated frequency and bandwidth information. Handles all major GNSS
-    constellations (GPS, GLONASS, Galileo, BeiDou, QZSS, IRNSS, SBAS)
-    and special cases like X1 auxiliary observations.
+    Provides frequency, bandwidth, and overlap-group lookups for
+    GNSS signal bands.  Signal IDs are constructed directly by the
+    fast-path reader (``_create_dataset_single_pass``) rather than
+    through this class.
 
     Signal ID Format
     ----------------
-    Standard: ``"SV|BAND|CODE"``
+    ``"SV|BAND|CODE"``
         Example: ``"G01|L1|C"`` for GPS satellite 1, L1 band, C/A code
-
-    Auxiliary: ``"SV|X1|X"``
-        Example: ``"G01|X1|X"`` for GPS satellite 1, X1 auxiliary observation
 
     Parameters
     ----------
@@ -45,14 +38,6 @@ class SignalIDMapper:
     Examples
     --------
     >>> mapper = SignalIDMapper()
-    >>> sid = mapper.create_signal_id("G01", "G01|S1C")
-    >>> sid
-    'G01|L1|C'
-
-    >>> sv, band, code = mapper.parse_signal_id(sid)
-    >>> (sv, band, code)
-    ('G01', 'L1', 'C')
-
     >>> freq = mapper.get_band_frequency("L1")
     >>> freq
     1575.42
@@ -71,112 +56,6 @@ class SignalIDMapper:
             self._bands.BAND_PROPERTIES
         )
         self.OVERLAPPING_GROUPS: dict[str, list[str]] = self._bands.OVERLAPPING_GROUPS
-
-    def create_signal_id(self, sv: str, obs_code: str) -> str:
-        """Create standardized signal ID from satellite and observation code.
-
-        Converts RINEX observation codes to standardized format for
-        downstream processing. Handles special cases like X1 auxiliary
-        observations.
-
-        Parameters
-        ----------
-        sv : str
-            Satellite vehicle identifier (e.g., "G01", "E02", "R24").
-        obs_code : str
-            RINEX observation code (e.g., "G01|S1C", "E24|X1").
-            Format: "SV|OBSERVATION_CODE" where observation code is
-            typically 3 characters: type (S/C/L/D) + band + code.
-
-        Returns
-        -------
-        str
-            Standardized signal ID in format "SV|BAND|CODE".
-
-        Notes
-        -----
-        Special cases:
-        - X1 observations → "SV|X1|X"
-        - Unknown bands → "SV|UnknownBandN|Code"
-        - Malformed input → "SV|Unknown|Unknown"
-
-        Examples
-        --------
-        >>> mapper = SignalIDMapper()
-        >>> mapper.create_signal_id("G01", "G01|S1C")
-        'G01|L1|C'
-
-        >>> mapper.create_signal_id("E05", "E05|X1")
-        'E05|X1|X'
-
-        >>> mapper.create_signal_id("R12", "R12|S1C")
-        'R12|G1|C'
-
-        """
-        try:
-            sv, observation_code = obs_code.split("|")
-            system = sv[0]
-
-            # Special handling for X1 observation code
-            if observation_code == "X1":
-                return f"{sv}|X1|X"  # Treat as auxiliary observation
-
-            # Standard handling for 3-character observation codes
-            if len(observation_code) >= OBS_CODE_LEN:
-                band_num = observation_code[1]  # 1, 2, 5, etc.
-                code = observation_code[2]  # C, P, W, etc.
-
-                # Get system-specific band name
-                if system in self.SYSTEM_BANDS:
-                    band_name = self.SYSTEM_BANDS[system].get(
-                        band_num, f"UnknownBand{band_num}"
-                    )
-                else:
-                    band_name = f"UnknownBand{band_num}"
-
-                return f"{sv}|{band_name}|{code}"
-
-            # Fallback for unexpected observation code formats
-            return f"{sv}|{observation_code}|Unknown"
-
-        except (ValueError, IndexError) as e:
-            # Fallback for malformed input
-            print(f"Warning: Could not parse observation code '{obs_code}': {e}")
-            return f"{sv}|Unknown|Unknown"
-
-    def parse_signal_id(self, signal_id: str) -> tuple[str, str, str]:
-        """Parse signal ID into components.
-
-        Parameters
-        ----------
-        signal_id : str
-            Signal ID in format "SV|BAND|CODE" (e.g., "G01|L1|C").
-
-        Returns
-        -------
-        sv : str
-            Satellite vehicle identifier.
-        band : str
-            Band name.
-        code : str
-            Code identifier.
-
-        Examples
-        --------
-        >>> mapper = SignalIDMapper()
-        >>> sv, band, code = mapper.parse_signal_id("G01|L1|C")
-        >>> (sv, band, code)
-        ('G01', 'L1', 'C')
-
-        >>> mapper.parse_signal_id("invalid")
-        ('nan', 'nan', 'nan')
-
-        """
-        parts = signal_id.split("|")
-        if len(parts) != SIGNAL_ID_PARTS:
-            print(f"Invalid signal ID format: {signal_id}")
-            return "nan", "nan", "nan"
-        return parts[0], parts[1], parts[2]
 
     def get_band_frequency(self, band_name: str) -> float | None:
         """Get central frequency for a band.
@@ -254,41 +133,8 @@ class SignalIDMapper:
         >>> mapper.get_overlapping_group("E1")
         'group_1'
 
-        >>> mapper.get_overlapping_group("X1")
-        'group_aux'
-
         """
         for group, bands in self.OVERLAPPING_GROUPS.items():
             if band_name in bands:
                 return group
         return None
-
-    def is_auxiliary_observation(self, signal_id: str) -> bool:
-        """Check if signal ID represents auxiliary data.
-
-        Auxiliary observations like X1 contain metadata rather than
-        standard GNSS observables.
-
-        Parameters
-        ----------
-        signal_id : str
-            Signal ID to check (e.g., "G01|X1|X", "G01|L1|C").
-
-        Returns
-        -------
-        bool
-            True if signal represents auxiliary data, False otherwise.
-
-        Examples
-        --------
-        >>> mapper = SignalIDMapper()
-        >>> mapper.is_auxiliary_observation("G01|X1|X")
-        True
-
-        >>> mapper.is_auxiliary_observation("G01|L1|C")
-        False
-
-        """
-        _, band, _ = self.parse_signal_id(signal_id)
-        band_props = self.BAND_PROPERTIES.get(band, {})
-        return band_props.get("auxiliary", False)

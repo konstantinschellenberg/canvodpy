@@ -111,8 +111,9 @@ class TestFactoryPydanticValidation:
 
     def test_missing_required_params_fail(self):
         """Should fail if required parameters missing."""
-        # Note: Most components have defaults, but this tests the pattern
-        # Implementation depends on specific component requirements
+        # GridFactory.create with an unknown name fails with ValueError
+        with pytest.raises(ValueError, match="not registered"):
+            GridFactory.create("nonexistent_grid_type")
 
 
 class TestFactoryIsolation:

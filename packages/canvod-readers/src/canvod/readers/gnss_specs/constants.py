@@ -7,7 +7,6 @@ system (canvod.utils.config).
 Removed and moved to config:
 - KEEP_RNX_VARS → processing.keep_rnx_vars
 - COMPRESSION → compression.{zlib, complevel}
-- TIME_AGGR → processing.time_aggregation_seconds
 - AGGREGATE_GLONASS_FDMA → processing.aggregate_glonass_fdma
 - AUTHOR, EMAIL, etc. → metadata.{author, email, ...}
 - SOFTWARE → canvod.utils._meta.SOFTWARE_ATTRS
@@ -26,11 +25,18 @@ UREG: pint.UnitRegistry = pint.get_application_registry()
 if "dBHz" not in UREG:
     UREG.define("dBHz = 10 * log10(hertz)")
 
-# Glob patterns for discovering RINEX observation files on disk
+# DEPRECATED: Use canvod.virtualiconvname.patterns.BUILTIN_PATTERNS instead.
+# These are kept only for backward compatibility with DataDirMatcher.
+FORMAT_GLOB_PATTERNS: dict[str, tuple[str, ...]] = {
+    "rinex3": ("*.[0-9][0-9]o", "*.O", "*.rnx"),
+    "sbf": ("*.[0-9][0-9]_",),
+}
+
 RINEX_OBS_GLOB_PATTERNS: tuple[str, ...] = (
-    "*.[0-9][0-9]o",  # RINEX v2/v3 short-name: .24o, .25o, etc.
-    "*.O",  # Uppercase generic RINEX obs suffix
-    "*.rnx",  # RINEX v3 long-name format
+    "*.[0-9][0-9]o",
+    "*.O",
+    "*.rnx",
+    "*.[0-9][0-9]_",
 )
 
 # Regex pattern for validating a single RINEX observation file suffix

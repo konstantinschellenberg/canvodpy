@@ -12,18 +12,18 @@ class TestPackageStructure:
 
     def test_main_exports(self):
         """Test main exports are available."""
-        from canvod.readers import GNSSReader, RinexReader, Rnxv3Obs
+        from canvod.readers import GNSSDataReader, Rnxv3Obs, validate_dataset
 
-        assert GNSSReader is not None
-        assert RinexReader is not None
+        assert GNSSDataReader is not None
         assert Rnxv3Obs is not None
+        assert validate_dataset is not None
 
     def test_base_classes(self):
         """Test base classes can be imported."""
-        from canvod.readers.base import GNSSReader, RinexReader
+        from canvod.readers.base import GNSSDataReader, validate_dataset
 
-        assert GNSSReader is not None
-        assert RinexReader is not None
+        assert GNSSDataReader is not None
+        assert validate_dataset is not None
 
     def test_shared_modules(self):
         """Test shared modules can be imported."""

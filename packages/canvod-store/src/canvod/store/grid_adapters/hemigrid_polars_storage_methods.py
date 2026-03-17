@@ -19,9 +19,9 @@ from .complete_grid_vod_workflow import (
 __all__ = [
     "HemiGridStorageAdapter",
     "StoredHemiGrid",
-    "store_grid_to_vod_store",
-    "load_grid_from_vod_store",
     "list_available_grids",
+    "load_grid_from_vod_store",
+    "store_grid_to_vod_store",
 ]
 
 # Backwards compatibility: previously the storage helper was exposed as a mixin.

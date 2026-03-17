@@ -20,14 +20,10 @@ def test_import():
             if "Redefining" in str(warning.message) and "dB" in str(warning.message)
         ]
 
-        if pint_warnings:
-            print(f"❌ FAILED: Found {len(pint_warnings)} pint warnings")
-            for warning in pint_warnings:
-                print(f"  {warning.message}")
-            return False
-        else:
-            print("✅ No pint warnings in main process")
-            return True
+        assert not pint_warnings, (
+            f"Found {len(pint_warnings)} pint warnings: "
+            + ", ".join(str(w.message) for w in pint_warnings)
+        )
 
 
 def worker(i):

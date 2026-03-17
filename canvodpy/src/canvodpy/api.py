@@ -36,7 +36,9 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
     import xarray as xr
+
     from canvod.store import MyIcechunkStore
+    from canvodpy.vod_computer import VodComputer
 
 
 class Site:
@@ -103,6 +105,15 @@ class Site:
         return self._site.active_vod_analyses
 
     @property
+    def vod(self) -> VodComputer:
+        """Lazy VOD computation helper."""
+        if not hasattr(self, "_vod_computer"):
+            from canvodpy.vod_computer import VodComputer
+
+            self._vod_computer = VodComputer(self)
+        return self._vod_computer
+
+    @property
     def rinex_store(self) -> MyIcechunkStore:
         """Access RINEX data store."""
         return self._site.rinex_store
@@ -115,22 +126,47 @@ class Site:
     def pipeline(
         self,
         keep_vars: list[str] | None = None,
-        aux_agency: str = "COD",
-        n_workers: int = 12,
+        aux_agency: str | None = None,
+        n_workers: int | None = None,
         dry_run: bool = False,
+        batch_hours: float | None = None,
+        max_memory_gb: float | None = None,
+        cpu_affinity: list[int] | None = None,
+        nice_priority: int | None = None,
+        threads_per_worker: int | None = None,
     ) -> Pipeline:
         """Create a processing pipeline for this site.
+
+        All parameters default to ``None``, which means "read from config".
+        Explicit values override the config.
+
+        Reader format is configured per-receiver via ``reader_format`` in
+        ``sites.yaml`` (default: ``"auto"``).
 
         Parameters
         ----------
         keep_vars : list[str], optional
-            RINEX variables to keep (default: KEEP_RNX_VARS from globals)
-        aux_agency : str, default "COD"
-            Analysis center for auxiliary data (COD, ESA, GFZ, JPL)
-        n_workers : int, default 12
-            Number of parallel workers
+            RINEX variables to keep. Default: from config.
+        aux_agency : str, optional
+            Analysis center for auxiliary data (COD, ESA, GFZ, JPL).
+            Default: from config.
+        n_workers : int, optional
+            Number of parallel Dask workers. Default: from config
+            (``processing.n_max_threads``).
         dry_run : bool, default False
-            If True, simulate processing without execution
+            If True, simulate processing without execution.
+        batch_hours : float, optional
+            Hours of data per processing batch. Default: from config.
+        max_memory_gb : float, optional
+            Total RAM budget across all workers. Divided by ``n_workers``
+            for per-worker Dask memory limit. Default: from config.
+        cpu_affinity : list[int], optional
+            Pin workers to specific CPU core IDs (Linux only).
+            Default: from config.
+        nice_priority : int, optional
+            Process nice value (0=normal, 19=lowest). Default: from config.
+        threads_per_worker : int, optional
+            Threads per Dask worker process. Default: from config.
 
         Returns
         -------
@@ -140,7 +176,7 @@ class Site:
         Examples
         --------
         >>> site = Site("Rosalia")
-        >>> pipeline = site.pipeline(aux_agency="ESA", n_workers=8)
+        >>> pipeline = site.pipeline(n_workers=8, max_memory_gb=16)
         >>> data = pipeline.process_date("2025001")
 
         """
@@ -150,6 +186,11 @@ class Site:
             aux_agency=aux_agency,
             n_workers=n_workers,
             dry_run=dry_run,
+            batch_hours=batch_hours,
+            max_memory_gb=max_memory_gb,
+            cpu_affinity=cpu_affinity,
+            nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
 
     def __repr__(self) -> str:
@@ -167,18 +208,35 @@ class Pipeline:
     Provides a clean API for processing workflows while using
     proven orchestrator logic internally.
 
+    All parameters default to ``None``, which means "read from
+    ``config/processing.yaml``". Explicit values override the config.
+
+    Reader format is configured per-receiver via ``reader_format`` in
+    ``sites.yaml`` (default: ``"auto"``).
+
     Parameters
     ----------
     site : Site or str
         Site object or site name
     keep_vars : list[str], optional
-        RINEX variables to keep
-    aux_agency : str, default "COD"
-        Analysis center for auxiliary data
-    n_workers : int, default 12
-        Number of parallel workers
+        RINEX variables to keep. Default: from config.
+    aux_agency : str, optional
+        Analysis center for auxiliary data. Default: from config.
+    n_workers : int, optional
+        Number of parallel Dask workers. Default: from config
+        (``processing.n_max_threads``).
     dry_run : bool, default False
-        If True, simulate without execution
+        If True, simulate without execution.
+    batch_hours : float, optional
+        Hours of data per processing batch. Default: from config.
+    max_memory_gb : float, optional
+        Total RAM budget across all workers. Default: from config.
+    cpu_affinity : list[int], optional
+        Pin workers to specific CPU core IDs. Default: from config.
+    nice_priority : int, optional
+        Process nice value (0=normal, 19=lowest). Default: from config.
+    threads_per_worker : int, optional
+        Threads per Dask worker process. Default: from config.
 
     Examples
     --------
@@ -202,23 +260,64 @@ class Pipeline:
         self,
         site: Site | str,
         keep_vars: list[str] | None = None,
-        aux_agency: str = "COD",
-        n_workers: int = 12,
+        aux_agency: str | None = None,
+        n_workers: int | None = None,
         dry_run: bool = False,
+        batch_hours: float | None = None,
+        max_memory_gb: float | None = None,
+        cpu_affinity: list[int] | None = None,
+        nice_priority: int | None = None,
+        threads_per_worker: int | None = None,
     ) -> None:
         # Handle both Site object and string
         if isinstance(site, str):
             site = Site(site)
 
         self.site = site
-        if keep_vars is None:
-            from canvod.utils.config import load_config
 
-            keep_vars = load_config().processing.processing.keep_rnx_vars
+        from canvod.utils.config import load_config
+
+        config = load_config()
+        proc = config.processing.processing
+
+        # All params default to config values; explicit values override
+        if keep_vars is None:
+            keep_vars = proc.keep_rnx_vars
+        if aux_agency is None:
+            aux_agency = config.processing.aux_data.agency
+        if batch_hours is None:
+            batch_hours = proc.batch_hours
+
+        # Resource resolution: explicit n_workers overrides everything,
+        # otherwise use resolve_resources() which respects resource_mode.
+        if n_workers is not None:
+            # Caller explicitly set n_workers → manual-like behavior
+            if max_memory_gb is None:
+                max_memory_gb = proc.max_memory_gb
+            if cpu_affinity is None:
+                cpu_affinity = proc.cpu_affinity
+            if nice_priority is None:
+                nice_priority = proc.nice_priority
+            if threads_per_worker is None:
+                threads_per_worker = proc.threads_per_worker
+        else:
+            # No explicit n_workers → use resource_mode from config
+            resources = proc.resolve_resources()
+            n_workers = resources["n_workers"]
+            if max_memory_gb is None:
+                max_memory_gb = resources["max_memory_gb"]
+            if cpu_affinity is None:
+                cpu_affinity = resources["cpu_affinity"]
+            if nice_priority is None:
+                nice_priority = resources["nice_priority"]
+            if threads_per_worker is None:
+                threads_per_worker = resources["threads_per_worker"]
+
         self.keep_vars = keep_vars
         self.aux_agency = aux_agency
         self.n_workers = n_workers
         self.dry_run = dry_run
+        self.batch_hours = batch_hours
 
         # Setup logging
         from canvodpy.logging import get_logger
@@ -236,6 +335,11 @@ class Pipeline:
             site=site._site,
             n_max_workers=n_workers,
             dry_run=dry_run,
+            batch_hours=batch_hours,
+            max_memory_gb=max_memory_gb,
+            cpu_affinity=cpu_affinity,
+            nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
 
         self.log.info(
@@ -244,7 +348,21 @@ class Pipeline:
             n_workers=n_workers,
             keep_vars=len(self.keep_vars),
             dry_run=dry_run,
+            batch_hours=batch_hours,
+            max_memory_gb=max_memory_gb,
+            nice_priority=nice_priority,
+            threads_per_worker=threads_per_worker,
         )
+
+    def close(self) -> None:
+        """Shut down the Dask cluster managed by the orchestrator."""
+        self._orchestrator.close()
+
+    def __enter__(self) -> Pipeline:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
     def process_date(self, date: str) -> dict[str, xr.Dataset]:
         """Process RINEX data for one date.
@@ -295,7 +413,7 @@ class Pipeline:
         self,
         start: str,
         end: str,
-    ) -> Generator[tuple[str, dict[str, xr.Dataset]], None, None]:
+    ) -> Generator[tuple[str, dict[str, xr.Dataset]]]:
         """Process RINEX data for a date range.
 
         Parameters
@@ -414,7 +532,8 @@ class Pipeline:
         return (
             f"Pipeline(site='{self.site.name}', "
             f"keep_vars={len(self.keep_vars)} vars, "
-            f"workers={self.n_workers})"
+            f"workers={self.n_workers}, "
+            f"batch_hours={self.batch_hours})"
         )
 
 
@@ -427,13 +546,14 @@ def process_date(
     site: str,
     date: str,
     keep_vars: list[str] | None = None,
-    aux_agency: str = "COD",
-    n_workers: int = 12,
+    aux_agency: str | None = None,
+    n_workers: int | None = None,
 ) -> dict[str, xr.Dataset]:
     """Process RINEX data for one date (convenience function).
 
     This is the simplest way to process GNSS data - just provide
-    the site name and date.
+    the site name and date. All optional parameters default to
+    values from ``config/processing.yaml``.
 
     Parameters
     ----------
@@ -442,11 +562,11 @@ def process_date(
     date : str
         Date in YYYYDOY format (e.g., "2025001")
     keep_vars : list[str], optional
-        RINEX variables to keep (default: KEEP_RNX_VARS)
-    aux_agency : str, default "COD"
-        Analysis center for auxiliary data
-    n_workers : int, default 12
-        Number of parallel workers
+        RINEX variables to keep. Default: from config.
+    aux_agency : str, optional
+        Analysis center for auxiliary data. Default: from config.
+    n_workers : int, optional
+        Number of parallel workers. Default: from config.
 
     Returns
     -------
@@ -469,13 +589,13 @@ def process_date(
     ... )
 
     """
-    pipeline = Pipeline(
+    with Pipeline(
         site=site,
         keep_vars=keep_vars,
         aux_agency=aux_agency,
         n_workers=n_workers,
-    )
-    return pipeline.process_date(date)
+    ) as pipeline:
+        return pipeline.process_date(date)
 
 
 def calculate_vod(
@@ -484,12 +604,13 @@ def calculate_vod(
     reference: str,
     date: str,
     keep_vars: list[str] | None = None,
-    aux_agency: str = "COD",
+    aux_agency: str | None = None,
 ) -> xr.Dataset:
     """Calculate VOD for a receiver pair (convenience function).
 
     This is the simplest way to calculate VOD - just provide
-    site, receivers, and date.
+    site, receivers, and date. All optional parameters default to
+    values from ``config/processing.yaml``.
 
     Parameters
     ----------
@@ -502,9 +623,9 @@ def calculate_vod(
     date : str
         Date in YYYYDOY format
     keep_vars : list[str], optional
-        RINEX variables to keep
-    aux_agency : str, default "COD"
-        Analysis center
+        RINEX variables to keep. Default: from config.
+    aux_agency : str, optional
+        Analysis center. Default: from config.
 
     Returns
     -------
@@ -524,12 +645,12 @@ def calculate_vod(
     0.42
 
     """
-    pipeline = Pipeline(
+    with Pipeline(
         site=site,
         keep_vars=keep_vars,
         aux_agency=aux_agency,
-    )
-    return pipeline.calculate_vod(canopy, reference, date)
+    ) as pipeline:
+        return pipeline.calculate_vod(canopy, reference, date)
 
 
 def preview_processing(site: str) -> dict:

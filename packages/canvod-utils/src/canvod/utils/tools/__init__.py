@@ -24,7 +24,7 @@ Examples
 """
 
 from .date_utils import YYDOY, YYYYDOY, get_gps_week_from_filename
-from .hashing import rinex_file_hash
+from .hashing import file_hash
 from .validation import isfloat
 from .version import get_version_from_pyproject
 
@@ -33,15 +33,11 @@ from .version import get_version_from_pyproject
 gpsweekday = YYYYDOY.gpsweekday
 
 __all__ = [
-    # Version
-    "get_version_from_pyproject",
-    # Date/time
-    "YYYYDOY",
     "YYDOY",
+    "YYYYDOY",
+    "file_hash",
     "get_gps_week_from_filename",
+    "get_version_from_pyproject",
     "gpsweekday",
-    # Validation
     "isfloat",
-    # Hashing
-    "rinex_file_hash",
 ]

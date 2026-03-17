@@ -3,6 +3,7 @@
 import numpy as np
 import polars as pl
 import pytest
+
 from canvod.grids import (
     EqualAreaBuilder,
     GridData,

@@ -71,7 +71,9 @@ def compute_spherical_coordinates(
 
     Examples
     --------
-    >>> from canvod.auxiliary.position import ECEFPosition, compute_spherical_coordinates
+    >>> from canvod.auxiliary.position import (
+    ...     ECEFPosition, compute_spherical_coordinates,
+    ... )
     >>>
     >>> # Receiver position
     >>> rx = ECEFPosition(x=4194304.0, y=176481.0, z=4780013.0)

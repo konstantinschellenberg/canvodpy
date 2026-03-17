@@ -102,10 +102,11 @@ class ClkFile(AuxFile):
         return Path(f"{spec.prefix}_{self.date}0000_01D_{sampling}_CLK.CLK")
 
     def download_aux_file(self) -> None:
-        """Download CLK file from FTP server with automatic fallback.
+        """Download CLK file, trying all servers from the product registry.
 
-        Constructs URL using product registry path pattern.
-        Uses GPS week for directory structure.
+        Servers are tried in priority order from products.toml. Auth-required
+        servers are skipped when no credentials are configured. Warnings are
+        printed when falling back to alternate servers.
 
         Raises
         ------
@@ -117,19 +118,12 @@ class ClkFile(AuxFile):
         clock_file = self.generate_filename_based_on_type()
         gps_week = get_gps_week_from_filename(clock_file)
 
-        # Get product spec from registry
         spec = get_product_spec(self.agency, self.product_type)
-
-        # Use product spec's path pattern
         ftp_path = spec.ftp_path_pattern.format(
             gps_week=gps_week,
             file=f"{clock_file}.gz",
         )
-
-        full_url = f"{self.ftp_server}{ftp_path}"
         destination = self.local_dir / clock_file
-
-        # File info for NASA CDDIS URL construction
         file_info = {
             "gps_week": gps_week,
             "filename": clock_file,
@@ -137,13 +131,8 @@ class ClkFile(AuxFile):
             "agency": self.agency,
         }
 
-        try:
-            self.download_file(full_url, destination, file_info)
-            print(f"Downloaded clock file for {self.agency} on date {self.date}")
-        except Exception as e:
-            raise RuntimeError(
-                f"Failed to download CLK file from all available servers: {str(e)}"
-            )
+        self.download_with_fallback(ftp_path, destination, file_info, spec)
+        print(f"Downloaded clock file for {self.agency} on date {self.date}")
 
     def read_file(self) -> xr.Dataset:
         """Read and parse CLK file into xarray Dataset.

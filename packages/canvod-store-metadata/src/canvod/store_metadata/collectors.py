@@ -1,0 +1,359 @@
+"""Runtime collectors — pure functions that gather metadata."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from .schema import (
+    ConfigSnapshot,
+    Creator,
+    Environment,
+    Instruments,
+    ProcessingProvenance,
+    Publisher,
+    ReceiverInfo,
+    References,
+    SiteInfo,
+    SpatialExtent,
+    StoreIdentity,
+    StoreMetadata,
+    Summaries,
+    TemporalExtent,
+)
+
+if TYPE_CHECKING:
+    pass
+
+
+def collect_software_versions() -> dict[str, str]:
+    """Collect versions of key packages via importlib.metadata."""
+    import importlib.metadata
+
+    packages = [
+        "canvodpy",
+        "canvod-readers",
+        "canvod-store",
+        "canvod-store-metadata",
+        "canvod-utils",
+        "icechunk",
+        "zarr",
+        "xarray",
+        "dask",
+        "numpy",
+        "polars",
+        "pydantic",
+    ]
+    versions: dict[str, str] = {}
+    for pkg in packages:
+        try:
+            versions[pkg] = importlib.metadata.version(pkg)
+        except importlib.metadata.PackageNotFoundError:
+            pass
+    return versions
+
+
+def collect_python_info() -> str:
+    """Return Python version + implementation."""
+    return f"{sys.version} ({platform.python_implementation()})"
+
+
+def collect_uv_version() -> str | None:
+    """Return uv version or None if not installed."""
+    try:
+        result = subprocess.run(
+            ["uv", "--version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return None
+
+
+def _find_monorepo_root() -> Path | None:
+    """Walk up from this file to find pyproject.toml with workspace."""
+    try:
+        from canvod.utils.config.loader import find_monorepo_root
+
+        return find_monorepo_root()
+    except Exception:
+        pass
+    # Fallback: walk up from cwd
+    p = Path.cwd()
+    for _ in range(10):
+        if (p / "pyproject.toml").exists() and (p / "uv.lock").exists():
+            return p
+        if p.parent == p:
+            break
+        p = p.parent
+    return None
+
+
+def _read_file_text(path: Path) -> str | None:
+    """Read a file as UTF-8 text, return None if missing."""
+    if not path.exists():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def _read_uv_lock_hash(root: Path) -> str | None:
+    """Return SHA256 of uv.lock for quick comparison."""
+    lock_path = root / "uv.lock"
+    if not lock_path.exists():
+        return None
+    return hashlib.sha256(lock_path.read_bytes()).hexdigest()
+
+
+def collect_environment(
+    store_path: Path | None = None,
+    dask_workers: int | None = None,
+    dask_threads_per_worker: int | None = None,
+) -> Environment:
+    """Collect runtime environment information."""
+    memory_gb = None
+    try:
+        import psutil
+
+        memory_gb = round(psutil.virtual_memory().total / (1024**3), 1)
+    except ImportError:
+        pass
+
+    disk_free_gb = None
+    if store_path is not None:
+        check_path = store_path if store_path.exists() else store_path.parent
+        if check_path.exists():
+            usage = shutil.disk_usage(check_path)
+            disk_free_gb = round(usage.free / (1024**3), 1)
+
+    # Read raw pyproject.toml + uv.lock from monorepo root
+    pyproject_text = None
+    uv_lock_text = None
+    uv_lock_hash = None
+    root = _find_monorepo_root()
+    if root is not None:
+        pyproject_text = _read_file_text(root / "pyproject.toml")
+        uv_lock_text = _read_file_text(root / "uv.lock")
+        uv_lock_hash = _read_uv_lock_hash(root)
+
+    return Environment(
+        hostname=socket.gethostname(),
+        os=platform.platform(),
+        arch=platform.machine(),
+        cpu_count=os.cpu_count(),
+        memory_gb=memory_gb,
+        disk_free_gb=disk_free_gb,
+        dask_workers=dask_workers,
+        dask_threads_per_worker=dask_threads_per_worker,
+        uv_lock_hash=uv_lock_hash,
+        pyproject_toml_text=pyproject_text,
+        uv_lock_text=uv_lock_text,
+    )
+
+
+def collect_config_snapshot(config: Any) -> ConfigSnapshot:
+    """Serialize config sections + compute SHA256 hash."""
+    sections: dict[str, Any] = {}
+    keys = (
+        "processing",
+        "preprocessing",
+        "aux_data",
+        "compression",
+        "icechunk",
+        "sids",
+    )
+    for key in keys:
+        if isinstance(config, dict):
+            obj = config.get(key)
+        else:
+            obj = getattr(config, key, None)
+        if obj is None:
+            proc = getattr(config, "processing", None)
+            if proc is not None:
+                obj = getattr(proc, key, None)
+        if obj is not None:
+            if hasattr(obj, "model_dump"):
+                sections[key] = obj.model_dump(mode="json")
+            elif isinstance(obj, dict):
+                sections[key] = obj
+            else:
+                sections[key] = str(obj)
+
+    config_str = json.dumps(sections, sort_keys=True, default=str)
+    config_hash = hashlib.sha256(config_str.encode()).hexdigest()
+
+    return ConfigSnapshot(
+        processing=sections.get("processing"),
+        preprocessing=sections.get("preprocessing"),
+        aux_data=sections.get("aux_data"),
+        compression=sections.get("compression"),
+        icechunk=sections.get("icechunk"),
+        sids=sections.get("sids"),
+        config_hash=config_hash,
+    )
+
+
+def collect_creator(metadata_config: Any) -> Creator:
+    """Build Creator from MetadataConfig."""
+    return Creator(
+        name=metadata_config.author,
+        email=str(metadata_config.email),
+        orcid=getattr(metadata_config, "orcid", None),
+        institution=metadata_config.institution,
+        institution_ror=getattr(metadata_config, "institution_ror", None),
+        department=getattr(metadata_config, "department", None),
+        research_group=getattr(metadata_config, "research_group", None),
+        website=getattr(metadata_config, "website", None),
+    )
+
+
+def collect_publisher(metadata_config: Any) -> Publisher:
+    """Build Publisher from MetadataConfig."""
+    return Publisher(
+        name=getattr(metadata_config, "publisher", None),
+        url=getattr(metadata_config, "publisher_url", None),
+        license=getattr(metadata_config, "license", None),
+    )
+
+
+def collect_spatial(site_config: Any, site_name: str) -> SpatialExtent:
+    """Build SpatialExtent from SiteConfig."""
+    lat = getattr(site_config, "latitude", None)
+    lon = getattr(site_config, "longitude", None)
+    alt = getattr(site_config, "altitude_m", None)
+
+    bbox = None
+    if lat is not None and lon is not None:
+        bbox = [lon, lat, lon, lat]
+
+    return SpatialExtent(
+        site=SiteInfo(
+            name=site_name,
+            description=getattr(site_config, "description", None),
+            country=getattr(site_config, "country", None),
+        ),
+        geospatial_lat=lat,
+        geospatial_lon=lon,
+        geospatial_alt_m=alt,
+        geospatial_lat_min=lat,
+        geospatial_lat_max=lat,
+        geospatial_lon_min=lon,
+        geospatial_lon_max=lon,
+        bbox=bbox,
+    )
+
+
+def collect_instruments(site_config: Any) -> Instruments:
+    """Build Instruments from SiteConfig receivers."""
+    receivers: dict[str, ReceiverInfo] = {}
+    for name, rcv in site_config.receivers.items():
+        receivers[name] = ReceiverInfo(
+            type=rcv.type,
+            directory=rcv.directory,
+            reader_format=getattr(rcv, "reader_format", "auto"),
+            description=getattr(rcv, "description", None),
+            recipe=getattr(rcv, "recipe", None),
+            metadata=getattr(rcv, "metadata", None),
+        )
+    return Instruments(receivers=receivers)
+
+
+def collect_processing_provenance(
+    store_type: str,
+    source_format: str,
+) -> ProcessingProvenance:
+    """Build ProcessingProvenance."""
+    now = datetime.now(UTC).isoformat()
+    return ProcessingProvenance(
+        software=collect_software_versions(),
+        python=collect_python_info(),
+        uv_version=collect_uv_version(),
+        level="L1" if store_type == "rinex_store" else "L2",
+        lineage=f"Raw {source_format} data ingested into Icechunk store",
+        facility=socket.gethostname(),
+        datetime=now,
+    )
+
+
+def collect_references(config: Any) -> References:
+    """Build References from config if available."""
+    from .schema import FundingRef, PublicationRef
+
+    refs_config = None
+    proc = getattr(config, "processing", None)
+    if proc is not None:
+        refs_config = getattr(proc, "references", None)
+
+    if refs_config is None:
+        return References()
+
+    pubs = [
+        PublicationRef(doi=p.doi, citation=getattr(p, "citation", None))
+        for p in getattr(refs_config, "publications", [])
+    ]
+    funding = [
+        FundingRef(
+            funder=f.funder,
+            funder_ror=getattr(f, "funder_ror", None),
+            grant_number=getattr(f, "grant_number", None),
+            award_title=getattr(f, "award_title", None),
+        )
+        for f in getattr(refs_config, "funding", [])
+    ]
+    return References(publications=pubs, funding=funding)
+
+
+def collect_metadata(
+    *,
+    config: Any,
+    site_name: str,
+    site_config: Any,
+    store_type: str,
+    source_format: str,
+    store_path: Path | None = None,
+    dask_workers: int | None = None,
+    dask_threads_per_worker: int | None = None,
+) -> StoreMetadata:
+    """Collect all metadata sections into a StoreMetadata object.
+
+    This is the main entry point for metadata collection.
+    """
+    now = datetime.now(UTC).isoformat()
+    meta_cfg = config.processing.metadata
+
+    return StoreMetadata(
+        identity=StoreIdentity(
+            id=f"{site_name}/{store_type}",
+            title=f"{site_name} {store_type.replace('_', ' ').title()}",
+            store_type=store_type,
+            source_format=source_format,
+            keywords=["GNSS", "VOD", site_name, source_format],
+            naming_authority=getattr(meta_cfg, "naming_authority", None),
+        ),
+        creator=collect_creator(meta_cfg),
+        publisher=collect_publisher(meta_cfg),
+        temporal=TemporalExtent(created=now, updated=now),
+        spatial=collect_spatial(site_config, site_name),
+        instruments=collect_instruments(site_config),
+        processing=collect_processing_provenance(store_type, source_format),
+        environment=collect_environment(
+            store_path, dask_workers, dask_threads_per_worker
+        ),
+        config=collect_config_snapshot(config),
+        references=collect_references(config),
+        summaries=Summaries(
+            history=[f"{now}: Store created ({source_format})"],
+        ),
+    )

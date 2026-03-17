@@ -11,14 +11,16 @@ from typing import TYPE_CHECKING, Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from canvod.viz.styles import PolarPlotStyle
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Polygon
 
+from canvod.viz.styles import PolarPlotStyle
+
 if TYPE_CHECKING:
-    from canvod.grids import HemiGrid
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+
+    from canvod.grids import HemiGrid
 
 
 class HemisphereVisualizer2D:
@@ -336,11 +338,11 @@ class HemisphereVisualizer2D:
         """Extract patches from HEALPix grid via ``healpy.boundaries``."""
         try:
             import healpy as hp
-        except ImportError:
+        except ImportError as e:
             raise ImportError(
                 "healpy is required for HEALPix 2D visualization. "
                 "Install with: pip install healpy"
-            )
+            ) from e
 
         patches = []
         cell_indices = []

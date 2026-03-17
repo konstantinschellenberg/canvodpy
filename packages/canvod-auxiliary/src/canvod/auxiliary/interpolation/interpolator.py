@@ -261,7 +261,9 @@ class ClockInterpolationStrategy(Interpolator):
 
     Examples
     --------
-    >>> from canvod.auxiliary.interpolation import ClockInterpolationStrategy, ClockConfig
+    >>> from canvod.auxiliary.interpolation import (
+    ...     ClockInterpolationStrategy, ClockConfig,
+    ... )
     >>>
     >>> config = ClockConfig(window_size=9, jump_threshold=1e-6)
     >>> interpolator = ClockInterpolationStrategy(config=config)

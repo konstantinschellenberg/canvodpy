@@ -86,7 +86,8 @@ def main():
         print(f"✓ Dataset dimensions: {dict(clk_ds.sizes)}")
         print(f"✓ Variables: {list(clk_ds.data_vars)}")
         print(
-            f"✓ Clock offset range: {float(clk_ds.clock_offset.min()):.6e} to {float(clk_ds.clock_offset.max()):.6e} seconds"
+            f"✓ Clock offset range: {float(clk_ds.clock_offset.min()):.6e}"
+            f" to {float(clk_ds.clock_offset.max()):.6e} seconds"
         )
 
     except Exception as e:

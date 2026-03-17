@@ -26,13 +26,14 @@ to ensure interoperability with standard tools and libraries.
 
 See Also
 --------
-canvod.readers.base.DatasetStructureValidator : Validates dataset structure
+canvod.readers.base.validate_dataset : Validates dataset structure
 
 """
 
 from typing import Any, Final
 
 import numpy as np
+
 from canvod.readers.gnss_specs.constants import FREQ_UNIT
 
 # -------------------
@@ -114,13 +115,6 @@ OBSERVABLES_METADATA: Final[dict[str, dict[str, str | float | int]]] = {
             "signal strength."
         ),
         "_FillValue": -1,
-    },
-    "Auxiliary": {
-        "standard_name": "auxiliary_observation",
-        "long_name": "Auxiliary Observation (X1)",
-        "description": "Auxiliary observation codes (e.g., X1) stored separately from SNR",
-        "units": "arbitrary",
-        "_FillValue": np.nan,
     },
 }
 

@@ -41,6 +41,18 @@ class MyIcechunkStore:
     - Integrated logging with file contexts
     - Configurable compression and chunking
 
+    Note on "metadata"
+    ------------------
+    This class manages two distinct things both historically called "metadata":
+
+    - **File registry** (``{group}/metadata/table``): per-file ingest ledger
+      tracking hashes, temporal ranges, filenames, and paths. Managed by
+      ``append_metadata()``, ``load_metadata()``, ``backup_metadata_table()``, etc.
+
+    - **Store metadata** (``canvod.store_metadata`` package): store-level
+      provenance (identity, creator, environment, compliance). Written to
+      Zarr root attrs by the orchestrator. See ``canvod-store-metadata``.
+
     Parameters
     ----------
     store_path : Path
@@ -241,6 +253,51 @@ class MyIcechunkStore:
         finally:
             self._logger.debug(f"Closed writable session for branch '{branch}'")
 
+    # ── Root-level store attributes ────────────────────────────────────────────
+
+    def set_root_attrs(self, attrs: dict[str, Any], branch: str = "main") -> str:
+        """Set root-level Zarr attributes on the store.
+
+        Parameters
+        ----------
+        attrs : dict[str, Any]
+            Key-value pairs to merge into root attrs.
+        branch : str, default "main"
+            Branch to write to.
+
+        Returns
+        -------
+        str
+            Snapshot ID from the commit.
+        """
+        with self.writable_session(branch) as session:
+            try:
+                root = zarr.open_group(session.store, mode="r+")
+            except zarr.errors.GroupNotFoundError:
+                root = zarr.open_group(session.store, mode="w")
+            root.attrs.update(attrs)
+            return session.commit(f"Set root attrs: {list(attrs.keys())}")
+
+    def get_root_attrs(self, branch: str = "main") -> dict[str, Any]:
+        """Read root-level Zarr attributes from the store.
+
+        Returns
+        -------
+        dict[str, Any]
+            Root attributes (empty dict if none set).
+        """
+        try:
+            with self.readonly_session(branch) as session:
+                root = zarr.open_group(session.store, mode="r")
+                return dict(root.attrs)
+        except Exception:
+            return {}
+
+    @property
+    def source_format(self) -> str | None:
+        """Return the ``source_format`` root attribute, or None."""
+        return self.get_root_attrs().get("source_format")
+
     def get_branch_names(self) -> list[str]:
         """
         List all branches in the store.
@@ -258,8 +315,8 @@ class MyIcechunkStore:
 
             return list(repo.list_branches())
         except Exception as e:
-            self._logger.warning(f"Failed to list branches in {repr(self)}: {e}")
-            warnings.warn(f"Failed to list branches in {repr(self)}: {e}")
+            self._logger.warning(f"Failed to list branches in {self!r}: {e}")
+            warnings.warn(f"Failed to list branches in {self!r}: {e}", stacklevel=2)
             return []
 
     def get_group_names(self, branch: str | None = None) -> dict[str, list[str]]:
@@ -298,7 +355,7 @@ class MyIcechunkStore:
             return group_dict
 
         except Exception as e:
-            self._logger.warning(f"Failed to list groups in {repr(self)}: {e}")
+            self._logger.warning(f"Failed to list groups in {self!r}: {e}")
             return {}
 
     def list_groups(self, branch: str = "main") -> list[str]:
@@ -362,7 +419,7 @@ class MyIcechunkStore:
                 self._build_tree(root, branch_indent, max_depth, current_depth=1)
 
         except Exception as e:
-            self._logger.warning(f"Failed to generate tree for {repr(self)}: {e}")
+            self._logger.warning(f"Failed to generate tree for {self!r}: {e}")
             sys.stdout.write(f"Error generating tree: {e}\n")
 
     def _build_tree(
@@ -606,7 +663,6 @@ class MyIcechunkStore:
             "GLONASS PHS",
             "GLONASS BIS",
             "Leap Seconds",
-            # "RINEX File Hash",
         ]
         for attr in attrs_to_remove:
             if attr in dataset.attrs:
@@ -686,9 +742,9 @@ class MyIcechunkStore:
         with self.writable_session(branch) as session:
             dataset = self._normalize_encodings(dataset)
 
-            rinex_hash = dataset.attrs.get("RINEX File Hash")
+            rinex_hash = dataset.attrs.get("File Hash")
             if rinex_hash is None:
-                raise ValueError("Dataset missing 'RINEX File Hash' attribute")
+                raise ValueError("Dataset missing 'File Hash' attribute")
             start = dataset.epoch.min().values
             end = dataset.epoch.max().values
 
@@ -843,7 +899,9 @@ class MyIcechunkStore:
             self._logger.error(
                 f"Failed to restore metadata table for group '{group_name}': {e}"
             )
-            raise RuntimeError(f"Critical error: could not restore metadata table: {e}")
+            raise RuntimeError(
+                f"Critical error: could not restore metadata table: {e}"
+            ) from e
 
     def overwrite_file_in_group(
         self,
@@ -863,7 +921,9 @@ class MyIcechunkStore:
         with self.writable_session(branch) as session:
             ds_from_store = xr.open_zarr(
                 session.store, group=group_name, consolidated=False
-            )
+            ).compute(
+                scheduler="synchronous"
+            )  # synchronous avoids Dask serialization error
 
             # Backup the existing metadata table
             metadata_backup = self.backup_metadata_table(group_name, session)
@@ -952,6 +1012,212 @@ class MyIcechunkStore:
 
         return info
 
+    # ── Generic metadata datasets ─────────────────────────────────────────────
+
+    def metadata_dataset_exists(
+        self, group_name: str, name: str, branch: str = "main"
+    ) -> bool:
+        """Return True if a metadata dataset *name* exists for *group_name*."""
+        path = f"{group_name}/metadata/{name}"
+        try:
+            with self.readonly_session(branch) as session:
+                zarr.open_group(session.store, mode="r", path=path)
+                return True
+        except Exception:
+            return False
+
+    def write_metadata_dataset(
+        self,
+        meta_ds: xr.Dataset,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> str:
+        """Write a pre-concatenated metadata dataset to *{group_name}/metadata/{name}*.
+
+        Always writes with ``mode="w"`` (full overwrite for the day).
+
+        Parameters
+        ----------
+        meta_ds : xr.Dataset
+            Pre-concatenated ``(epoch, sid)`` metadata dataset.
+        group_name : str
+            Target group (receiver name).
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch to write to.
+
+        Returns
+        -------
+        str
+            Icechunk snapshot ID.
+        """
+        version = get_version_from_pyproject()
+        path = f"{group_name}/metadata/{name}"
+        ds = self._normalize_encodings(meta_ds)
+        ds = self._cleanse_dataset_attrs(ds)
+        with self.writable_session(branch) as session:
+            to_icechunk(ds, session, group=path, mode="w")
+            return session.commit(f"[v{version}] metadata/{name} for {group_name}")
+
+    def append_metadata_datasets(
+        self,
+        parts: list[xr.Dataset],
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> str:
+        """Write metadata datasets incrementally — no in-memory concat.
+
+        The first dataset initialises the group (``mode="w"``), subsequent
+        datasets are appended along ``epoch``.  All writes happen inside a
+        single session/commit so the operation is atomic.
+
+        Parameters
+        ----------
+        parts : list[xr.Dataset]
+            Individual per-file metadata datasets with an ``epoch`` dim.
+        group_name : str
+            Target group (receiver name).
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch to write to.
+
+        Returns
+        -------
+        str
+            Icechunk snapshot ID.
+        """
+        if not parts:
+            msg = "parts list is empty"
+            raise ValueError(msg)
+
+        version = get_version_from_pyproject()
+        path = f"{group_name}/metadata/{name}"
+        total_epochs = 0
+
+        with self.writable_session(branch) as session:
+            for i, part in enumerate(parts):
+                ds = self._normalize_encodings(part)
+                ds = self._cleanse_dataset_attrs(ds)
+                if i == 0:
+                    to_icechunk(ds, session, group=path, mode="w")
+                else:
+                    to_icechunk(ds, session, group=path, append_dim="epoch")
+                total_epochs += ds.sizes.get("epoch", 0)
+
+            return session.commit(
+                f"[v{version}] metadata/{name} for {group_name} ({total_epochs} epochs)"
+            )
+
+    def read_metadata_dataset(
+        self,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+        chunks: dict | None = None,
+    ) -> xr.Dataset:
+        """Read a metadata dataset *name* for *group_name*.
+
+        Parameters
+        ----------
+        group_name : str
+            Group (receiver) name.
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch.
+        chunks : dict | None, optional
+            Dask chunk specification.  Defaults to
+            ``{"epoch": 34560, "sid": -1}``.
+
+        Returns
+        -------
+        xr.Dataset
+            Lazy ``(epoch, sid)`` metadata dataset.
+        """
+        path = f"{group_name}/metadata/{name}"
+        with self.readonly_session(branch) as session:
+            return xr.open_zarr(
+                session.store,
+                group=path,
+                chunks=chunks or self.chunk_strategy or {"epoch": 34560, "sid": -1},
+                consolidated=False,
+            )
+
+    def get_metadata_dataset_info(
+        self,
+        group_name: str,
+        name: str,
+        branch: str = "main",
+    ) -> dict[str, Any]:
+        """Get info about metadata dataset *name* for *group_name*.
+
+        Parameters
+        ----------
+        group_name : str
+            Group (receiver) name.
+        name : str
+            Dataset name under ``metadata/`` (e.g. ``"sbf_obs"``).
+        branch : str, default "main"
+            Repository branch.
+
+        Returns
+        -------
+        dict[str, Any]
+            Info dict with the same structure as ``get_group_info()``.
+
+        Raises
+        ------
+        ValueError
+            If the metadata dataset does not exist.
+        """
+        if not self.metadata_dataset_exists(group_name, name, branch):
+            raise ValueError(f"No metadata dataset '{name}' for group '{group_name}'")
+        ds = self.read_metadata_dataset(group_name, name, branch, chunks={})
+        info: dict[str, Any] = {
+            "group_name": group_name,
+            "store_path": f"{group_name}/metadata/{name}",
+            "store_type": f"metadata/{name}",
+            "dimensions": dict(ds.sizes),
+            "variables": list(ds.data_vars.keys()),
+            "coordinates": list(ds.coords.keys()),
+            "attributes": dict(ds.attrs),
+        }
+        if "epoch" in ds.sizes:
+            info["temporal_info"] = {
+                "start": str(ds.epoch.min().values),
+                "end": str(ds.epoch.max().values),
+                "count": ds.sizes["epoch"],
+                "resolution": str(ds.epoch.diff("epoch").median().values),
+            }
+        return info
+
+    # Convenience aliases (SBF)
+    def sbf_metadata_exists(self, group_name: str, branch: str = "main") -> bool:
+        """Return True if an SBF metadata dataset exists for *group_name*."""
+        return self.metadata_dataset_exists(group_name, "sbf_obs", branch)
+
+    def write_sbf_metadata(
+        self, meta_ds: xr.Dataset, group_name: str, branch: str = "main"
+    ) -> str:
+        """Write SBF metadata dataset."""
+        return self.write_metadata_dataset(meta_ds, group_name, "sbf_obs", branch)
+
+    def read_sbf_metadata(
+        self, group_name: str, branch: str = "main", chunks: dict | None = None
+    ) -> xr.Dataset:
+        """Read SBF metadata dataset."""
+        return self.read_metadata_dataset(group_name, "sbf_obs", branch, chunks)
+
+    def get_sbf_metadata_info(
+        self, group_name: str, branch: str = "main"
+    ) -> dict[str, Any]:
+        """Get SBF metadata info."""
+        return self.get_metadata_dataset_info(group_name, "sbf_obs", branch)
+
     def rel_path_for_commit(self, file_path: Path) -> str:
         """
         Generate relative path for commit messages.
@@ -1021,11 +1287,26 @@ class MyIcechunkStore:
 
         dataset = self._normalize_encodings(dataset)
 
-        rinex_hash = dataset.attrs.get("RINEX File Hash")
+        rinex_hash = dataset.attrs.get("File Hash")
         if rinex_hash is None:
-            raise ValueError("Dataset missing 'RINEX File Hash' attribute")
+            raise ValueError("Dataset missing 'File Hash' attribute")
         start = dataset.epoch.min().values
         end = dataset.epoch.max().values
+
+        # Guard: check hash + temporal overlap before appending
+        exists, matches = self.metadata_row_exists(
+            group_name, rinex_hash, start, end, branch
+        )
+        if exists and action != "overwrite":
+            self._logger.warning(
+                "append_blocked_by_guardrail",
+                group=group_name,
+                hash=rinex_hash[:16],
+                range=f"{start} → {end}",
+                reason="hash_or_temporal_overlap",
+                matching_files=matches.height if not matches.is_empty() else 0,
+            )
+            return
 
         with self.writable_session(branch) as session:
             to_icechunk(dataset, session, group=group_name, append_dim=append_dim)
@@ -1066,6 +1347,43 @@ class MyIcechunkStore:
                 f"hash={rinex_hash}"
             )
 
+    def write_or_append_group(
+        self,
+        dataset: xr.Dataset,
+        group_name: str,
+        append_dim: str = "epoch",
+        branch: str = "main",
+        commit_message: str | None = None,
+    ) -> None:
+        """Write or append a dataset to a group (no File Hash guardrails).
+
+        Suitable for VOD stores and other derived-data stores where the
+        rinex-style hash/temporal-overlap guardrails do not apply.
+
+        If the group does not exist, creates it (mode='w').
+        If it exists, appends along ``append_dim``.
+        """
+        dataset = self._normalize_encodings(dataset)
+
+        if self.group_exists(group_name, branch):
+            with self.writable_session(branch) as session:
+                to_icechunk(dataset, session, group=group_name, append_dim=append_dim)
+                if commit_message is None:
+                    commit_message = f"Appended to group '{group_name}'"
+                session.commit(commit_message)
+            self._logger.info(
+                f"Appended {len(dataset.epoch)} epochs to group '{group_name}'"
+            )
+        else:
+            with self.writable_session(branch) as session:
+                to_icechunk(dataset, session, group=group_name, mode="w")
+                if commit_message is None:
+                    commit_message = f"Created group '{group_name}'"
+                session.commit(commit_message)
+            self._logger.info(
+                f"Created group '{group_name}' with {len(dataset.epoch)} epochs"
+            )
+
     def append_metadata(
         self,
         group_name: str,
@@ -1077,6 +1395,8 @@ class MyIcechunkStore:
         commit_msg: str,
         dataset_attrs: dict,
         branch: str = "main",
+        canonical_name: str | None = None,
+        physical_path: str | None = None,
     ) -> None:
         """
         Append a metadata row into the group_name/metadata/table.
@@ -1107,6 +1427,8 @@ class MyIcechunkStore:
             if self.store_type == "rinex_store"
             else str(self._vod_store_strategy),
             "attrs": json.dumps(dataset_attrs, default=str),
+            "canonical_name": str(canonical_name) if canonical_name else "",
+            "physical_path": str(physical_path) if physical_path else "",
         }
         df_row = pl.DataFrame([row])
 
@@ -1347,35 +1669,36 @@ class MyIcechunkStore:
         branch: str = "main",
     ) -> tuple[bool, pl.DataFrame]:
         """
-        Check whether a (start, end) interval exists in group metadata.
+        Check whether a file already exists or temporally overlaps existing data.
+
+        Performs two checks in order:
+
+        1. **Hash match** — if ``rinex_hash`` already appears in the metadata
+           table, the file was previously ingested (exact duplicate).
+        2. **Temporal overlap** — if the incoming ``[start, end]`` interval
+           overlaps any existing metadata interval, the file covers a time
+           range that is already (partially) present in the store.  This
+           catches cases like a daily concatenation file coexisting with the
+           sub-daily files it was built from.
 
         Parameters
         ----------
         group_name : str
             Icechunk group name.
         rinex_hash : str
-            Hash of the current RINEX dataset.
+            Hash of the current GNSS dataset.
         start : np.datetime64
-            Start time for the interval.
+            Start epoch of the incoming file.
         end : np.datetime64
-            End time for the interval.
+            End epoch of the incoming file.
         branch : str, default "main"
             Branch name in the Icechunk repository.
 
         Returns
         -------
         tuple[bool, pl.DataFrame]
-            Existence flag and the matching metadata rows.
-
-        Raises
-        ------
-        ValueError
-            If a conflicting hash is found for the same interval.
-
-        Notes
-        -----
-        The metadata table is cast to `Datetime("ns")` for `start` and `end`
-        before filtering.
+            ``(True, overlapping_rows)`` when the file should be skipped,
+            ``(False, empty_df)`` when it is safe to ingest.
         """
         with self.readonly_session(branch) as session:
             try:
@@ -1385,11 +1708,9 @@ class MyIcechunkStore:
             except Exception:
                 return False, pl.DataFrame()
 
-            # Load all arrays into a dict
             data = {col: zmeta[col][:] for col in zmeta.array_keys()}
             df = pl.DataFrame(data)
 
-            # Ensure datetime dtypes
             df = df.with_columns(
                 [
                     pl.col("start").cast(pl.Datetime("ns")),
@@ -1397,30 +1718,35 @@ class MyIcechunkStore:
                 ]
             )
 
-            # Step 1: filter by start+end
-            matches = df.filter(
-                (pl.col("start") == np.datetime64(start, "ns"))
-                & (pl.col("end") == np.datetime64(end, "ns"))
+            # --- Check 1: exact hash match (file already ingested) ---
+            hash_matches = df.filter(pl.col("rinex_hash") == rinex_hash)
+            if not hash_matches.is_empty():
+                return True, hash_matches
+
+            # --- Check 2: temporal overlap ---
+            # Two intervals [A.start, A.end] and [B.start, B.end] overlap
+            # iff A.start <= B.end AND A.end >= B.start
+            start_ns = np.datetime64(start, "ns")
+            end_ns = np.datetime64(end, "ns")
+
+            overlaps = df.filter(
+                (pl.col("start") <= end_ns) & (pl.col("end") >= start_ns)
             )
 
-            if matches.is_empty():
-                return False, matches
-
-            # Step 2: check hash consistency
-            unique_hashes = matches.select("rinex_hash").unique()
-
-            if (
-                unique_hashes.height > 1
-                or unique_hashes.item(0, "rinex_hash") != rinex_hash
-            ):
-                existing_hashes = unique_hashes.to_series().to_list()
-                raise ValueError(
-                    "Metadata conflict: rows with start="
-                    f"{start}, end={end} exist but hash differs "
-                    f"(existing={existing_hashes}, new={rinex_hash})"
+            if not overlaps.is_empty():
+                n = overlaps.height
+                existing_range = f"{overlaps['start'].min()} → {overlaps['end'].max()}"
+                self._logger.warning(
+                    "temporal_overlap_detected",
+                    group=group_name,
+                    incoming_hash=rinex_hash,
+                    incoming_range=f"{start} → {end}",
+                    existing_range=existing_range,
+                    overlapping_files=n,
                 )
+                return True, overlaps
 
-            return True, matches
+            return False, pl.DataFrame()
 
     def batch_check_existing(self, group_name: str, file_hashes: list[str]) -> set[str]:
         """Check which file hashes already exist in metadata."""
@@ -1436,6 +1762,67 @@ class MyIcechunkStore:
         except (KeyError, zarr.errors.GroupNotFoundError, Exception):
             # Branch/group/metadata doesn't exist yet (fresh store)
             return set()
+
+    def check_temporal_overlaps(
+        self,
+        group_name: str,
+        file_intervals: list[tuple[str, np.datetime64, np.datetime64]],
+        branch: str = "main",
+    ) -> set[str]:
+        """Check which files temporally overlap existing metadata intervals.
+
+        Parameters
+        ----------
+        group_name : str
+            Icechunk group name.
+        file_intervals : list[tuple[str, np.datetime64, np.datetime64]]
+            List of ``(rinex_hash, start, end)`` tuples for incoming files.
+        branch : str, default "main"
+            Branch name in the Icechunk repository.
+
+        Returns
+        -------
+        set[str]
+            Hashes of files whose ``[start, end]`` overlaps any existing
+            metadata interval.  Files whose hash already exists in the store
+            are NOT included (use ``batch_check_existing`` for those).
+        """
+        if not file_intervals:
+            return set()
+
+        try:
+            with self.readonly_session(branch) as session:
+                df = self.load_metadata(session.store, group_name)
+        except (KeyError, zarr.errors.GroupNotFoundError, Exception):
+            return set()
+
+        if df.is_empty():
+            return set()
+
+        df = df.with_columns(
+            [
+                pl.col("start").cast(pl.Datetime("ns")),
+                pl.col("end").cast(pl.Datetime("ns")),
+            ]
+        )
+
+        overlapping: set[str] = set()
+        for rinex_hash, start, end in file_intervals:
+            start_ns = np.datetime64(start, "ns")
+            end_ns = np.datetime64(end, "ns")
+
+            hits = df.filter((pl.col("start") <= end_ns) & (pl.col("end") >= start_ns))
+            if not hits.is_empty():
+                self._logger.warning(
+                    "temporal_overlap_detected",
+                    group=group_name,
+                    incoming_hash=rinex_hash[:16],
+                    incoming_range=f"{start} → {end}",
+                    existing_files=hits.height,
+                )
+                overlapping.add(rinex_hash)
+
+        return overlapping
 
     def append_metadata_bulk_store(
         self,
@@ -1622,10 +2009,9 @@ class MyIcechunkStore:
         str
             Representation string.
         """
-        return (
-            "MyIcechunkStore("
-            f"store_path={self.store_path}, store_type={self.store_type})"
-        )
+        display_names = {"rinex_store": "GNSS Store", "vod_store": "VOD Store"}
+        display = display_names.get(self.store_type, self.store_type)
+        return f"MyIcechunkStore(store_path={self.store_path}, store_type={display})"
 
     def __str__(self) -> str:
         """Return a human-readable summary.
@@ -2594,7 +2980,19 @@ class MyIcechunkStore:
         drop_empty: bool = True,
         branch: str = "main",
     ) -> xr.Dataset:
-        """Safely aggregate temporally irregular VOD data.
+        """Aggregate temporally irregular VOD data per SID.
+
+        Each satellite (SID) is aggregated independently within each
+        time bin.  Mixing observations across satellites is physically
+        meaningless because each observes a different part of the canopy
+        from a different sky position.
+
+        .. note::
+
+           For production use, prefer ``canvod.ops.TemporalAggregate``
+           which uses Polars groupby and handles all coordinate types
+           explicitly.  This method is a convenience wrapper for quick
+           interactive exploration.
 
         Parameters
         ----------
@@ -2605,7 +3003,8 @@ class MyIcechunkStore:
         vars_to_aggregate : Sequence[str], optional
             Variables to aggregate using mean.
         geometry_vars : Sequence[str], optional
-            Geometry variables to preserve via first() per bin.
+            Geometry variables to aggregate using mean (centroid of
+            contributing sky positions).
         drop_empty : bool, default True
             Drop empty epochs after aggregation.
         branch : str, default "main"
@@ -2614,41 +3013,46 @@ class MyIcechunkStore:
         Returns
         -------
         xr.Dataset
-            Aggregated dataset.
+            Aggregated dataset with independent per-SID aggregation.
         """
+        log = get_logger(__name__)
 
         with self.readonly_session(branch=branch) as session:
             ds = xr.open_zarr(session.store, group=group, consolidated=False)
 
-            print(
-                f"📦 Aggregating group '{group}' from branch '{branch}' → freq={freq}"
+            log.info(
+                "Aggregating group",
+                group=group,
+                branch=branch,
+                freq=freq,
             )
 
-            # 1️⃣ Aggregate numeric variables
+            # Aggregate data and geometry vars with mean (per SID
+            # independently — resample preserves the sid dimension).
+            all_vars = list(vars_to_aggregate) + list(geometry_vars)
             merged_vars = []
-            for var in vars_to_aggregate:
+            for var in all_vars:
                 if var in ds:
                     merged_vars.append(ds[var].resample(epoch=freq).mean())
                 else:
-                    print(f"⚠️ Skipping missing variable: {var}")
+                    log.warning("Skipping missing variable", var=var)
             ds_agg = xr.merge(merged_vars)
 
-            # 2️⃣ Preserve geometry variables (use first() per bin)
-            for var in geometry_vars:
-                if var in ds:
-                    ds_agg[var] = ds[var].resample(epoch=freq).first()
-
-            # 3️⃣ Add remaining coordinates
+            # Preserve sid-only coordinates (sv, band, code, etc.)
             for coord in ds.coords:
-                if coord not in ds_agg.coords and coord != "epoch":
+                if coord in ds_agg.coords or coord == "epoch":
+                    continue
+                coord_dims = ds.coords[coord].dims
+                # Only copy coords whose dims all survive in ds_agg
+                if all(d in ds_agg.dims for d in coord_dims):
                     ds_agg[coord] = ds[coord]
 
-            # 4️⃣ Drop all-NaN epochs if requested
+            # Drop all-NaN epochs if requested
             if drop_empty and "VOD" in ds_agg:
                 valid_mask = ds_agg["VOD"].notnull().any(dim="sid").compute()
                 ds_agg = ds_agg.isel(epoch=valid_mask)
 
-            print(f"✅ Aggregation done: {dict(ds_agg.sizes)}")
+            log.info("Aggregation done", sizes=dict(ds_agg.sizes))
             return ds_agg
 
     def safe_temporal_aggregate_to_branch(

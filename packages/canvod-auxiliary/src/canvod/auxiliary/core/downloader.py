@@ -10,11 +10,29 @@ from typing import Any
 from urllib import error as urlerror
 from urllib import request
 
-from tqdm import tqdm
+from rich.progress import (
+    BarColumn,
+    DownloadColumn,
+    Progress,
+    TextColumn,
+    TimeRemainingColumn,
+    TransferSpeedColumn,
+)
 
 from canvod.auxiliary._internal import get_logger
 
 log = get_logger(__name__)
+
+
+def _download_progress() -> Progress:
+    """Create a Rich progress bar configured for file downloads."""
+    return Progress(
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(),
+        DownloadColumn(),
+        TransferSpeedColumn(),
+        TimeRemainingColumn(),
+    )
 
 
 class FileDownloader(ABC):
@@ -58,6 +76,7 @@ class FtpDownloader(FileDownloader):
     """
 
     NASA_FTP = "ftp://gdc.cddis.eosdis.nasa.gov"
+    ESA_FTP = "ftp://gssc.esa.int"
 
     def __init__(
         self,
@@ -67,8 +86,9 @@ class FtpDownloader(FileDownloader):
         """Initialize downloader with optional alternate servers."""
         if alt_servers is None:
             if user_email is not None:
-                self.alt_servers = [self.NASA_FTP]
-                print("ℹ NASA CDDIS fallback enabled")
+                # Primary is NASA (set by caller); fallback to ESA
+                self.alt_servers = [self.ESA_FTP]
+                print("ℹ ESA fallback enabled (primary: NASA CDDIS)")
             else:
                 self.alt_servers = []
                 print("ℹ Using ESA FTP exclusively")
@@ -144,7 +164,7 @@ class FtpDownloader(FileDownloader):
                     "   Please check your network and try again."
                 ) from e
 
-            print(f"Primary download failed: {str(e)}")
+            print(f"Primary download failed: {e!s}")
             log.warning(
                 "primary_download_failed",
                 url=url,
@@ -152,7 +172,7 @@ class FtpDownloader(FileDownloader):
                 exception=type(e).__name__,
             )
 
-            all_errors = [f"Primary server error: {str(e)}"]
+            all_errors = [f"Primary server error: {e!s}"]
 
             if not self.alt_servers:
                 print("ℹ No fallback servers available")
@@ -164,14 +184,14 @@ class FtpDownloader(FileDownloader):
                 raise RuntimeError(
                     f"Failed to download file from primary server.\n"
                     f"\nPrimary URL: {url}\n"
-                    f"Error: {str(e)}\n"
+                    f"Error: {e!s}\n"
                     f"\nPossible causes:\n"
                     f"  - File not yet available (product may not be published yet)\n"
                     f"  - Incorrect FTP path for server\n"
                     f"  - Temporary server issue\n"
                     f"\nTip: Set nasa_earthdata_acc_mail in config/processing.yaml "
                     f"to enable NASA CDDIS fallback"
-                )
+                ) from e
 
             for alt_server in self.alt_servers:
                 try:
@@ -206,13 +226,13 @@ class FtpDownloader(FileDownloader):
                             "   Please check your network and try again."
                         ) from alt_e
 
-                    error_msg = f"Alternate server {alt_server} error: {str(alt_e)}"
+                    error_msg = f"Alternate server {alt_server} error: {alt_e!s}"
                     print(error_msg)
                     all_errors.append(error_msg)
 
             raise RuntimeError(
                 "Failed to download from all servers. Errors:\n" + "\n".join(all_errors)
-            )
+            ) from e
 
     def _try_download_url(self, url: str, destination: Path) -> Path:
         """Attempt to download from a specific URL."""
@@ -221,14 +241,15 @@ class FtpDownloader(FileDownloader):
         if "cddis.eosdis.nasa.gov" in url:
             return self._download_from_nasa_cddis(url, destination)
         else:
-            with tqdm(unit="B", unit_scale=True, desc=destination.name) as pbar:
+            with _download_progress() as progress:
+                task = progress.add_task(destination.name, total=None)
 
-                def update_pbar(count, block_size, total_size):
+                def update_progress(count, block_size, total_size):
                     if total_size != -1:
-                        pbar.total = total_size
-                    pbar.update(block_size)
+                        progress.update(task, total=total_size)
+                    progress.advance(task, block_size)
 
-                request.urlretrieve(url, temp_path, reporthook=update_pbar)
+                request.urlretrieve(url, temp_path, reporthook=update_progress)
 
         if url.endswith(".gz"):
             with gzip.open(temp_path, "rb") as f_in:
@@ -265,28 +286,29 @@ class FtpDownloader(FileDownloader):
                     ftps.cwd(subdir)
                 except error_perm as e:
                     raise RuntimeError(
-                        f"Failed to change to directory {subdir}: {str(e)}"
-                    )
+                        f"Failed to change to directory {subdir}: {e!s}"
+                    ) from e
 
         if filename not in ftps.nlst():
             raise RuntimeError(f"File {filename} not found in directory {directory}")
 
         temp_path = destination.with_suffix(destination.suffix + ".tmp")
         with temp_path.open("wb") as f:
-            with tqdm(unit="B", unit_scale=True, desc=destination.name) as pbar:
-
-                def write_callback(data):
-                    f.write(data)
-                    pbar.update(len(data))
-
+            with _download_progress() as progress:
+                total = None
                 try:
                     size = ftps.size(filename)
                     if size:
-                        pbar.total = size
+                        total = size
                 except (OSError, error_perm):
                     pass
 
-                print(f"Retrieving file: {filename}")
+                task = progress.add_task(filename, total=total)
+
+                def write_callback(data):
+                    f.write(data)
+                    progress.advance(task, len(data))
+
                 ftps.retrbinary(f"RETR {filename}", write_callback)
 
         ftps.quit()

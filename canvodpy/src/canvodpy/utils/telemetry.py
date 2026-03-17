@@ -98,7 +98,7 @@ def trace_operation(
     operation_name: str,
     attributes: dict[str, Any] | None = None,
     record_duration: bool = True,
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     """
     Context manager for tracing operations with OpenTelemetry.
 
@@ -162,7 +162,7 @@ def trace_icechunk_write(
     group_name: str,
     dataset_size_mb: float | None = None,
     num_variables: int | None = None,
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     """
     Trace an icechunk write operation.
 
@@ -218,7 +218,7 @@ def trace_rinex_processing(
     file_name: str,
     site: str | None = None,
     date: str | None = None,
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     """
     Trace RINEX file processing.
 
@@ -266,7 +266,7 @@ def trace_rinex_processing(
 def trace_aux_preprocessing(
     date: str,
     operation: str | None = None,
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     """
     Trace auxiliary data preprocessing.
 
@@ -308,7 +308,7 @@ def trace_vod_calculation(
     operation: str,
     site: str | None = None,
     date: str | None = None,
-) -> Generator[Any, None, None]:
+) -> Generator[Any]:
     """
     Trace VOD calculation.
 

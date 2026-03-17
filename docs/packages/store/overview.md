@@ -32,7 +32,7 @@ The `canvod-store` package provides versioned storage management for GNSS vegeta
 
     ---
 
-    SHA-256 of each raw RINEX file is stored as `"RINEX File Hash"`.
+    SHA-256 of each raw RINEX file is stored as `"File Hash"`.
     Re-submitting the same file is always a no-op — safe to re-run pipelines.
 
 </div>
@@ -42,10 +42,15 @@ The `canvod-store` package provides versioned storage management for GNSS vegeta
 ## Architecture
 
 ```mermaid
-graph LR
-    A1["RINEX + Aux\n(epoch × sid)"] --> B["Preprocessing\n(encoding, padding)"]
+graph TD
+    A1["`**GNSS Data (RINEX / SBF)**
+    epoch x sid`"]
+    A1 --> B["`**Preprocessing**
+    encoding, padding`"]
     B --> C["Icechunk Repository"]
-    C --> D1["obs group\n{receiver}/obs/\n(epoch × sid)"]
+    C --> D1["`**obs group**
+    receiver/obs/
+    epoch x sid`"]
     D1 --> E["VOD Analysis"]
 ```
 
@@ -101,9 +106,9 @@ graph LR
 
 ## Data Flow
 
-1. **Ingest** — Raw RINEX data + SP3/CLK ephemerides via `Rnxv3Obs.to_ds()`
+1. **Ingest** — Raw GNSS data (RINEX via `Rnxv3Obs` or SBF via `SbfReader`) + ephemerides
 2. **Preprocess** — Normalise encodings, pad to global SID, strip fill values
-3. **Store observations** — Append to `{group}/obs/` with `"RINEX File Hash"` deduplication
+3. **Store observations** — Append to `{group}/obs/` with `"File Hash"` deduplication
 4. **Query** — Retrieve by time range, signal, or group name
 5. **Analyse** — VOD calculation using stored observations and grid geometry
 
@@ -118,6 +123,6 @@ graph LR
 | Compression | Zstd level 5 |
 | Cloud backends | S3, MinIO, R2, local filesystem |
 | Versioning | Git-like snapshots, hash-addressable |
-| Deduplication | SHA-256 `"RINEX File Hash"` per RINEX file |
+| Deduplication | SHA-256 `"File Hash"` per RINEX file |
 
 [:octicons-arrow-right-24: Icechunk storage details](icechunk.md)

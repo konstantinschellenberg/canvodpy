@@ -1,0 +1,36 @@
+# Default command lists all available recipes
+_default:
+    @just --list --unsorted
+
+alias c := clean
+alias h := hooks
+alias q := check
+alias t := test
+
+# lint, format, and type-check
+check:
+    uv run ruff check . --fix
+    uv run ruff format .
+    uv run ty check
+
+# run tests
+test:
+    uv run pytest
+
+# clean build artifacts
+clean:
+    rm -fr build/ dist/ .eggs/
+    find . -name '*.egg-info' -exec rm -fr {} +
+    find . -name '__pycache__' -exec rm -fr {} +
+
+# setup pre-commit hooks
+hooks:
+    uvx pre-commit install
+
+# sync dependencies
+sync:
+    uv sync
+
+# build package
+build:
+    uv build

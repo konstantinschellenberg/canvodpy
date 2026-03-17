@@ -125,8 +125,8 @@ class TestComputeSphericalCoordinates:
         # Convert receiver to geodetic to get proper up direction
         lat, lon, alt = ecef_position.to_geodetic()
 
-        # Place satellite far above receiver along local vertical
-        # For simplicity, just go way up in ECEF (not perfectly vertical but high enough)
+        # Place satellite far above receiver along local vertical.
+        # Go way up in ECEF (not perfectly vertical but high enough).
         sat_x = ecef_position.x * 1.5
         sat_y = ecef_position.y * 1.5
         sat_z = ecef_position.z * 1.5
@@ -208,7 +208,7 @@ class TestComputeSphericalCoordinates:
 
     def test_geodetic_position_input(self, geodetic_position):
         """Test using GeodeticPosition as receiver."""
-        # First convert to ECEF since compute_spherical_coordinates expects ECEF receiver
+        # Convert to ECEF (compute_spherical_coordinates expects ECEF)
         ecef_pos = geodetic_position.to_ecef()
 
         sat_x = 25e6

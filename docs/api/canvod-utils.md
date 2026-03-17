@@ -14,6 +14,11 @@ Shared utilities: configuration management, date handling, and CLI tools.
         - SiteConfig
         - SitesConfig
         - SidsConfig
+        - ProcessingParams
+        - ReceiverConfig
+        - PreprocessingConfig
+        - TemporalAggregationConfig
+        - GridAssignmentConfig
 
 ## Tools
 
@@ -25,5 +30,4 @@ Shared utilities: configuration management, date handling, and CLI tools.
         - get_gps_week_from_filename
         - gpsweekday
         - isfloat
-        - rinex_file_hash
         - get_version_from_pyproject

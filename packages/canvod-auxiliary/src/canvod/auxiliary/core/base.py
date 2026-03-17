@@ -170,6 +170,124 @@ class AuxFile(ABC):
             raise RuntimeError("No downloader is configured")
         return self.downloader.download(url, destination, file_info)
 
+    def download_with_fallback(
+        self,
+        ftp_path: str,
+        destination: Path,
+        file_info: dict | None = None,
+        product_spec: Any | None = None,
+    ) -> Path:
+        """Download a file, trying all servers from the product spec in priority order.
+
+        Iterates through the product's FTP server list (from products.toml),
+        skipping servers that require authentication when no credentials are
+        configured. Warns when falling back to an alternate server. Raises a
+        clear error when all servers fail.
+
+        Parameters
+        ----------
+        ftp_path : str
+            Server-relative path (e.g. ``/gnss/products/2345/FILE.gz``).
+        destination : Path
+            Local file destination.
+        file_info : dict, optional
+            Extra context passed to the downloader.
+        product_spec : ProductSpec, optional
+            Product specification with ``ftp_servers`` list. If None, falls
+            back to single-server download using ``self.ftp_server``.
+
+        Returns
+        -------
+        Path
+            Path to the downloaded file.
+
+        Raises
+        ------
+        RuntimeError
+            If download fails from all available servers.
+        """
+        if self.downloader is None:
+            raise RuntimeError("No downloader is configured")
+
+        # Fall back to legacy single-server path when no product spec
+        if product_spec is None or not product_spec.ftp_servers:
+            url = f"{self.ftp_server}{ftp_path}"
+            return self.downloader.download(url, destination, file_info)
+
+        # Sort servers by priority (lowest number = highest priority)
+        servers = sorted(product_spec.ftp_servers, key=lambda s: s.priority)
+
+        # Filter out auth-required servers when no credentials
+        available_servers = []
+        skipped_servers = []
+        for server in servers:
+            if server.requires_auth and self.user_email is None:
+                skipped_servers.append(server)
+            else:
+                available_servers.append(server)
+
+        if not available_servers:
+            server_names = ", ".join(s.url for s in skipped_servers)
+            raise RuntimeError(
+                f"No FTP servers available for {product_spec.prefix}.\n"
+                f"All servers require authentication: {server_names}\n"
+                f"Set nasa_earthdata_acc_mail in config/processing.yaml to "
+                f"enable NASA CDDIS access.\n"
+                f"Register at: https://urs.earthdata.nasa.gov/users/new"
+            )
+
+        errors: list[str] = []
+        for i, server in enumerate(available_servers):
+            url = f"{server.url.rstrip('/')}{ftp_path}"
+            try:
+                result = self.downloader.download(url, destination, file_info)
+                if i > 0:
+                    # We got here via fallback — log which server succeeded
+                    print(
+                        f"  ✓ Download succeeded from fallback server: "
+                        f"{server.description or server.url}"
+                    )
+                return result
+            except Exception as e:
+                if self.downloader._is_network_error(e):
+                    raise RuntimeError(
+                        "No internet connection detected. "
+                        "Please check your network and try again."
+                    ) from e
+
+                server_label = server.description or server.url
+                error_msg = f"{server_label}: {e!s}"
+                errors.append(error_msg)
+                print(f"  ⚠ Download failed from {server_label}: {e!s}")
+
+                # Warn about fallback if there are more servers to try
+                if i < len(available_servers) - 1:
+                    next_server = available_servers[i + 1]
+                    next_label = next_server.description or next_server.url
+                    print(f"  → Trying fallback server: {next_label}")
+
+        # All servers exhausted
+        product_label = f"{product_spec.agency_code}/{product_spec.product_type}"
+        error_detail = "\n".join(f"  - {e}" for e in errors)
+        if skipped_servers:
+            skip_detail = "\n".join(
+                f"  - {s.description or s.url} (requires auth)" for s in skipped_servers
+            )
+            auth_hint = (
+                f"\n\nSkipped servers (no credentials):\n{skip_detail}\n"
+                f"Set nasa_earthdata_acc_mail in config/processing.yaml "
+                f"to enable these servers."
+            )
+        else:
+            auth_hint = ""
+
+        raise RuntimeError(
+            f"Failed to download {product_label} from all available servers.\n"
+            f"\nFile: {destination.name}\n"
+            f"\nServer errors:\n{error_detail}"
+            f"{auth_hint}"
+        )
+
     @abstractmethod
     def read_file(self) -> xr.Dataset:
         """Read and parse the auxiliary file.

@@ -101,6 +101,67 @@ just check-format   # ruff formatting only
 
 ---
 
+## Keeping Your Fork in Sync
+
+If you are working from a fork (rather than a direct clone), periodically pull updates from the upstream repository:
+
+```bash
+git checkout main
+git fetch upstream
+git merge upstream/main
+git push origin main
+
+# Then update your feature branch:
+git checkout feature/my-feature
+git rebase main
+```
+
+If `upstream` is not configured, add it once:
+
+```bash
+git remote add upstream git@github.com:nfb2021/canvodpy.git
+```
+
+[:octicons-arrow-right-24: Detailed fork sync guide](getting-started.md#12-keeping-your-fork-up-to-date)
+
+---
+
+## Pre-Commit Hooks
+
+`just hooks` installs Git hooks that run **automatically on every commit**. If any hook fails, the commit is rejected — your changes stay staged but no commit is created.
+
+### What runs
+
+| Hook | Stage | Effect |
+|------|-------|--------|
+| **ruff check --fix** | `pre-commit` | Lints and auto-fixes Python code |
+| **ruff format** | `pre-commit` | Formats Python code |
+| **uv-lock** | `pre-commit` | Verifies `uv.lock` matches `pyproject.toml` |
+| **trailing-whitespace** | `pre-commit` | Strips trailing whitespace |
+| **check-added-large-files** | `pre-commit` | Blocks large files from being committed |
+| **detect-private-key** | `pre-commit` | Prevents accidental secret commits |
+| **end-of-file-fixer** | `pre-commit` | Ensures files end with one newline |
+| **commitizen** | `commit-msg` | Validates Conventional Commits format |
+
+### When your commit is rejected
+
+```bash
+# Most common: ruff auto-fixed your code. Stage the fixes and retry:
+git add -u && git commit -m "feat(readers): your message"
+
+# If commitizen rejects your message, use the correct format:
+git commit -m "type(scope): description"
+# types: feat, fix, docs, refactor, test, chore, perf, ci
+# scopes: readers, aux, grids, vod, store, viz, utils, naming, ops, docs, ci, deps
+
+# If uv-lock is out of date:
+uv sync && git add uv.lock && git commit -m "feat(readers): your message"
+```
+
+[:octicons-arrow-right-24: Full troubleshooting guide](getting-started.md#14-pre-commit-hooks-and-why-your-commit-may-be-rejected)
+
+---
+
 ## Contributing Workflow
 
 ```bash
@@ -116,7 +177,25 @@ git push origin feature/my-feature
 
 ### Conventional Commit Scopes
 
-`readers` · `aux` · `grids` · `vod` · `store` · `viz` · `utils` · `docs` · `ci` · `deps`
+`readers` · `aux` · `grids` · `vod` · `store` · `viz` · `utils` · `naming` · `ops` · `docs` · `ci` · `deps`
+
+---
+
+## Continuous Integration
+
+Every push and PR triggers GitHub Actions workflows:
+
+| Workflow | Checks |
+|----------|--------|
+| **Code Quality** | ruff lint, ruff format, ty type-check, lockfile consistency |
+| **Test with Coverage** | pytest → coverage.lcov → [Coveralls](https://coveralls.io/github/nfb2021/canvodpy) |
+| **Platform Tests** | Multi-OS, multi-Python-version test matrix |
+
+Coverage reports are posted as PR comments and tracked on Coveralls over time. To run coverage locally:
+
+```bash
+just test-coverage    # generates HTML report
+```
 
 ---
 

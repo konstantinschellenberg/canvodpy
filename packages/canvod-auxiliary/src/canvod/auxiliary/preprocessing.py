@@ -10,6 +10,7 @@ Matches gnssvodpy.icechunk_manager.preprocessing.IcechunkPreprocessor exactly.
 from typing import Any
 
 import numpy as np
+import structlog
 import xarray as xr
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
@@ -22,13 +23,46 @@ from canvod.readers.gnss_specs.constellations import (
 )
 from canvod.readers.gnss_specs.signals import SignalIDMapper
 
+log = structlog.get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# Per-process SID issue accumulators
+# ---------------------------------------------------------------------------
+# Each worker subprocess accumulates SID issues during pad_to_global_sid()
+# calls. The main process retrieves them via flush_sid_accumulators() at the
+# end of each file's processing, then aggregates across all files.
+_accumulated_not_in_global_space: set[str] = set()
+_accumulated_dropped_by_filter: set[str] = set()
+
+
+def flush_sid_accumulators() -> dict[str, list[str]]:
+    """Return accumulated SID issues and clear the module-level accumulators.
+
+    Called once per RINEX file at the end of ``preprocess_with_hermite_aux``.
+    The returned dict is aggregated by the main process across all files for
+    a receiver and logged once per receiver run.
+
+    Returns
+    -------
+    dict[str, list[str]]
+        Keys: ``"not_in_global_space"``, ``"dropped_by_filter"``.
+    """
+    global _accumulated_not_in_global_space, _accumulated_dropped_by_filter
+    result: dict[str, list[str]] = {
+        "not_in_global_space": sorted(_accumulated_not_in_global_space),
+        "dropped_by_filter": sorted(_accumulated_dropped_by_filter),
+    }
+    _accumulated_not_in_global_space = set()
+    _accumulated_dropped_by_filter = set()
+    return result
+
 
 def create_sv_to_sid_mapping(
     svs: list[str], aggregate_glonass_fdma: bool = True
 ) -> dict[str, list[str]]:
     """Build mapping from each SV to its possible SIDs.
 
-    Adds ``X1|X`` placeholder SIDs as well.
+    Builds all SIDs from known band/code combinations.
 
     Parameters
     ----------
@@ -65,7 +99,6 @@ def create_sv_to_sid_mapping(
             for _, band in mapper.SYSTEM_BANDS[sys_letter].items():
                 codes = system.BAND_CODES.get(band, ["X"])
                 sids.extend(f"{sv}|{band}|{code}" for code in codes)
-        sids.append(f"{sv}|X1|X")  # aux observation
 
         sv_to_sids[sv] = sorted(sids)
 
@@ -179,12 +212,128 @@ def pad_to_global_sid(
         for code in systems[sys_letter].BAND_CODES.get(band, ["X"])
     ]
     sids = sorted(sids)
+    global_sid_set = set(sids)
+
+    # Accumulate SIDs that fall outside the constellation model's universe.
+    # These are logged once per receiver run by the pipeline (not per file).
+    if "sid" in ds.coords:
+        ds_sids = set(ds.sid.values)
+        unknown_sids = ds_sids - global_sid_set
+        if unknown_sids:
+            _accumulated_not_in_global_space.update(unknown_sids)
 
     # Filter to keep_sids if provided
     if keep_sids is not None and len(keep_sids) > 0:
-        sids = sorted(set(sids).intersection(set(keep_sids)))
+        keep_set = set(keep_sids)
+        sids_before = set(sids)
+        sids = sorted(sids_before.intersection(keep_set))
 
-    return ds.reindex({"sid": sids}, fill_value=np.nan)
+        # Accumulate observed SIDs dropped by keep_sids filter.
+        # Logged once per receiver run by the pipeline (not per file).
+        if "sid" in ds.coords:
+            ds_sids = set(ds.sid.values)
+            dropped_by_filter = (ds_sids & sids_before) - keep_set
+            if dropped_by_filter:
+                _accumulated_dropped_by_filter.update(dropped_by_filter)
+
+    ds_padded = ds.reindex({"sid": sids}, fill_value=np.nan)
+    return _fill_sid_coords_from_sid_strings(ds_padded, mapper)
+
+
+def _fill_sid_coords_from_sid_strings(
+    ds: xr.Dataset, mapper: SignalIDMapper
+) -> xr.Dataset:
+    """Fill NaN sid-level coords by parsing SID strings.
+
+    After ``reindex``, newly-added SIDs have NaN for ``sv``, ``band``,
+    ``code``, ``system``, and frequency coords.  These are fully
+    derivable from the SID string (``"SV|Band|Code"``) plus the signal
+    spec lookup tables.
+
+    This ensures SBF and RINEX datasets have identical coord coverage
+    after global SID padding.
+    """
+    sid_vals = ds.sid.values
+
+    # Check if any sid-level coords need filling
+    sid_coords = {"sv", "system", "band", "code", "freq_center", "freq_min", "freq_max"}
+    coords_to_fill = [c for c in sid_coords if c in ds.coords]
+    if not coords_to_fill:
+        return ds
+
+    # Check if there are actually NaN values to fill
+    has_nans = False
+    for coord_name in coords_to_fill:
+        arr = ds.coords[coord_name].values
+        if arr.dtype.kind in ("U", "O"):  # string
+            has_nans = any(
+                v is None
+                or (isinstance(v, float) and np.isnan(v))
+                or (isinstance(v, str) and v == "")
+                for v in arr
+            )
+        else:  # numeric
+            has_nans = np.any(np.isnan(arr))
+        if has_nans:
+            break
+
+    if not has_nans:
+        return ds
+
+    # Parse all SIDs and build complete coord arrays
+    sv_arr = []
+    system_arr = []
+    band_arr = []
+    code_arr = []
+    freq_center_arr = []
+    freq_min_arr = []
+    freq_max_arr = []
+
+    for sid in sid_vals:
+        parts = str(sid).split("|")
+        sv = parts[0] if len(parts) > 0 else ""
+        bnd = parts[1] if len(parts) > 1 else ""
+        cod = parts[2] if len(parts) > 2 else ""
+
+        sv_arr.append(sv)
+        system_arr.append(sv[0] if sv else "")
+        band_arr.append(bnd)
+        code_arr.append(cod)
+
+        props = mapper.BAND_PROPERTIES.get(bnd, {})
+        fc = props.get("freq", np.nan)
+        bw = props.get("bandwidth", 0.0)
+        fc_val = float(fc) if fc is not None else np.nan
+        bw_val = float(bw) if bw is not None else 0.0
+        freq_center_arr.append(fc_val)
+        freq_min_arr.append(fc_val - bw_val / 2 if not np.isnan(fc_val) else np.nan)
+        freq_max_arr.append(fc_val + bw_val / 2 if not np.isnan(fc_val) else np.nan)
+
+    # Only update coords that exist in the dataset
+    updates: dict[str, Any] = {}
+    coord_map = {
+        "sv": sv_arr,
+        "system": system_arr,
+        "band": band_arr,
+        "code": code_arr,
+        "freq_center": freq_center_arr,
+        "freq_min": freq_min_arr,
+        "freq_max": freq_max_arr,
+    }
+    for name, values in coord_map.items():
+        if name in ds.coords:
+            old = ds.coords[name]
+            arr = np.asarray(values)
+            # Preserve the original coordinate dtype (e.g. float32 for freq_*)
+            if old.dtype != arr.dtype and old.dtype.kind == "f":
+                arr = arr.astype(old.dtype)
+            updates[name] = xr.DataArray(
+                arr,
+                dims=["sid"],
+                attrs=old.attrs,
+            )
+
+    return ds.assign_coords(updates)
 
 
 def normalize_sid_dtype(ds: xr.Dataset) -> xr.Dataset:

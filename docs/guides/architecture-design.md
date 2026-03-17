@@ -46,15 +46,18 @@ canVODpy applies the engineering concept of *Sollbruchstellen* (predetermined br
 
 ```
 Foundation (0 inter-package dependencies):
-  canvod-readers, canvod-grids, canvod-vod, canvod-utils
+  canvod-readers, canvod-grids, canvod-vod, canvod-utils,
+  canvod-virtualiconvname
 
-Consumer (1 dependency each):
-  canvod-auxiliary → canvod-readers
-  canvod-viz       → canvod-grids
-  canvod-store     → canvod-grids
+Consumer (1–2 dependencies each):
+  canvod-auxiliary      → canvod-readers
+  canvod-viz            → canvod-grids
+  canvod-store          → canvod-grids
+  canvod-store-metadata → canvod-utils
+  canvod-ops            → canvod-grids, canvod-utils
 
 Orchestration:
-  canvodpy         → all packages
+  canvodpy              → all packages
 ```
 
 ---
@@ -62,11 +65,14 @@ Orchestration:
 ## ABC + Factory Pattern
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph ABCS["Abstract Base Classes"]
-        READER_ABC["GNSSDataReader\n(to_ds, iter_epochs, file_hash)"]
-        GRID_ABC["BaseGridBuilder\n(build)"]
-        VOD_ABC["VODCalculator\n(calculate_vod)"]
+        READER_ABC["`**GNSSDataReader**
+        to_ds, iter_epochs, file_hash`"]
+        GRID_ABC["`**BaseGridBuilder**
+        build`"]
+        VOD_ABC["`**VODCalculator**
+        calculate_vod`"]
     end
 
     subgraph FACTORIES["Factory Registry"]
@@ -83,7 +89,8 @@ flowchart LR
     end
 
     subgraph CUSTOM["User Extension"]
-        IMPL["Custom class\n(inherits ABC)"]
+        IMPL["`**Custom class**
+        inherits ABC`"]
         REG["Factory.register()"]
     end
 
@@ -102,12 +109,27 @@ flowchart LR
 ### Registration + Usage
 
 ```python
+from pydantic import ConfigDict
 from canvodpy import ReaderFactory
 from canvod.readers import GNSSDataReader
+from canvod.readers.builder import DatasetBuilder
 
 class MyLabReader(GNSSDataReader):
-    def to_ds(self, keep_rnx_data_vars=None) -> xr.Dataset:
-        ...
+    """GNSSDataReader is a Pydantic BaseModel + ABC — one parent is enough."""
+
+    model_config = ConfigDict(frozen=True)
+    # fpath is inherited from GNSSDataReader — no need to redeclare
+
+    def to_ds(self, keep_data_vars=None, **kwargs) -> xr.Dataset:
+        builder = DatasetBuilder(self)
+        for epoch in self.iter_epochs():
+            ei = builder.add_epoch(epoch.timestamp)
+            for obs in epoch.observations:
+                sig = builder.add_signal(sv=obs.sv, band=obs.band, code=obs.code)
+                builder.set_value(ei, sig, "SNR", obs.snr)
+        return builder.build(keep_data_vars=keep_data_vars)
+
+    # ... implement remaining abstract methods ...
 
 # Register once (at import time)
 ReaderFactory.register("mylab_v1", MyLabReader)
@@ -168,7 +190,7 @@ canvodpy exposes four API levels — all backed by the same packages:
     from canvod.vod     import TauOmegaZerothOrder
 
     reader = Rnxv3Obs(fpath=Path("station.25o"))
-    ds = reader.to_ds(keep_rnx_data_vars=["SNR"])
+    ds = reader.to_ds(keep_data_vars=["SNR"])
     ```
 
 ---
@@ -176,7 +198,7 @@ canvodpy exposes four API levels — all backed by the same packages:
 ## Configuration Management
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph FILES["YAML Files"]
         PROC["processing.yaml"]
         SITES["sites.yaml"]
@@ -185,7 +207,8 @@ flowchart LR
     end
 
     subgraph LOAD["Loader"]
-        MERGE["Deep merge\n(user overrides defaults)"]
+        MERGE["`**Deep merge**
+        user overrides defaults`"]
         PYDANTIC["Pydantic validation"]
     end
 
@@ -204,7 +227,7 @@ from canvod.utils.config import load_config
 
 cfg = load_config()
 cfg.processing.aux_data.nasa_earthdata_acc_mail
-cfg.processing.storage.gnss_root_dir
+cfg.processing.storage.stores_root_dir
 ```
 
 ```bash
@@ -222,7 +245,7 @@ Every dataset produced by canVODpy is fully traceable:
 !!! success "Full provenance chain"
     | Field | Source |
     |-------|--------|
-    | `ds.attrs["RINEX File Hash"]` | SHA-256 of raw input file |
+    | `ds.attrs["File Hash"]` | SHA-256 of raw input file |
     | `ds.attrs["Software"]` | `canvod-readers x.y.z` |
     | `ds.attrs["Created"]` | ISO 8601 timestamp |
     | Icechunk snapshot ID | Hash-addressable, immutable |

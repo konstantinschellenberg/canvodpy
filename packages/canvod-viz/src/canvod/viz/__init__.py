@@ -48,26 +48,42 @@ from canvod.viz.hemisphere_2d import (
 )
 from canvod.viz.hemisphere_3d import HemisphereVisualizer3D, visualize_grid_3d
 from canvod.viz.styles import (
+    RSE_COLORS,
+    Colorscale,
     PlotStyle,
+    apply_rse_style,
     create_interactive_style,
     create_publication_style,
+    create_rse_style,
+    fix_figure_for_dark_mode,
+    rse_context,
+    rse_style,
+    style_colorbar,
 )
 from canvod.viz.visualizer import HemisphereVisualizer
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "RSE_COLORS",
+    # Styling
+    "Colorscale",
     # Main visualizers
     "HemisphereVisualizer",
     "HemisphereVisualizer2D",
     "HemisphereVisualizer3D",
+    "PlotStyle",
+    "PolarPlotStyle",
+    "add_tissot_indicatrix",
+    "apply_rse_style",
+    "create_interactive_style",
+    "create_publication_style",
+    "create_rse_style",
+    "fix_figure_for_dark_mode",
+    "rse_context",
+    "rse_style",
+    "style_colorbar",
     # Convenience functions
     "visualize_grid",
     "visualize_grid_3d",
-    "add_tissot_indicatrix",
-    # Styling
-    "PolarPlotStyle",
-    "PlotStyle",
-    "create_publication_style",
-    "create_interactive_style",
 ]

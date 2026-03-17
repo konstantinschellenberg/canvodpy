@@ -10,7 +10,7 @@ description: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrie
 **An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals**
 
 canVODpy aims to be the central community-driven software suite for deriving
-and analyzing canopy Vegetation Optical Depth (VOD) from GNSS
+and analyzing canopy [Vegetation Optical Depth](https://gsics.nesdis.noaa.gov/wiki/Development/ReferenceDocuments){:target="_blank"} (VOD) from [GNSS](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"}
 signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
@@ -49,7 +49,7 @@ signal-to-noise ratio observations.
 
     ---
 
-    Equal-area, HEALPix, geodesic and four more grid types.
+    Equal-area, geodesic, HTM and four more grid types.
     KDTree cell assignment in O(n log m).
 
     [:octicons-arrow-right-24: canvod-grids](packages/grids/overview.md)
@@ -67,10 +67,10 @@ signal-to-noise ratio observations.
 
     ---
 
-    `ProcessPoolExecutor`-backed pipeline with per-file commit,
+    Dask Distributed parallel pipeline with per-file commit,
     hash deduplication, and cooperative distributed writing.
 
-    [:octicons-arrow-right-24: Architecture](architecture.md)
+    [:octicons-arrow-right-24: Architecture](architecture.md) · [Dask & Resources](guides/dask-resources.md)
 
 </div>
 
@@ -83,9 +83,17 @@ signal-to-noise ratio observations.
 !!! success "RINEX v3.04"
 
     Text-based standard format from all manufacturers.
-    Satellite geometry computed from SP3 + CLK precise ephemerides.
+    Satellite geometry computed from [SP3](https://gssc.esa.int/navipedia/index.php/SP3){:target="_blank"} + CLK precise [ephemerides](https://gssc.esa.int/navipedia/index.php/Precise_GNSS_Orbits){:target="_blank"}.
 
     **Reader:** `Rnxv3Obs` — all GNSS constellations, all bands
+
+!!! success "Septentrio Binary Format (SBF)"
+
+    Binary format from [Septentrio](https://www.septentrio.com){:target="_blank"} receivers. Includes [broadcast ephemerides](https://gssc.esa.int/navipedia/index.php/Broadcast_Orbits){:target="_blank"}
+    (SatVisibility blocks) for standalone satellite geometry — no SP3/CLK
+    download required.
+
+    **Reader:** `SbfReader` — all GNSS constellations, PVT + DOP metadata
 
 </div>
 
@@ -141,10 +149,12 @@ pip install canvodpy
 ## Processing Pipeline
 
 ```mermaid
-flowchart LR
-    RINEX["RINEX 3.04"] --> PARSE["Parse & Hermite interpolation"]
+flowchart TD
+    RINEX["RINEX 3.04"] --> PARSE["Parse + SP3/CLK interpolation"]
+    SBF["Septentrio SBF"] --> PARSE2["Parse (geometry embedded)"]
     SP3["SP3 / CLK"] --> PARSE
     PARSE --> STORE["Icechunk store"]
+    PARSE2 --> STORE
     STORE --> VOD["Tau-Omega VOD retrieval"]
     VOD --> GRID["Hemispheric grid assignment"]
     GRID --> VIZ["Visualisation"]
@@ -174,7 +184,7 @@ flowchart LR
 
     ---
 
-    7 hemispheric grid types — equal-area, HEALPix, geodesic and more.
+    7 hemispheric grid types — equal-area, geodesic, HTM and more.
     KDTree-backed O(n log m) cell assignment.
 
 -   :fontawesome-solid-leaf: &nbsp; **canvod-vod**
@@ -202,6 +212,27 @@ flowchart LR
     ---
 
     Pydantic configuration, YYYYDOY date utilities, shared tooling.
+
+-   :fontawesome-solid-tag: &nbsp; **canvod-virtualiconvname**
+
+    ---
+
+    Maps arbitrary filenames to canonical canVOD names.
+    NamingRecipe system, pre-flight validation, DuckDB catalog.
+
+-   :fontawesome-solid-wand-magic-sparkles: &nbsp; **canvod-ops**
+
+    ---
+
+    Configurable preprocessing pipeline: temporal aggregation,
+    grid assignment, extensible Op chain.
+
+-   :fontawesome-solid-stamp: &nbsp; **canvod-store-metadata**
+
+    ---
+
+    Store-level provenance (DataCite, ACDD, STAC), compliance validation,
+    inventory builder, STAC catalog export.
 
 -   :fontawesome-solid-circle-nodes: &nbsp; **canvodpy**
 
@@ -232,6 +263,10 @@ flowchart LR
 !!! abstract "Documentation"
 
     `Zensical` · `beautiful-mermaid` · `marimo` notebooks
+
+!!! abstract "AI-assisted development"
+
+    [`Claude Code`](guides/ai-development.md) · 15+ domain skills · persistent memory · `CLAUDE.md`
 
 </div>
 

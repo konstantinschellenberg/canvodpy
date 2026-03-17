@@ -206,7 +206,7 @@ class Sp3Parser:
                 "short_name": "x",
                 "units": "m",
                 "axis": "x",
-                "description": "x-coordinate in ECEF (Earth-Centered, Earth-Fixed) frame",
+                "description": "x-coordinate in ECEF frame",
             },
             "Y": {
                 "long_name": "y-coordinate in ECEF",
@@ -214,7 +214,7 @@ class Sp3Parser:
                 "short_name": "y",
                 "units": "m",
                 "axis": "y",
-                "description": "y-coordinate in ECEF (Earth-Centered, Earth-Fixed) frame",
+                "description": "y-coordinate in ECEF frame",
             },
             "Z": {
                 "long_name": "z-coordinate in ECEF",
@@ -222,6 +222,6 @@ class Sp3Parser:
                 "short_name": "z",
                 "units": "m",
                 "axis": "z",
-                "description": "z-coordinate in ECEF (Earth-Centered, Earth-Fixed) frame",
+                "description": "z-coordinate in ECEF frame",
             },
         }

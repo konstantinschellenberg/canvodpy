@@ -2,267 +2,21 @@
 
 from __future__ import annotations
 
-import json
 import re
-import sqlite3
-import threading
-from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar, NoReturn
+from typing import TYPE_CHECKING, ClassVar
 
-import pandas as pd
-import requests
+import structlog
+
 from canvod.readers.gnss_specs.constants import FREQ_UNIT, UREG
-from natsort import natsorted
+
+_log = structlog.get_logger(__name__)
 
 if TYPE_CHECKING:
+    from datetime import date
+
     import pint
 
-# Register SQLite adapters for datetime (Python 3.12+ compatibility)
-sqlite3.register_adapter(datetime, lambda dt: dt.isoformat())
-sqlite3.register_converter(
-    "DATETIME",
-    lambda s: datetime.fromisoformat(s.decode()),
-)
-
-
-# ================================================================
-# -------------------- Shared Wikipedia Cache --------------------
-# ================================================================
-class WikipediaCache:
-    """Shared cache for all GNSS constellation satellite lists.
-
-    Parameters
-    ----------
-    cache_hours : int, optional
-        How long cache entries are considered valid. Default is 6.
-
-    """
-
-    REQUEST_TIMEOUT: ClassVar[float] = 10.0
-
-    def __init__(self, cache_hours: int = 6) -> None:
-        """Initialize the shared Wikipedia cache."""
-        self.cache_file: str = "gnss_satellites_cache.db"
-        self.cache_hours: int = cache_hours
-        self.headers: dict[str, str] = {
-            "User-Agent": "GNSSResearch/1.0 (your.email@example.com)"
-        }
-        self._locks: dict[str, threading.Lock] = {}
-        self._init_db()
-
-    def _init_db(self) -> None:
-        """Initialize SQLite database if it does not exist."""
-        conn = sqlite3.connect(self.cache_file, detect_types=sqlite3.PARSE_DECLTYPES)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS satellite_cache (
-                constellation TEXT PRIMARY KEY,
-                svs_data TEXT NOT NULL,
-                raw_data TEXT,
-                fetched_at DATETIME NOT NULL,
-                url TEXT
-            )
-            """)
-        conn.commit()
-        conn.close()
-
-    def _get_lock(self, constellation: str) -> threading.Lock:
-        """Return the per-constellation lock.
-
-        Parameters
-        ----------
-        constellation : str
-            Constellation identifier (e.g., "GPS").
-
-        Returns
-        -------
-        threading.Lock
-            A per-constellation threading lock.
-
-        """
-        if constellation not in self._locks:
-            self._locks[constellation] = threading.Lock()
-        return self._locks[constellation]
-
-    def get_cached_svs(self, constellation: str) -> list[str] | None:
-        """Retrieve fresh cached SV list for a constellation.
-
-        Parameters
-        ----------
-        constellation : str
-            Constellation identifier.
-
-        Returns
-        -------
-        list of str or None
-            List of SV PRNs if cache is valid, else None.
-
-        """
-        conn = sqlite3.connect(
-            self.cache_file,
-            detect_types=sqlite3.PARSE_DECLTYPES,
-        )
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=self.cache_hours)
-        cursor = conn.execute(
-            "SELECT svs_data FROM satellite_cache WHERE constellation = ? "
-            "AND fetched_at > ?",
-            (constellation, cutoff),
-        )
-        result = cursor.fetchone()
-        conn.close()
-        return json.loads(result[0]) if result else None
-
-    def get_stale_cache(self, constellation: str) -> list[str] | None:
-        """Retrieve most recent cached SV list (ignores freshness).
-
-        Parameters
-        ----------
-        constellation : str
-            Constellation identifier.
-
-        Returns
-        -------
-        list of str or None
-            List of SV PRNs if present in cache, else None.
-
-        """
-        conn = sqlite3.connect(
-            self.cache_file,
-            detect_types=sqlite3.PARSE_DECLTYPES,
-        )
-        cursor = conn.execute(
-            "SELECT svs_data FROM satellite_cache WHERE constellation = ? "
-            "ORDER BY fetched_at DESC LIMIT 1",
-            (constellation,),
-        )
-        result = cursor.fetchone()
-        conn.close()
-        return json.loads(result[0]) if result else None
-
-    def fetch_and_cache(
-        self,
-        constellation: str,
-        url: str,
-        table_index: int,
-        prn_column: str,
-        status_filter: dict[str, str] | None = None,
-        re_pattern: str = r"\b[A-Z]\d{2}\b",
-    ) -> list[str]:
-        r"""Fetch constellation satellite list from Wikipedia, clean it, cache.
-
-        Parameters
-        ----------
-        constellation : str
-            Constellation identifier.
-        url : str
-            Wikipedia URL to fetch from.
-        table_index : int
-            Index of table in page that contains PRN column.
-        prn_column : str
-            Column containing PRN identifiers.
-        status_filter : dict, optional
-            Dictionary with ``{"column": ..., "value": ...}`` for filtering
-            (e.g., only "Operational").
-        re_pattern : str, optional
-            Regex to clean PRN identifiers (default: ``r"\\b[A-Z]\\d{2}\\b"``).
-
-        Returns
-        -------
-        list of str
-            Sorted list of SV identifiers.
-
-        """
-        lock = self._get_lock(constellation)
-        with lock:
-            cached = self.get_cached_svs(constellation)
-            if cached:
-                return cached
-
-            try:
-                response = requests.get(
-                    url,
-                    headers=self.headers,
-                    timeout=self.REQUEST_TIMEOUT,
-                )
-                response.raise_for_status()
-                tables = pd.read_html(response.content)
-                if not tables or len(tables) <= table_index:
-                    msg = f"No suitable table found at index {table_index}"
-                    self._raise_value_error(msg)
-                df = tables[table_index]
-
-                if status_filter:
-                    df = df[
-                        df[status_filter["column"]].str.contains(
-                            status_filter["value"],
-                            case=True,
-                            na=False,
-                        )
-                    ]
-
-                if prn_column not in df.columns:
-                    potential_cols = [col for col in df.columns if "prn" in col.lower()]
-                    if potential_cols:
-                        prn_column = potential_cols[0]
-                    else:
-                        msg = f"PRN column '{prn_column}' not found in {df.columns}"
-                        self._raise_value_error(msg)
-
-                prn_data: list[str] = list(df[prn_column])
-                clean_list: list[str] = [
-                    m.group()
-                    for item in prn_data
-                    if isinstance(item, str)
-                    if (m := re.search(re_pattern, item))
-                ]
-                if not clean_list:
-                    msg = "No valid PRN data found after cleaning"
-                    self._raise_value_error(msg)
-
-                conn = sqlite3.connect(
-                    self.cache_file,
-                    detect_types=sqlite3.PARSE_DECLTYPES,
-                )
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO satellite_cache
-                    (constellation, svs_data, raw_data, fetched_at, url)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        constellation,
-                        json.dumps(sorted(set(clean_list))),
-                        df.to_json(),
-                        datetime.now(timezone.utc).isoformat(),
-                        url,
-                    ),
-                )
-                conn.commit()
-                conn.close()
-
-                return sorted(set(clean_list))
-            except (
-                requests.RequestException,
-                ValueError,
-                KeyError,
-                IndexError,
-                TypeError,
-                pd.errors.ParserError,
-            ):
-                stale = self.get_stale_cache(constellation)
-                if stale:
-                    return stale
-                raise
-
-    @staticmethod
-    def _raise_value_error(message: str) -> NoReturn:
-        """Raise a ValueError with a formatted message."""
-        raise ValueError(message)
-
-
-# Shared instance
-_wikipedia_cache = WikipediaCache()
 
 # ================================================================
 # ------------ Pre-Compiled Regex for Data Validation ------------
@@ -276,31 +30,15 @@ OBS_TYPE_PATTERN = re.compile(r"^[A-Z0-9][A-Z0-9\d]?[A-Z0-9]?$")  # e.g., *1C, *
 # ================================================================
 # -------------------- Base Class --------------------
 # ================================================================
-class ConstellationBase(ABC):
-    r"""Abstract base class for GNSS constellations.
-
-    Notes
-    -----
-    This class uses ``ABC`` and defines the abstract ``freqs_lut`` property.
+class ConstellationBase:
+    """Base class for GNSS constellations.
 
     Parameters
     ----------
     constellation : str
         Name of the constellation (e.g., "GPS", "GALILEO").
-    url : str, optional
-        Wikipedia URL to fetch SV list from.
-    re_pattern : str, optional
-        Regex pattern to extract PRNs (default ``r"\\b[A-Z]\\d{2}\\b"``).
-    table_index : int, optional
-        Index of the HTML table to parse for PRNs (default 0).
-    prn_column : str, optional
-        Column name containing PRNs (default "PRN").
-    status_filter : dict, optional
-        Filter definition with keys ``{"column": ..., "value": ...}``.
-    use_wiki : bool, optional
-        If True, fetch SVs from Wikipedia (default True).
-    static_svs : list of str, optional
-        Provide a static list of SVs if not using Wikipedia.
+    static_svs : list of str
+        Static list of PRN codes for this constellation.
     aggregate_fdma : bool, optional
         If True, aggregate FDMA bands when supported (default True).
 
@@ -309,82 +47,53 @@ class ConstellationBase(ABC):
     BANDS: ClassVar[dict[str, str]] = {}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {}
     BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {}
-    AUX_FREQ: ClassVar[pint.Quantity] = 1575.42 * UREG.MHz
+
+    #: Single-letter system prefix used by SatelliteCatalog (e.g. "G", "E").
+    SYSTEM_PREFIX: ClassVar[str] = ""
 
     def __init__(
         self,
         constellation: str,
-        url: str | None = None,
-        re_pattern: str = r"\b[A-Z]\d{2}\b",
-        table_index: int = 0,
-        prn_column: str = "PRN",
-        status_filter: dict[str, str] | None = None,
-        use_wiki: bool = True,
         static_svs: list[str] | None = None,
         aggregate_fdma: bool = True,
     ) -> None:
         """Initialize the constellation base."""
         self.constellation: str = constellation
-        self.url: str | None = url
-        self.re_pattern: str = re_pattern
-        self.table_index: int = table_index
-        self.prn_column: str = prn_column
-        self.status_filter: dict[str, str] | None = status_filter
-        self.svs: list[str] = (
-            static_svs if static_svs else (self.get_svs() if use_wiki and url else [])
-        )
-        self.x1: dict[str, pint.Quantity] = {"X1": self.AUX_FREQ}
+        self.svs: list[str] = static_svs or []
         self.aggregate_fdma = aggregate_fdma
 
-    def get_svs(self) -> list[str]:
-        """Fetch the list of SVs for this constellation.
+    def update_svs_from_catalog(self, on_date: date) -> list[str]:
+        """Update the SV list from IGS SatelliteCatalog for a given date.
+
+        Parameters
+        ----------
+        on_date : date
+            Query date for active PRNs.
 
         Returns
         -------
-        list of str
-            List of PRNs (satellite identifiers).
-
+        list[str]
+            Updated list of active PRNs.
         """
-        cached = _wikipedia_cache.get_cached_svs(self.constellation)
-        if cached:
-            return cached
-        return _wikipedia_cache.fetch_and_cache(
+        from canvod.readers.gnss_specs.satellite_catalog import SatelliteCatalog
+
+        if not self.SYSTEM_PREFIX:
+            _log.warning(
+                "no_system_prefix",
+                constellation=self.constellation,
+                hint="Cannot query SatelliteCatalog without SYSTEM_PREFIX",
+            )
+            return self.svs
+
+        catalog = SatelliteCatalog.fetch()
+        self.svs = catalog.active_prns(self.SYSTEM_PREFIX, on_date)
+        _log.info(
+            "svs_updated_from_catalog",
             constellation=self.constellation,
-            url=self.url,
-            table_index=self.table_index,
-            prn_column=self.prn_column,
-            status_filter=self.status_filter,
-            re_pattern=self.re_pattern,
+            count=len(self.svs),
+            date=str(on_date),
         )
-
-    @property
-    def bands_freqs(self) -> dict[str, pint.Quantity]:
-        """Generate RINEX observation codes mapped to frequencies.
-
-        Returns
-        -------
-        dict
-            Keys are obs codes (e.g., ``"*1C"``), values are frequencies in Hz.
-
-        """
-        out: dict[str, pint.Quantity] = {}
-        for band_num, band_name in self.BANDS.items():
-            freq = self.BAND_PROPERTIES[band_name]["freq"].to(FREQ_UNIT)
-            for code in self.BAND_CODES[band_name]:
-                out[f"*{band_num}{code}"] = freq
-        return out
-
-    @property
-    @abstractmethod
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency.
-
-        Returns
-        -------
-        dict
-            Keys of the form ``"SV|*1C"`` and values are frequencies.
-
-        """
+        return self.svs
 
 
 # ================================================================
@@ -409,11 +118,9 @@ class GALILEO(ConstellationBase):
     -------
     Bandwidths specified here refer to the Receiver Reference Bandwidths.
 
-    Notes
-    -----
-    This class fetches the current satellite list from Wikipedia.
-
     """
+
+    SYSTEM_PREFIX: ClassVar[str] = "E"
 
     BANDS: ClassVar[dict[str, str]] = {
         "1": "E1",
@@ -461,31 +168,8 @@ class GALILEO(ConstellationBase):
         """Initialize Galileo constellation."""
         super().__init__(
             constellation="GALILEO",
-            url="https://en.wikipedia.org/wiki/List_of_Galileo_satellites",
-            re_pattern=r"\bE\d{2}\b",
-            table_index=1,
-            prn_column="PRN",
-            use_wiki=False,
             static_svs=[f"E{x:02d}" for x in range(1, 37)],  # E01-E36
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency.
-
-        Returns
-        -------
-        dict
-            Keys of format "SV|*1C" mapped to frequencies
-
-        """
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class GPS(ConstellationBase):
@@ -506,12 +190,9 @@ class GPS(ConstellationBase):
     IIF have a bandwidth of 20.46 MHz, while Block III and IIIF has a bandwidth
     of 30.69 MHz. We assume the larger bandwidth here.
 
-    Parameters
-    ----------
-    use_wiki : bool, default False
-        If False, uses static list G01-G32. If True, fetches from Wikipedia.
-
     """
+
+    SYSTEM_PREFIX: ClassVar[str] = "G"
 
     BANDS: ClassVar[dict[str, str]] = {"1": "L1", "2": "L2", "5": "L5"}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {
@@ -533,29 +214,12 @@ class GPS(ConstellationBase):
         "L5": {"freq": 1176.45 * UREG.MHz, "bandwidth": 24 * UREG.MHz, "system": "G"},
     }
 
-    def __init__(self, use_wiki: bool = False) -> None:
+    def __init__(self) -> None:
         """Initialize GPS constellation."""
         super().__init__(
             constellation="GPS",
-            url="https://en.wikipedia.org/wiki/List_of_GPS_satellites",
-            re_pattern=r"\bG\d{2}\b",
-            table_index=0,
-            prn_column="PRN",
-            status_filter={"column": "Status", "value": "Operational"},
-            use_wiki=use_wiki,
             static_svs=[f"G{x:02d}" for x in range(1, 33)],
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class BEIDOU(ConstellationBase):
@@ -646,33 +310,20 @@ class BEIDOU(ConstellationBase):
         },
     }
 
+    SYSTEM_PREFIX: ClassVar[str] = "C"
+
     def __init__(self) -> None:
         """Initialize BeiDou constellation."""
         super().__init__(
             constellation="BEIDOU",
-            url="https://en.wikipedia.org/wiki/List_of_BeiDou_satellites",
-            re_pattern=r"\bC\d{2}\b",
-            table_index=2,
-            prn_column="PRN[8]",
-            status_filter={"column": "Status[8][9]", "value": "Operational"},
-            use_wiki=False,
             static_svs=[f"C{x:02d}" for x in range(1, 64)],  # C01-C63
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class GLONASS(ConstellationBase):
     """GLONASS constellation model (uses FDMA for L1/L2).
+
+    SYSTEM_PREFIX is ``"R"`` for SatelliteCatalog queries.
 
     Notes
     -----
@@ -707,6 +358,8 @@ class GLONASS(ConstellationBase):
         If GLONASS channel file does not exist.
 
     """
+
+    SYSTEM_PREFIX: ClassVar[str] = "R"
 
     BANDS: ClassVar[dict[str, str]] = {"3": "G3", "4": "G1a", "6": "G2a"}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {
@@ -756,7 +409,6 @@ class GLONASS(ConstellationBase):
         },
     }
 
-    SV_DEPENDENT_BANDS: ClassVar[list[str]] = ["*1C", "*1P", "*2C", "*2P"]
     G1_G2_subband_bandwidth: ClassVar[pint.Quantity] = 1.022 * UREG.MHz
 
     def __init__(
@@ -771,7 +423,6 @@ class GLONASS(ConstellationBase):
             raise FileNotFoundError(msg)
         self.pth = glonass_channel_pth
         self.svs: list[str] = [f"R{i:02d}" for i in range(1, 25)]
-        self.x1 = {"X1": self.AUX_FREQ}
         self.aggregate_fdma = aggregate_fdma
 
         if self.aggregate_fdma:
@@ -808,7 +459,7 @@ class GLONASS(ConstellationBase):
                 },
             }
 
-    def get_channel_used_by_SV(self, sv: str) -> int:  # noqa: N802
+    def get_channel_used_by_SV(self, sv: str) -> int:
         """Return the GLONASS channel number for a satellite.
 
         Parameters
@@ -850,60 +501,17 @@ class GLONASS(ConstellationBase):
                             slot_channel_dict[int(slot.strip())] = int(channel.strip())
         return slot_channel_dict
 
-    def band_G1_equation(self, sv: str) -> pint.Quantity:  # noqa: N802
+    def band_G1_equation(self, sv: str) -> pint.Quantity:
         """Compute L1 frequency for a given SV."""
         return ((1602 + self.get_channel_used_by_SV(sv) * 9 / 16) * UREG.MHz).to(
             FREQ_UNIT
         )
 
-    def band_G2_equation(self, sv: str) -> pint.Quantity:  # noqa: N802
+    def band_G2_equation(self, sv: str) -> pint.Quantity:
         """Compute L2 frequency for a given SV."""
         return ((1246 + self.get_channel_used_by_SV(sv) * 7 / 16) * UREG.MHz).to(
             FREQ_UNIT
         )
-
-    def freqs_G1_G2_lut(self) -> dict[str, pint.Quantity]:  # noqa: N802
-        """Build the FDMA-dependent L1/L2 frequency LUT.
-
-        Returns
-        -------
-        dict
-            SV|obs_code → frequency for FDMA-dependent L1/L2 bands.
-
-        """
-        out: dict[str, pint.Quantity] = {}
-        for band in self.SV_DEPENDENT_BANDS:
-            for sv in self.svs:
-                freq = (
-                    self.band_G1_equation(sv)
-                    if band.startswith("*1")
-                    else self.band_G2_equation(sv)
-                )
-                out[f"{sv}|{band}"] = freq
-        return out
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """Build mapping of SV|obs_code to frequency including FDMA channels.
-
-        Returns
-        -------
-        dict
-            Keys of format "SV|*1C" mapped to frequencies, including
-            FDMA-dependent L1/L2.
-
-        """
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-
-        if not self.aggregate_fdma:
-            out.update(self.freqs_G1_G2_lut())
-
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 # ================================================================
@@ -943,28 +551,14 @@ class SBAS(ConstellationBase):
         "L5": {"freq": 1176.45 * UREG.MHz, "bandwidth": 24.0 * UREG.MHz, "system": "S"},
     }
 
+    SYSTEM_PREFIX: ClassVar[str] = "S"
+
     def __init__(self) -> None:
         """Initialize SBAS constellation."""
         super().__init__(
             constellation="SBAS",
-            url="https://en.wikipedia.org/wiki/List_of_SBAS_satellites",
-            re_pattern=r"\bS\d{2}\b",
-            table_index=0,
-            prn_column="PRN",
-            use_wiki=False,  # SBAS PRNs are region-specific
             static_svs=[f"S{x:02d}" for x in range(1, 37)],
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 # ================================================================
@@ -983,11 +577,9 @@ class IRNSS(ConstellationBase):
     - S band frequency and bandwidth from Navipedia:
       https://gssc.esa.int/navipedia/index.php/IRNSS_Signal_Plan#cite_note-IRNSS_ICD-2
 
-    Notes
-    -----
-    This class fetches the current satellite list from Wikipedia.
-
     """
+
+    SYSTEM_PREFIX: ClassVar[str] = "I"
 
     BANDS: ClassVar[dict[str, str]] = {"5": "L5", "9": "S"}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {
@@ -1003,25 +595,8 @@ class IRNSS(ConstellationBase):
         """Initialize IRNSS (NavIC) constellation."""
         super().__init__(
             constellation="IRNSS",
-            url="https://en.wikipedia.org/wiki/Indian_Regional_Navigation_Satellite_System#List_of_satellites",
-            re_pattern=r"\bI\d{2}\b",
-            table_index=3,
-            prn_column="PRN",
-            status_filter={"column": "Status", "value": "Operational"},
-            use_wiki=False,
             static_svs=[f"I{x:02d}" for x in range(1, 15)],  # I01-I14
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 class QZSS(ConstellationBase):
@@ -1040,11 +615,9 @@ class QZSS(ConstellationBase):
     Bandwidth technically depends on the GPS Block. Like with `GPS`, we assume
     the larger bandwidth here.
 
-    Notes:
-    -----
-    Uses a static list J01-J10.
-
     """
+
+    SYSTEM_PREFIX: ClassVar[str] = "J"
 
     BANDS: ClassVar[dict[str, str]] = {
         "1": "L1",
@@ -1077,66 +650,11 @@ class QZSS(ConstellationBase):
         """Initialize QZSS constellation."""
         super().__init__(
             constellation="QZSS",
-            url="https://en.wikipedia.org/wiki/Quasi-Zenith_Satellite_System",
-            re_pattern=r"\bJ\d{2}\b",
-            table_index=2,
-            prn_column="PRN",
-            use_wiki=False,
             static_svs=[f"J{x:02d}" for x in range(1, 11)],
         )
-
-    @property
-    def freqs_lut(self) -> dict[str, pint.Quantity]:
-        """See base class."""
-        out = {
-            f"{sv}|{obs}": freq
-            for obs, freq in self.bands_freqs.items()
-            for sv in self.svs
-        }
-        out.update({f"{sv}|X1": self.x1["X1"] for sv in self.svs})
-        return {k: out[k] for k in natsorted(out.keys())}
 
 
 if __name__ == "__main__":
     gal = GALILEO()
-    # gps = GPS()
-    # bds = BEIDOU()
-    # irnss = IRNSS()
-    # glonass = GLONASS()
-
-    # Example usage
-    print("Galileo Frequencies LUT:")
-    for k, v in gal.freqs_lut.items():
-        print(f"{k}: {v}")
-
-    # print("\nGPS Frequencies LUT:")
-    # for k, v in gps.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nBeiDou Frequencies LUT:")
-    # for k, v in bds.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nIRNSS Frequencies LUT:")
-    # for k, v in irnss.freqs_lut.items():
-    #     print(f"{k}: {v}")
-
-    # print("\nGLONASS Frequencies LUT:")
-    # glonass_freqs = glonass.freqs_lut
-    # for k, v in glonass_freqs.items():
-    #     print(f"{k}: {v}")
-
-    # glonass = GLONASS(aggregate_fdma=False)
-    # print("\nGLONASS Frequencies LUT:")
-    # glonass_freqs2 = glonass.freqs_lut
-    # for k, v in glonass_freqs.items():
-    #     print(f"{k}: {v}")
-
-    # print(len(glonass_freqs), len(glonass_freqs2))
-    # print(
-    #     len({x.magnitude for x in glonass_freqs.values()}),
-    #     len({x.magnitude for x in glonass_freqs2.values()}),
-    # )
-
-    # print({x.magnitude for x in glonass_freqs.values()})
-    # print({x.magnitude for x in glonass_freqs2.values()})
+    print("Galileo SVs:", gal.svs)
+    print("Galileo Bands:", gal.BANDS)

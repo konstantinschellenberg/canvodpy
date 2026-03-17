@@ -1,0 +1,41 @@
+# canvod.store_metadata API Reference
+
+Rich provenance metadata for Icechunk stores, aligned with DataCite 4.5, ACDD 1.3, and STAC 1.1.
+
+## Package
+
+::: canvod.store_metadata
+    options:
+      members:
+        - StoreMetadata
+        - collect_metadata
+        - write_metadata
+        - read_metadata
+        - update_metadata
+        - metadata_exists
+        - validate_all
+        - scan_stores
+
+## Schema
+
+::: canvod.store_metadata.schema
+
+## Collectors
+
+::: canvod.store_metadata.collectors
+
+## Store I/O
+
+::: canvod.store_metadata.io
+
+## Validation
+
+::: canvod.store_metadata.validate
+
+## Inventory
+
+::: canvod.store_metadata.inventory
+
+## Display
+
+::: canvod.store_metadata.show

@@ -67,7 +67,7 @@ Signal IDs generated for GPS G01 (~20 total):
 ```
 G01|L1|C  G01|L1|L  G01|L1|P  G01|L1|S  G01|L1|W  G01|L1|X  G01|L1|Y
 G01|L2|C  G01|L2|D  G01|L2|L  G01|L2|M  G01|L2|P  G01|L2|S  G01|L2|W
-G01|L2|X  G01|L2|Y  G01|L5|I  G01|L5|Q  G01|L5|X  G01|X1|X
+G01|L2|X  G01|L2|Y  G01|L5|I  G01|L5|Q  G01|L5|X
 ```
 
 Signal ID format: `"{SV}|{BAND}|{CODE}"` — e.g. `"G01|L1|C"`, `"E08|E5a|Q"`.

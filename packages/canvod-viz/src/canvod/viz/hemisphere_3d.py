@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import plotly.graph_objects as go
-from canvod.viz.styles import PlotStyle
 from plotly.colors import sample_colorscale
+
+from canvod.viz.styles import PlotStyle
 
 if TYPE_CHECKING:
     from canvod.grids import HemiGrid

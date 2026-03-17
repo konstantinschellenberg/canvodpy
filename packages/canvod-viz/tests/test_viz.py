@@ -144,12 +144,15 @@ def test_hemisphere_visualizer_requires_grid():
         HemisphereVisualizer()  # Missing grid parameter
 
 
-@pytest.mark.skip(reason="Requires canvod-grids package")
-def test_visualizer_with_mock_grid():
-    """Test visualizer creation with a mock grid (requires canvod-grids)."""
+def test_visualizer_with_grid():
+    """Test visualizer creation with an actual grid from canvod-grids."""
+    from canvod.grids import create_hemigrid
+    from canvod.viz import HemisphereVisualizer2D
 
-    # This would require actual grid from canvod-grids
-    # Skipping for now until canvod-grids is available
+    grid = create_hemigrid("equal_area", angular_resolution=30.0)
+    viz = HemisphereVisualizer2D(grid)
+
+    assert viz.grid is grid
 
 
 def test_style_parameter_override():

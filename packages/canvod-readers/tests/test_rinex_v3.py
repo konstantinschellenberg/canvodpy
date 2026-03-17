@@ -4,11 +4,15 @@ from pathlib import Path
 
 import pytest
 import xarray as xr
+
 from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
-RINEX_FILE = TEST_DATA_DIR / "01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+RINEX_FILE = (
+    TEST_DATA_DIR
+    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ROSA01TUW_R_20250010000_15M_05S_AA.rnx"
+)
 
 
 @pytest.fixture
@@ -121,7 +125,7 @@ class TestRnxv3Obs:
         """Test conversion to xarray Dataset."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         assert isinstance(ds, xr.Dataset)
         assert "epoch" in ds.dims
@@ -132,7 +136,7 @@ class TestRnxv3Obs:
         """Test Dataset has required coordinates."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Required coordinates
         required_coords = ["epoch", "sid", "sv", "system", "band", "code"]
@@ -143,7 +147,7 @@ class TestRnxv3Obs:
         """Test Dataset has frequency information."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Frequency coordinates
         assert "freq_center" in ds.coords
@@ -154,7 +158,7 @@ class TestRnxv3Obs:
         """Test Dataset has global attributes."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         assert "Created" in ds.attrs
         assert "Software" in ds.attrs
@@ -174,7 +178,7 @@ class TestRnxv3Obs:
         """Test keeping multiple data variables."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
 
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR", "Pseudorange", "Phase"])
+        ds = obs.to_ds(keep_data_vars=["SNR", "Pseudorange", "Phase"])
 
         assert "SNR" in ds.data_vars
         assert "Pseudorange" in ds.data_vars
@@ -187,7 +191,7 @@ class TestSignalMapping:
     def test_signal_ids_format(self, rinex_file):
         """Test signal IDs have correct format."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         # Check signal ID format: "SV|BAND|CODE"
         for sid in ds.sid.values:
@@ -202,7 +206,7 @@ class TestSignalMapping:
     def test_system_coordinate(self, rinex_file):
         """Test system coordinate matches signal IDs."""
         obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-        ds = obs.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = obs.to_ds(keep_data_vars=["SNR"])
 
         for i, sid in enumerate(ds.sid.values):
             sv_system = str(sid).split("|")[0][0]
@@ -236,7 +240,7 @@ class TestErrorHandling:
 def test_individual_data_vars(rinex_file, data_var):
     """Test each data variable can be read individually."""
     obs = Rnxv3Obs(fpath=rinex_file, completeness_mode="off")
-    ds = obs.to_ds(keep_rnx_data_vars=[data_var])
+    ds = obs.to_ds(keep_data_vars=[data_var])
 
     assert data_var in ds.data_vars
     assert ds[data_var].dims == ("epoch", "sid")

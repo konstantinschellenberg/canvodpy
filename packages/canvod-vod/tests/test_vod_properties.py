@@ -29,9 +29,9 @@ def valid_snr_values(draw):
 
 @st.composite
 def valid_theta_values(draw):
-    """Generate valid elevation angles.
+    """Generate valid polar angles.
 
-    Theta is elevation angle: [0, π/2] where 0 = zenith, π/2 = horizon.
+    Theta is polar angle: [0, π/2] where 0 = overhead, π/2 = horizon.
     """
     return draw(st.floats(0.0, np.pi / 2, allow_nan=False, allow_infinity=False))
 
@@ -79,7 +79,7 @@ def vod_test_datasets(draw, n_epoch=10, n_sid=5):
         )
     )
 
-    # Generate theta values (elevation angles)
+    # Generate theta values (polar angles)
     theta = draw(
         arrays(
             dtype=np.float64,
@@ -312,7 +312,7 @@ class TestVODMathematicalProperties:
     )
     @settings(max_examples=30, deadline=2000)
     def test_vod_horizon_approaches_zero(self, snr_canopy, snr_sky):
-        """VOD approaches zero as elevation approaches horizon.
+        """VOD approaches zero as polar angle approaches horizon.
 
         Property: lim(θ → π/2) VOD(θ) = 0 since cos(π/2) = 0.
         """

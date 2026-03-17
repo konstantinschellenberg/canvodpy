@@ -31,8 +31,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import xarray as xr
-from canvod.grids.analysis.solar import SolarPositionCalculator
 from scipy.signal import savgol_filter
+
+from canvod.grids.analysis.solar import SolarPositionCalculator
 
 if TYPE_CHECKING:
     from canvod.grids.core.grid_data import GridData
@@ -737,7 +738,7 @@ class TemporalAnalysis:
 
         ts_solar["solar_zenith"].attrs = {
             "units": "degrees",
-            "description": "Solar zenith angle (0° = overhead)",
+            "description": "Solar polar angle (0° = overhead)",
         }
         ts_solar["solar_azimuth"].attrs = {
             "units": "degrees",

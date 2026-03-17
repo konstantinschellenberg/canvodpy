@@ -320,6 +320,113 @@ class CustomFilter(Filter):
         return self.func(data, **kwargs)
 
 
+class SIDPatternFilter(Filter):
+    """Filter dataset by GNSS system, frequency band, and tracking code.
+
+    Operates on the ``sid`` dimension of a dataset, where SIDs have the
+    format ``SV|Band|Code`` (e.g. ``G01|L1|C``).
+
+    Parameters
+    ----------
+    system : str or None
+        GNSS system prefix to keep (e.g. ``'G'``, ``'E'``, ``'R'``, ``'C'``).
+        ``None`` keeps all systems.
+    band : str or None
+        Frequency band to keep (e.g. ``'L1'``, ``'E1'``, ``'L5'``).
+        ``None`` keeps all bands.
+    code : str or None
+        Tracking code to keep (e.g. ``'C'``, ``'L'``, ``'W'``).
+        ``None`` keeps all codes.
+
+    Examples
+    --------
+    >>> filt = SIDPatternFilter(system="G", band="L1", code="C")
+    >>> ds_gps_l1c = filt.filter_dataset(ds)
+
+    """
+
+    def __init__(
+        self,
+        system: str | None = None,
+        band: str | None = None,
+        code: str | None = None,
+    ) -> None:
+        parts = [p for p in [system, band, code] if p is not None]
+        name = f"sid_{'_'.join(parts)}" if parts else "sid_all"
+        super().__init__(name)
+        self.system = system
+        self.band = band
+        self.code = code
+
+    def _sid_matches(self, sid: str) -> bool:
+        """Check whether a single SID string matches the pattern."""
+        parts = str(sid).split("|")
+        if len(parts) != 3:
+            return False
+        sv, sid_band, sid_code = parts
+        if self.system is not None and not sv.startswith(self.system):
+            return False
+        if self.band is not None and sid_band != self.band:
+            return False
+        if self.code is not None and sid_code != self.code:
+            return False
+        return True
+
+    def compute_mask(
+        self,
+        data: xr.DataArray,
+        **kwargs: Any,
+    ) -> xr.DataArray:
+        """Compute boolean mask along the ``sid`` dimension.
+
+        Parameters
+        ----------
+        data : xr.DataArray
+            Input data with a ``sid`` dimension.
+
+        Returns
+        -------
+        xr.DataArray
+            Boolean mask (True = keep) broadcast to data shape.
+
+        """
+        if "sid" not in data.dims:
+            raise ValueError("Data must have a 'sid' dimension for SID filtering")
+
+        sid_values = data.coords["sid"].values
+        sid_mask = np.array([self._sid_matches(s) for s in sid_values])
+        mask_da = xr.DataArray(sid_mask, dims=["sid"], coords={"sid": sid_values})
+        return mask_da.broadcast_like(data)
+
+    def filter_dataset(self, ds: xr.Dataset) -> xr.Dataset | None:
+        """Filter dataset to matching SIDs by slicing the ``sid`` dimension.
+
+        Unlike ``apply`` (which masks values with NaN), this method drops
+        non-matching SIDs entirely — reducing the dataset size.
+
+        Parameters
+        ----------
+        ds : xr.Dataset
+            Dataset with a ``sid`` dimension.
+
+        Returns
+        -------
+        xr.Dataset or None
+            Filtered dataset, or ``None`` if no SIDs match.
+
+        """
+        if "sid" not in ds.dims:
+            raise ValueError("Dataset must have a 'sid' dimension")
+
+        sid_values = ds.coords["sid"].values
+        matching = [s for s in sid_values if self._sid_matches(s)]
+
+        if not matching:
+            return None
+
+        return ds.sel(sid=matching)
+
+
 # ==============================================================================
 # Pipeline
 # ==============================================================================

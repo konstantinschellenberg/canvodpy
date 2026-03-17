@@ -17,7 +17,7 @@ site_name = "canVODpy"
 site_description = "GNSS Transmissometry (GNSS-T) analysis framework for Python"
 site_author = "Nicolas Bader"
 site_url = "https://nfb2021.github.io/canvodpy/"
-copyright = "Copyright &copy; 2026 Nicolas Bader, TU Wien"
+copyright = "Copyright &copy; 2026 Nicolas François Bader, TU Wien. This documentation is provided &ldquo;as is&rdquo; without warranty of any kind, express or implied, including but not limited to warranties of correctness, completeness, or fitness for a particular purpose."
 
 repo_url = "https://github.com/nfb2021/canvodpy"
 repo_name = "nfb2021/canvodpy"
@@ -25,7 +25,6 @@ edit_uri = "edit/main/docs/"
 
 extra_css = ["assets/canvod-nordic.css"]
 extra_javascript = [
-  "https://unpkg.com/beautiful-mermaid/dist/beautiful-mermaid.browser.global.js",
   "assets/mermaid-init.js",
 ]
 
@@ -35,6 +34,7 @@ extra_javascript = [
 # Paths are relative to docs_dir (default: "docs/").
 nav = [
   { "Home" = "index.md" },
+  { "Conventions & Defaults" = "principles.md" },
 
   { "Architecture" = [
     { "Monorepo Structure" = "architecture.md" },
@@ -46,6 +46,9 @@ nav = [
     { "canvod-readers" = [
       { "Overview" = "packages/readers/overview.md" },
       { "RINEX v3.04 Format" = "packages/readers/rinex-format.md" },
+      { "SBF Reader" = "packages/readers/sbf.md" },
+      { "Ephemeris Sources" = "packages/readers/ephemeris-sources.md" },
+      { "Satellite Catalog (IGS SINEX)" = "packages/readers/satellite-catalog.md" },
       { "Reader Architecture" = "packages/readers/architecture.md" },
       { "Extending Readers" = "packages/readers/extending.md" },
     ]},
@@ -67,21 +70,39 @@ nav = [
       { "Icechunk Storage" = "packages/store/icechunk.md" },
       { "Storage Strategies" = "packages/store/storage-strategies.md" },
     ]},
+    { "canvod-store-metadata" = [
+      { "Overview" = "packages/store-metadata/overview.md" },
+    ]},
     { "canvod-viz" = [
       { "Overview" = "packages/viz/overview.md" },
     ]},
     { "canvod-utils" = [
       { "Overview" = "packages/utils/overview.md" },
     ]},
+    { "canvod-ops" = [
+      { "Overview" = "packages/ops/overview.md" },
+    ]},
+    { "canvod-virtualiconvname" = [
+      { "Overview" = "packages/naming/overview.md" },
+    ]},
+    { "canvod-audit" = [
+      { "Overview" = "packages/audit/overview.md" },
+    ]},
   ]},
 
   { "Development" = [
     { "Getting Started" = "guides/getting-started.md" },
     { "Contributing" = "CONTRIBUTING.md" },
-    { "Development Guide" = "guides/development.md" },
+    { "Development Guide" = "guides/DEVELOPMENT.md" },
     { "Architecture & Design Patterns" = "guides/architecture-design.md" },
+    { "Developing with Claude Code" = "guides/ai-development.md" },
     { "Build System" = "build-system.md" },
     { "Tooling" = "tooling.md" },
+    { "Configuration Guide" = "guides/configuration.md" },
+    { "Dask & Resource Management" = "guides/dask-resources.md" },
+    { "API Levels" = "guides/api-levels.md" },
+    { "Airflow Integration" = "guides/airflow.md" },
+    { "Diagnostics & Monitoring" = "guides/diagnostics.md" },
   ]},
 
   { "Release & Publishing" = [
@@ -93,6 +114,10 @@ nav = [
     { "Release Internals" = "guides/HOW_RELEASE_WORKS.md" },
   ]},
 
+  { "Legal" = [
+    { "Impressum & AI Disclosure" = "impressum.md" },
+  ]},
+
   { "API Reference" = [
     { "canvodpy" = "api/canvodpy.md" },
     { "canvod.readers" = "api/canvod-readers.md" },
@@ -100,8 +125,12 @@ nav = [
     { "canvod.grids" = "api/canvod-grids.md" },
     { "canvod.vod" = "api/canvod-vod.md" },
     { "canvod.store" = "api/canvod-store.md" },
+    { "canvod.store_metadata" = "api/canvod-store-metadata.md" },
     { "canvod.viz" = "api/canvod-viz.md" },
     { "canvod.utils" = "api/canvod-utils.md" },
+    { "canvod.ops" = "api/canvod-ops.md" },
+    { "canvod.virtualiconvname" = "api/canvod-virtualiconvname.md" },
+    { "canvod.audit" = "api/canvod-audit.md" },
   ]},
 ]
 
@@ -142,6 +171,8 @@ emoji_index = "zensical.extensions.emoji.twemoji"
 [project.markdown_extensions.pymdownx.keys]
 [project.markdown_extensions.pymdownx.mark]
 [project.markdown_extensions.pymdownx.smartsymbols]
+[project.markdown_extensions.pymdownx.snippets]
+auto_append = ["docs/includes/abbreviations.md"]
 [project.markdown_extensions.pymdownx.superfences]
 custom_fences = [
   { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
@@ -159,20 +190,26 @@ custom_checkbox = true
 language = "en"
 logo = "assets/logo.svg"
 favicon = "assets/logo.svg"
+custom_dir = "docs/overrides"
 
 features = [
   "content.code.copy",
   "content.code.annotate",
+  "content.tooltips",
+  "content.tabs.link",
   "navigation.footer",
   "navigation.indexes",
   "navigation.instant",
   "navigation.instant.prefetch",
+  "navigation.instant.progress",
   "navigation.path",
   "navigation.sections",
   "navigation.tabs",
   "navigation.top",
   "navigation.tracking",
   "search.highlight",
+  "search.suggest",
+  "toc.follow",
 ]
 
 [project.theme.icon]

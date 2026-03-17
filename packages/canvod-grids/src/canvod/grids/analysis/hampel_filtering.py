@@ -29,6 +29,7 @@ from multiprocessing import Pool, cpu_count
 
 import numpy as np
 import xarray as xr
+
 from canvod.grids import add_cell_ids_to_vod_fast, create_hemigrid
 
 logger = logging.getLogger(__name__)
@@ -481,8 +482,10 @@ def aggr_hampel_cell_sid_parallelized(
         raise ValueError(f"Grid name '{grid_name}' must end with '<N>deg'")
     try:
         resolution = float(parts[-1].replace("deg", ""))
-    except ValueError:
-        raise ValueError(f"Could not parse resolution from grid name '{grid_name}'")
+    except ValueError as e:
+        raise ValueError(
+            f"Could not parse resolution from grid name '{grid_name}'"
+        ) from e
     grid_type = "_".join(parts[:-1])
 
     grid = create_hemigrid(angular_resolution=resolution, grid_type=grid_type)

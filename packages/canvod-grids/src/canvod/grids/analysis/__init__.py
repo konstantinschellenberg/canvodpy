@@ -27,6 +27,7 @@ from canvod.grids.analysis.filtering import (
     Filter,
     FilterPipeline,
     IQRFilter,
+    SIDPatternFilter,
     ZScoreFilter,
 )
 from canvod.grids.analysis.hampel_filtering import (
@@ -71,39 +72,40 @@ __all__ = [
     "Filter",
     "FilterPipeline",
     "IQRFilter",
-    "ZScoreFilter",
     "PerCellFilter",
     "PerCellFilterPipeline",
     "PerCellIQRFilter",
+    "PerCellVODAnalyzer",
     "PerCellZScoreFilter",
-    # Hampel / sigma-clip
-    "hampel_cell_sid_parallelized",
-    "aggr_hampel_cell_sid_parallelized",
-    "astropy_hampel_vectorized_fast",
-    "astropy_hampel_ultra_fast",
-    # Masking
-    "SpatialMask",
-    "create_hemisphere_mask",
-    "create_elevation_mask",
-    # Weighting
-    "WeightCalculator",
+    "SIDPatternFilter",
     # Solar
     "SolarPositionCalculator",
+    # Masking
+    "SpatialMask",
     # Analysis
     "TemporalAnalysis",
     "VODSpatialAnalyzer",
-    "PerCellVODAnalyzer",
-    "extract_percell_stats",
-    "percell_to_grid_counts",
-    "extract_percell_temporal_stats",
+    # Weighting
+    "WeightCalculator",
+    "ZScoreFilter",
+    "aggr_hampel_cell_sid_parallelized",
+    "astropy_hampel_ultra_fast",
+    "astropy_hampel_vectorized_fast",
+    "create_elevation_mask",
+    "create_hemisphere_mask",
     "extract_percell_coverage",
+    "extract_percell_stats",
+    "extract_percell_temporal_stats",
+    # Hampel / sigma-clip
+    "hampel_cell_sid_parallelized",
+    "percell_to_grid_counts",
     "percell_to_grid_data",
     # Storage (lazy – requires canvod-store at runtime)
     # AnalysisStorage is imported on demand to avoid hard dependency.
 ]
 
 
-def AnalysisStorage(store_path: Path | str) -> "AnalysisStorageType":  # noqa: N802
+def AnalysisStorage(store_path: Path | str) -> "AnalysisStorageType":
     """Lazy accessor for AnalysisStorage.
 
     See :class:`~canvod.grids.analysis.analysis_storage.AnalysisStorage`.

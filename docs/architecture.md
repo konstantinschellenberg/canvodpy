@@ -7,56 +7,63 @@ description: Architecture of the canVODpy monorepo and its package organization
 
 ## Overview
 
-canVODpy is organized as a monorepo containing eight Python packages for GNSS vegetation optical depth analysis. All packages reside in a single repository while maintaining technical independence: each can be developed, tested, and published separately.
+canVODpy is organized as a monorepo containing ten Python packages for GNSS vegetation optical depth analysis. All packages reside in a single repository while maintaining technical independence: each can be developed, tested, and published separately.
 
 ---
 
 ## Package Layers
 
 ```mermaid
-graph LR
-    subgraph FOUNDATION["Foundation Layer"]
-        UTILS["canvod-utils\nConfiguration (Pydantic)\nDate utilities (YYYYDOY)\nShared tooling"]
+graph TD
+    subgraph ORCHESTRATION["Orchestration"]
+        CANVODPY["canvodpy"]
     end
 
-    subgraph DATAIO["Data I/O Layer"]
-        READERS["canvod-readers\nRINEX v3.04 (Rnxv3Obs)\nSignal ID mapping"]
-        AUX["canvod-auxiliary\nSP3/CLK retrieval\nHermite interpolation\nFTP download management"]
+    subgraph COMPUTE["Computation"]
+        VOD["canvod-vod"]
+        GRIDS["canvod-grids"]
+        OPS["canvod-ops"]
     end
 
-    subgraph STORE_LAYER["Persistence Layer"]
-        STORE["canvod-store\nIcechunk versioned storage\nHash deduplication\nSite/receiver management"]
+    subgraph STORE_LAYER["Persistence"]
+        STORE["canvod-store"]
+        STOREMETA["canvod-store-metadata"]
     end
 
-    subgraph COMPUTE["Computation Layer"]
-        VOD["canvod-vod\nTau-Omega inversion\nVODCalculator ABC"]
-        GRIDS["canvod-grids\n7 hemispheric grid types\nKDTree cell assignment"]
+    subgraph DATAIO["Data I/O"]
+        READERS["canvod-readers"]
+        AUX["canvod-auxiliary"]
+        NAMING["canvod-virtualiconvname"]
     end
 
-    subgraph PRESENT["Presentation Layer"]
-        VIZ["canvod-viz\n2D polar projections\n3D interactive surfaces"]
+    subgraph PRESENT["Presentation"]
+        VIZ["canvod-viz"]
     end
 
-    subgraph ORCHESTRATION["Orchestration Layer"]
-        CANVODPY["canvodpy\nPipeline orchestrator\nFactory system\n4-level public API"]
+    subgraph FOUNDATION["Foundation"]
+        UTILS["canvod-utils"]
     end
 
-    READERS -.-> UTILS
-    AUX -.-> READERS
-    AUX -.-> UTILS
-    STORE -.-> AUX
-    STORE -.-> READERS
-    STORE -.-> UTILS
-    GRIDS -.-> UTILS
+    CANVODPY --> READERS & AUX & NAMING
+    CANVODPY --> STORE & STOREMETA
+    CANVODPY --> VOD & GRIDS & OPS & VIZ
+
+    OPS -.-> GRIDS
+    OPS -.-> UTILS
     VIZ -.-> GRIDS
-
-    CANVODPY ==> READERS
-    CANVODPY ==> AUX
-    CANVODPY ==> STORE
-    CANVODPY ==> VOD
-    CANVODPY ==> GRIDS
-    CANVODPY ==> VIZ
+    AUX -.-> READERS
+    STORE -.-> GRIDS
+    STOREMETA -.-> UTILS
 ```
+
+| Layer | Packages | Role |
+|-------|----------|------|
+| **Orchestration** | canvodpy | Pipeline orchestrator, Dask batch processing, 4-level public API |
+| **Computation** | canvod-vod, canvod-grids, canvod-ops | VOD retrieval, hemispheric grids, preprocessing pipeline |
+| **Persistence** | canvod-store, canvod-store-metadata | Icechunk versioned storage, hash deduplication, provenance metadata (DataCite/ACDD/STAC) |
+| **Data I/O** | canvod-readers, canvod-auxiliary, canvod-virtualiconvname | RINEX/SBF parsing, SP3/CLK retrieval, filename mapping |
+| **Presentation** | canvod-viz | 2D polar projections, 3D interactive surfaces |
+| **Foundation** | canvod-utils | Pydantic configuration, date utilities, shared tooling |
 
 ---
 
@@ -73,6 +80,7 @@ graph LR
 
     ```python
     from canvod.readers import Rnxv3Obs
+    from canvod.readers.sbf import SbfReader
     from canvod.grids import EqualAreaBuilder
     from canvod.vod import TauOmegaZerothOrder
     ```
@@ -105,8 +113,8 @@ graph LR
     ---
 
     Maximum depth = 1. Four foundation packages have zero inter-package
-    dependencies. Three consumer packages each depend on exactly one
-    foundation package.
+    dependencies. Six consumer packages depend on one or two foundation
+    packages each.
 
 </div>
 
@@ -129,8 +137,11 @@ canvodpy/                           # Repository root
     canvod-grids/
     canvod-vod/
     canvod-store/
+    canvod-store-metadata/
     canvod-viz/
     canvod-utils/
+    canvod-ops/
+    canvod-virtualiconvname/
   canvodpy/                         # Umbrella package
     src/
       canvodpy/
@@ -152,7 +163,10 @@ canvod-vod        ──── no inter-package deps
 canvod-utils      ──── no inter-package deps
 canvod-auxiliary   ─── depends on canvod-readers
 canvod-store      ──── depends on canvod-grids
+canvod-store-metadata ── depends on canvod-utils
 canvod-viz        ──── depends on canvod-grids
+canvod-ops        ──── depends on canvod-grids, canvod-utils
+canvod-virtualiconvname ── no inter-package deps
 canvodpy          ──── depends on all packages
 ```
 
@@ -163,7 +177,8 @@ canvodpy          ──── depends on all packages
 ```mermaid
 flowchart TD
     subgraph CFG["Configuration"]
-        YAML["YAML Config\n(processing · sites · sids)"]
+        YAML["`**YAML Config**
+        processing, sites, sids`"]
         PYDANTIC["Pydantic Validation"]
         CONFIG["CanvodConfig"]
     end
@@ -175,42 +190,53 @@ flowchart TD
     end
 
     subgraph DISCOVERY["Data Discovery"]
-        MATCHER["PairDataDirMatcher"]
-        EXPAND["SCS Expansion"]
+        VALIDATOR["`**DataDirectoryValidator**
+        pre-flight gate`"]
+        MAPPER["`**FilenameMapper**
+        VirtualFiles`"]
         SCHEDULE["Processing Schedule"]
     end
 
     subgraph AUX["Auxiliary Pipeline (RINEX only)"]
-        FTP["FTP Download\nESA / NASA fallback"]
-        HERMITE["Hermite Interpolation\n(SP3 ephemerides)"]
-        LINEAR["Piecewise Linear\n(CLK corrections)"]
+        FTP["`**FTP Download**
+        ESA / NASA fallback`"]
+        HERMITE["`**Hermite Interpolation**
+        SP3 ephemerides`"]
+        LINEAR["`**Piecewise Linear**
+        CLK corrections`"]
         AUX_ZARR["Auxiliary Zarr Cache"]
     end
 
-    subgraph PARALLEL["Parallel Processing"]
-        READ_R["Read RINEX (Rnxv3Obs)"]
-        SPHERICAL["Spherical Coords\n(ECEF → r, θ, φ)"]
+    subgraph PARALLEL["Parallel Processing (Dask Distributed)"]
+        READ_R["`**Read GNSS file**
+        ReaderFactory`"]
+        SPHERICAL["`**Spherical Coords**
+        ECEF to r, theta, phi
+        or SBF embedded geometry`"]
     end
 
     subgraph WRITE["Icechunk Storage"]
-        HASH_CHECK["RINEX File Hash Check\n(skip duplicates)"]
+        HASH_CHECK["`**File Hash Check**
+        skip duplicates`"]
         APPEND["Append + Commit"]
     end
 
     subgraph GRID["Grid Assignment"]
-        BUILD_GRID["Build Grid\n(equal-area / HEALPix / …)"]
-        KDTREE["KDTree Assign\nO(n log m)"]
+        BUILD_GRID["`**Build Grid**
+        equal-area / geodesic / ...`"]
+        KDTREE["`**KDTree Assign**
+        O(n log m)`"]
     end
 
     subgraph VOD["VOD Retrieval"]
-        DELTA["ΔSNRcanopy − ref"]
-        TAU["VOD = −ln(T) · cos(θ)"]
+        DELTA["delta SNR canopy - ref"]
+        TAU["VOD = -ln(T) cos(theta)"]
     end
 
     YAML --> PYDANTIC --> CONFIG --> SITE
     SITE --> RINEX_STORE & VOD_STORE
 
-    CONFIG --> MATCHER --> EXPAND --> SCHEDULE
+    CONFIG --> VALIDATOR --> MAPPER --> SCHEDULE
 
     SCHEDULE --> FTP --> HERMITE & LINEAR --> AUX_ZARR
 
@@ -239,3 +265,7 @@ flowchart TD
     - Additional `pyproject.toml` per package
     - Developers must understand the namespace package mechanism
     - Coordinated releases required for consistent versioning
+
+---
+
+**Next in the trail:** [Design Principles](principles.md) · [API Levels](guides/api-levels.md) · [Getting Started](guides/getting-started.md) · [AI Development](guides/ai-development.md)

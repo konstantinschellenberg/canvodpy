@@ -1,6 +1,10 @@
 """Band registry and plotting helpers for GNSS signals."""
 
 import matplotlib.pyplot as plt
+from matplotlib import gridspec, patches
+from pint import Quantity
+from pydantic import BaseModel
+
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
     GALILEO,
@@ -10,9 +14,6 @@ from canvod.readers.gnss_specs.constellations import (
     QZSS,
     SBAS,
 )
-from matplotlib import gridspec, patches
-from pint import Quantity
-from pydantic import BaseModel
 
 
 class Bands(BaseModel):
@@ -62,12 +63,6 @@ class Bands(BaseModel):
             **IRNSS.BAND_PROPERTIES,
             **SBAS.BAND_PROPERTIES,
             **QZSS.BAND_PROPERTIES,
-        }
-
-        # Add X1 auxiliary observation band
-        combined_band_properties["X1"] = {
-            "auxiliary": True,
-            "system": "Universal",  # X1 can appear in any system
         }
 
         super().__init__(
@@ -127,7 +122,6 @@ class Bands(BaseModel):
                 "group_7": ["G1"],
                 "group_8": ["G2"],
                 "group_9": ["G3"],
-                "group_aux": ["X1"],
             }
         return {
             "group_1": ["L1", "E1", "B1I", "B1C", "S", "J1"],
@@ -139,7 +133,6 @@ class Bands(BaseModel):
             "group_7": ["G1_FDMA"],
             "group_8": ["G2_FDMA"],
             "group_9": ["G3"],
-            "group_aux": ["X1"],
         }
 
     def plot_bands(

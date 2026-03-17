@@ -1,4 +1,12 @@
 # ============================================================================
+# Claude Code — track project setup, ignore private state
+# ============================================================================
+# CLAUDE.md files are tracked (project + package instructions)
+# .claude/commands/ is tracked (slash commands ship with the repo)
+.claude/*
+!.claude/commands/
+
+# ============================================================================
 # Python
 # ============================================================================
 
@@ -225,6 +233,8 @@ logs/
 # Data directories
 .data/
 data/
+# Allow bundled package data files
+!packages/canvod-readers/src/canvod/readers/gnss_specs/data/
 *.nc
 *.zarr/
 
@@ -233,9 +243,15 @@ tmp/
 temp/
 *.tmp
 
+# Images (generated diagrams, plots)
+*.png
+*.svg
+!docs/assets/logo.svg
+
 # Custom plotting outputs
 .vod_plotly_plots/
 *.html
+!docs/overrides/*.html
 
 # Documentation builds
 site/
@@ -264,6 +280,7 @@ _build/
 
 # Coverage reports
 .coverage.*
+*.lcov
 coverage/
 htmlcov/
 
@@ -327,12 +344,19 @@ config/sids.yaml
 
 # Prevent config directory in packages
 canvodpy/config/
-docs/diagrams/node_modules/
-docs/diagrams/package.json
-docs/diagrams/package-lock.json
+node_modules/
+package.json
+package-lock.json
 packages/*/config/
 
 # Session documentation archive
 .archive/
 .processing/
 .vscode/
+
+# ============================================================================
+# Private audit scripts (gnssvodpy cross-validation, local only)
+# ============================================================================
+packages/canvod-audit/src/canvod/audit/runners/vs_gnssvodpy.py
+packages/canvod-audit/scripts/run_tier0_vs_gnssvodpy.py
+packages/canvod-audit/scripts/run_tier0_vod.py

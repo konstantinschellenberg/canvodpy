@@ -12,23 +12,25 @@ Add support for a new GNSS data format by implementing the `GNSSDataReader` abst
 
     ---
 
-    `class MyReader(BaseModel, GNSSDataReader)` — both `BaseModel`
-    (for Pydantic validation) and the ABC.
+    `class MyReader(GNSSDataReader)` — just one parent!
+    `GNSSDataReader` is already a Pydantic `BaseModel` with `fpath`
+    and file validation built in.
 
--   :fontawesome-solid-list-check: &nbsp; **2. Implement all abstract methods**
+-   :fontawesome-solid-list-check: &nbsp; **2. Implement abstract methods**
 
     ---
 
     `file_hash`, `to_ds()`, `iter_epochs()`, `start_time`, `end_time`,
-    `systems`, `num_epochs`, `num_satellites`.
+    `systems`, `num_satellites`.  (`num_epochs` has a default that counts
+    via `iter_epochs()` — override for O(1) if your format stores the count.)
 
--   :fontawesome-solid-shield-halved: &nbsp; **3. Call `validate_output()`**
+-   :fontawesome-solid-shield-halved: &nbsp; **3. Use `DatasetBuilder` (recommended)**
 
     ---
 
-    Last line of every `to_ds()` must be
-    `self.validate_output(ds, required_vars=...)`.
-    Never skip it.
+    Use `DatasetBuilder` in your `to_ds()` to construct the output Dataset.
+    It handles coordinate arrays, frequency resolution, dtype enforcement,
+    and calls `validate_dataset()` automatically.
 
 -   :fontawesome-solid-vial: &nbsp; **4. Write tests**
 
@@ -41,47 +43,62 @@ Add support for a new GNSS data format by implementing the `GNSSDataReader` abst
 
 ---
 
+## Contract Constants
+
+The output Dataset contract is defined by importable constants in
+`canvod.readers.base` — these are the **single source of truth**:
+
+```python
+from canvod.readers.base import (
+    REQUIRED_DIMS,       # ("epoch", "sid")
+    REQUIRED_COORDS,     # {name: dtype, ...}
+    REQUIRED_ATTRS,      # {"Created", "Software", "Institution", "File Hash"}
+    DEFAULT_REQUIRED_VARS,  # ["SNR"]
+)
+```
+
+Use `validate_dataset(ds)` to check any Dataset against them.
+It collects **all** violations and raises a single `ValueError`
+listing every problem.
+
+---
+
 ## Step-by-Step Implementation
 
 ### Step 1 — Reader Class
 
+`GNSSDataReader` is a Pydantic `BaseModel` with `fpath: Path` and file
+validation built in. You only need to set reader-specific config:
+
 ```python
-from pathlib import Path
-from pydantic import BaseModel, ConfigDict
+from pydantic import ConfigDict
 from canvod.readers.base import GNSSDataReader
 
-class MyFormatReader(BaseModel, GNSSDataReader):
-    """Reader for My Custom Format.
+class MyFormatReader(GNSSDataReader):
+    """Reader for My Custom Format."""
 
-    Implements GNSSDataReader ABC for custom GNSS data format.
-    """
-
-    model_config = ConfigDict(
-        frozen=True,                  # Immutable after construction
-        arbitrary_types_allowed=True, # Required for Path, numpy, etc.
-    )
-
-    fpath: Path
+    model_config = ConfigDict(frozen=True)   # no arbitrary_types needed
+    # no fpath field needed — inherited from GNSSDataReader
 ```
 
 ### Step 2 — File Hash
 
 ```python
-from canvod.readers.gnss_specs.utils import rinex_file_hash
+from canvod.readers.gnss_specs.utils import file_hash
 
-class MyFormatReader(BaseModel, GNSSDataReader):
+class MyFormatReader(GNSSDataReader):
     ...
 
     @property
     def file_hash(self) -> str:
         """16-character SHA-256 prefix of the file — used for deduplication."""
-        return rinex_file_hash(self.fpath)
+        return file_hash(self.fpath)
 ```
 
 ### Step 3 — Metadata Properties
 
 ```python
-class MyFormatReader(BaseModel, GNSSDataReader):
+class MyFormatReader(GNSSDataReader):
     ...
 
     @property
@@ -96,104 +113,116 @@ class MyFormatReader(BaseModel, GNSSDataReader):
     def systems(self) -> list[str]:
         return self._parse_systems()   # e.g. ["G", "E"]
 
-    @property
-    def num_epochs(self) -> int:
-        return sum(1 for _ in self.iter_epochs())
+    # num_epochs has a default (iterates via iter_epochs);
+    # override for O(1) if your format stores the count in the header.
 
     @property
     def num_satellites(self) -> int:
-        return len({obs.sv for ep in self.iter_epochs() for obs in ep.observations})
+        return self._count_satellites()
 ```
 
 ### Step 4 — Epoch Iterator
 
 ```python
-from typing import Generator
+from collections.abc import Iterator
 
-class MyFormatReader(BaseModel, GNSSDataReader):
+class MyFormatReader(GNSSDataReader):
     ...
 
-    def iter_epochs(self) -> Generator:
+    def iter_epochs(self) -> Iterator:
         """Lazily yield one epoch at a time — keep memory bounded."""
-        with open(self.fpath, "rb") as f:
+        with self.fpath.open("rb") as f:
             self._skip_header(f)
             for raw in self._raw_epoch_generator(f):
                 yield self._decode_epoch(raw)
 ```
 
-### Step 5 — Dataset Conversion
+### Step 5 — Dataset Conversion with DatasetBuilder
+
+`DatasetBuilder` handles coordinate assembly, frequency resolution,
+dtype enforcement, and validation — so your `to_ds()` stays simple:
 
 ```python
-import numpy as np
-import xarray as xr
-from canvod.readers.gnss_specs.signals import SignalIDMapper
-from canvod.readers.gnss_specs.metadata import SNR_METADATA, COORDS_METADATA, get_global_attrs
+from canvod.readers.builder import DatasetBuilder
 
-class MyFormatReader(BaseModel, GNSSDataReader):
+class MyFormatReader(GNSSDataReader):
     ...
 
     def to_ds(
         self,
-        keep_rnx_data_vars: list[str] | None = None,
+        keep_data_vars: list[str] | None = None,
         **kwargs,
     ) -> xr.Dataset:
-        # 1. Collect
-        all_epochs = list(self.iter_epochs())
-
-        # 2. Build SID index
-        mapper = SignalIDMapper()
-        all_sids = sorted({
-            mapper.create_signal_id(obs.sv, obs.code)
-            for ep in all_epochs
-            for obs in ep.observations
-        })
-
-        # 3. Coordinate arrays
-        epochs     = [ep.timestamp for ep in all_epochs]
-        sv_arr     = np.array([sid.split("|")[0] for sid in all_sids])
-        system_arr = np.array([sid[0]            for sid in all_sids])
-        band_arr   = np.array([sid.split("|")[1] for sid in all_sids])
-        code_arr   = np.array([sid.split("|")[2] for sid in all_sids])
-        fc         = np.array([mapper.get_band_frequency(sid.split("|")[1])
-                               for sid in all_sids], dtype=np.float64)
-        bw         = np.array([mapper.get_band_bandwidth(sid.split("|")[1])
-                               for sid in all_sids], dtype=np.float64)
-
-        # 4. Data arrays (SNR minimum; extend for Phase / PR / Doppler)
-        sid_to_idx = {sid: i for i, sid in enumerate(all_sids)}
-        snr = np.full((len(epochs), len(all_sids)), np.nan, dtype=np.float32)
-        for i, ep in enumerate(all_epochs):
-            for obs in ep.observations:
-                sid = mapper.create_signal_id(obs.sv, obs.code)
-                snr[i, sid_to_idx[sid]] = obs.snr
-
-        # 5. Assemble Dataset
-        ds = xr.Dataset(
-            data_vars={"SNR": (("epoch", "sid"), snr, SNR_METADATA)},
-            coords={
-                "epoch":      ("epoch", epochs, COORDS_METADATA["epoch"]),
-                "sid":        ("sid", all_sids, COORDS_METADATA["sid"]),
-                "sv":         ("sid", sv_arr,     COORDS_METADATA["sv"]),
-                "system":     ("sid", system_arr, COORDS_METADATA["system"]),
-                "band":       ("sid", band_arr,   COORDS_METADATA["band"]),
-                "code":       ("sid", code_arr,   COORDS_METADATA["code"]),
-                "freq_center":("sid", fc,          COORDS_METADATA["freq_center"]),
-                "freq_min":   ("sid", fc - bw / 2, COORDS_METADATA["freq_min"]),
-                "freq_max":   ("sid", fc + bw / 2, COORDS_METADATA["freq_max"]),
-            },
-            attrs={
-                **get_global_attrs(),
-                "RINEX File Hash": self.file_hash,
-                "Source Format":   "My Custom Format",
-            },
+        builder = DatasetBuilder(self)
+        for epoch in self.iter_epochs():
+            ei = builder.add_epoch(epoch.timestamp)
+            for obs in epoch.observations:
+                sig = builder.add_signal(
+                    sv=obs.sv, band=obs.band, code=obs.code
+                )
+                builder.set_value(ei, sig, "SNR", obs.snr_value)
+        return builder.build(
+            keep_data_vars=keep_data_vars,
+            extra_attrs={"Source Format": "My Custom Format"},
         )
-
-        # 6. MANDATORY — validate before returning
-        self.validate_output(ds, required_vars=keep_rnx_data_vars)
-        return ds
 ```
 
----
+??? note "Manual Dataset construction (advanced)"
+
+    If you need more control than `DatasetBuilder` provides, you can
+    construct the Dataset manually using `SignalIDMapper` and
+    `validate_dataset()`:
+
+    ```python
+    import numpy as np
+    import xarray as xr
+    from canvod.readers.gnss_specs.signals import SignalIDMapper
+    from canvod.readers.gnss_specs.metadata import SNR_METADATA, COORDS_METADATA
+    from canvod.readers.base import validate_dataset
+
+    class MyFormatReader(GNSSDataReader):
+        ...
+
+        def to_ds(
+            self,
+            keep_data_vars: list[str] | None = None,
+            **kwargs,
+        ) -> xr.Dataset:
+            all_epochs = list(self.iter_epochs())
+            mapper = SignalIDMapper()
+
+            # Build SID index, coordinate arrays, data arrays...
+            # (see existing readers for full example)
+
+            ds = xr.Dataset(
+                data_vars={"SNR": (("epoch", "sid"), snr, SNR_METADATA)},
+                coords={...},
+                attrs={**self._build_attrs(), "Source Format": "My Custom Format"},
+            )
+
+            # MANDATORY — validate before returning
+            validate_dataset(ds, required_vars=keep_data_vars)
+            return ds
+    ```
+
+### Step 6 — `to_ds_and_auxiliary()` (optional)
+
+If your format embeds metadata beyond observations (like SBF embeds
+satellite geometry), override `to_ds_and_auxiliary()` to collect
+both datasets in a single file scan:
+
+```python
+def to_ds_and_auxiliary(
+    self,
+    keep_data_vars: list[str] | None = None,
+    **kwargs,
+) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
+    obs_ds = ...   # build obs dataset
+    meta_ds = ...  # build metadata dataset
+    return obs_ds, {"my_format_meta": meta_ds}
+```
+
+The default implementation calls `to_ds()` and returns an empty dict.
 
 ---
 
@@ -209,36 +238,39 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 === "Coordinates"
 
     ```python
-    required_coords = {
-        "epoch":       "datetime64[ns]",
-        "sid":         "object",     # string
-        "sv":          "object",
-        "system":      "object",
-        "band":        "object",
-        "code":        "object",
-        "freq_center": "float64",    # must be float64, NOT float32
-        "freq_min":    "float64",
-        "freq_max":    "float64",
-    }
+    from canvod.readers.base import REQUIRED_COORDS
+
+    # REQUIRED_COORDS = {
+    #     "epoch":       "datetime64[ns]",
+    #     "sid":         "object",     # string
+    #     "sv":          "object",
+    #     "system":      "object",
+    #     "band":        "object",
+    #     "code":        "object",
+    #     "freq_center": "float32",    # must be float32
+    #     "freq_min":    "float32",
+    #     "freq_max":    "float32",
+    # }
     ```
 
 === "Attributes"
 
     ```python
-    required_attrs = {
-        "Created",
-        "Software",
-        "Institution",
-        "RINEX File Hash",   # for storage deduplication
-    }
+    from canvod.readers.base import REQUIRED_ATTRS
+
+    # REQUIRED_ATTRS = {
+    #     "Created",
+    #     "Software",
+    #     "Institution",
+    #     "File Hash",    # for storage deduplication
+    # }
     ```
 
 === "Data Variables"
 
     ```python
-    # SNR and Phase required by default
-    assert "SNR"   in ds.data_vars
-    assert "Phase" in ds.data_vars
+    # SNR required by default
+    assert "SNR" in ds.data_vars
 
     # All variables must be (epoch, sid)
     for var in ds.data_vars:
@@ -273,8 +305,7 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 
         def test_dataset_variables(self, real_test_file):
             ds = MyFormatReader(fpath=real_test_file).to_ds()
-            assert "SNR"   in ds.data_vars
-            assert "Phase" in ds.data_vars
+            assert "SNR" in ds.data_vars
 
         def test_sid_dimensions(self, real_test_file):
             ds = MyFormatReader(fpath=real_test_file).to_ds()
@@ -283,7 +314,7 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 
         def test_file_hash_in_attrs(self, real_test_file):
             ds = MyFormatReader(fpath=real_test_file).to_ds()
-            assert "RINEX File Hash" in ds.attrs
+            assert "File Hash" in ds.attrs
     ```
 
 === "Integration Test"
@@ -292,7 +323,7 @@ class MyFormatReader(BaseModel, GNSSDataReader):
     @pytest.mark.integration
     def test_full_pipeline(real_test_file):
         reader = MyFormatReader(fpath=real_test_file)
-        ds = reader.to_ds(keep_rnx_data_vars=["SNR"])
+        ds = reader.to_ds(keep_data_vars=["SNR"])
 
         # Filter GPS only
         gps = ds.where(ds.system == "G", drop=True)
@@ -305,15 +336,52 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 === "Validation Round-Trip"
 
     ```python
-    from canvod.readers.base import DatasetStructureValidator
+    from canvod.readers.base import validate_dataset
 
     def test_validation_passes(real_test_file):
         ds = MyFormatReader(fpath=real_test_file).to_ds()
-        # validate_output() is already called inside to_ds() —
+        # validate_dataset() is already called inside to_ds() —
         # this test verifies it didn't raise
-        validator = DatasetStructureValidator(dataset=ds)
-        validator.validate_all()   # should not raise
+        validate_dataset(ds)   # should not raise
     ```
+
+---
+
+## Audit Integration
+
+Adding a new reader is not complete until the **audit suite** can validate its
+output against existing readers. This ensures intra-validation — that your new
+reader produces scientifically consistent results when processing the same
+observation data.
+
+1. **Add a Tier 1 comparison** — compare your reader's output against an existing
+   reader on shared test data (same receiver, same time window). Follow the pattern
+   in `canvod.audit.runners.sbf_vs_rinex`:
+
+    ```python
+    from canvod.audit.runners import audit_sbf_vs_rinex
+
+    # Your equivalent: audit_myformat_vs_rinex(...)
+    result = audit_sbf_vs_rinex(sbf_store="...", rinex_store="...")
+    assert result.passed
+    ```
+
+2. **Define tolerances** — SNR should be bit-identical if the underlying data is the
+   same. Angular values (θ, φ) may differ if ephemeris sources differ. Use the
+   appropriate `ToleranceTier` (EXACT, NUMERICAL, or SCIENTIFIC) and document
+   expected differences.
+
+3. **Add integration tests** in `packages/canvod-audit/tests/test_integration.py` —
+   verify dataset structure, shared observables, and value ranges against real data
+   from the test submodule.
+
+4. **Run the full audit** after implementation:
+
+    ```bash
+    just test-audit
+    ```
+
+See the [Audit Suite](../../packages/audit/overview.md) for the full tier system.
 
 ---
 
@@ -321,11 +389,11 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 
 !!! failure "Wrong dtype for frequency coordinates"
     ```python
-    # WRONG — float32 fails the dtype check
-    freq_center = np.array([...], dtype=np.float32)
-
-    # CORRECT
+    # WRONG — float64 fails the dtype check
     freq_center = np.array([...], dtype=np.float64)
+
+    # CORRECT — DatasetBuilder handles this automatically
+    freq_center = np.array([...], dtype=np.float32)
     ```
 
 !!! failure "Skipping validation"
@@ -335,11 +403,11 @@ class MyFormatReader(BaseModel, GNSSDataReader):
         ds = self._build_dataset()
         return ds   # ← will silently produce invalid datasets downstream
 
-    # CORRECT
+    # CORRECT — DatasetBuilder.build() calls validate_dataset() for you
     def to_ds(self, **kwargs) -> xr.Dataset:
-        ds = self._build_dataset()
-        self.validate_output(ds)   # mandatory
-        return ds
+        builder = DatasetBuilder(self)
+        # ... add epochs, signals, values ...
+        return builder.build()  # validates automatically
     ```
 
 !!! failure "Wrong dimension names"
@@ -347,7 +415,7 @@ class MyFormatReader(BaseModel, GNSSDataReader):
     # WRONG
     data_vars={"SNR": (("time", "signal"), data)}
 
-    # CORRECT
+    # CORRECT — DatasetBuilder uses the right names automatically
     data_vars={"SNR": (("epoch", "sid"), data)}
     ```
 
@@ -356,20 +424,16 @@ class MyFormatReader(BaseModel, GNSSDataReader):
 ## Registering with ReaderFactory
 
 ```python
-from canvod.readers.base import ReaderFactory
+from canvodpy import ReaderFactory
 from my_package.readers import MyFormatReader
 
-# Register
+# Register by name
 ReaderFactory.register("my_format", MyFormatReader)
 
-# Automatic detection
-reader = ReaderFactory.create("file.dat")   # → MyFormatReader
+# Create by name
+reader = ReaderFactory.create("my_format", fpath="file.dat")
 ```
 
-Update the detection logic to recognise your format:
-
-```python
-# In ReaderFactory._detect_format()
-if first_bytes.startswith(b"MY_FORMAT"):
-    return "my_format"
-```
+For RINEX files, `ReaderFactory.create_from_file(path)` auto-detects
+v2/v3 from the file header. Custom binary formats should use the
+name-based API above.

@@ -1,0 +1,30 @@
+# Naming recipe: Rosalia canopy receiver
+#
+# Your files look like:  ract001a15.25o
+#                         ····^^^·^^_^^·
+#                         skip doy |mn . yy skip
+#                              hour_letter
+
+name: rosalia_canopy
+description: Rosalia forest, canopy receiver, Septentrio PolaRx5
+
+site: ROS
+agency: TUW
+receiver_number: 1
+receiver_type: canopy
+sampling: "05S"
+period: "15M"
+content: AA
+file_type: rnx
+
+layout: yyddd_subdirs
+glob: "*.??o"
+
+fields:
+  - skip: 4           # ract
+  - doy: 3            # 001
+  - hour_letter: 1    # a
+  - minute: 2         # 15
+  - skip: 1           # .
+  - yy: 2             # 25
+  - skip: 1           # o

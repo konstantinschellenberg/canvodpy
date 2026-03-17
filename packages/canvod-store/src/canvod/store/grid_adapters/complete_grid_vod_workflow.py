@@ -12,6 +12,8 @@ import polars as pl
 import zarr
 
 if TYPE_CHECKING:
+    import xarray as xr
+
     from canvod.store.store import MyIcechunkStore
 try:
     from gnssvodpy.hemigrid.storage.grid_storage import (
@@ -512,7 +514,7 @@ class HemiGridStorageAdapter:
         elif grid_type == "fibonacci":
             grid_data = getattr(self._grid, "_grid_data", None)
             if grid_data and getattr(grid_data, "points_xyz", None) is not None:
-                metadata["n_points"] = int(len(grid_data.points_xyz))
+                metadata["n_points"] = len(grid_data.points_xyz)
 
         return metadata
 
@@ -654,7 +656,7 @@ class StoredHemiGrid:
         phi : float
             Azimuth angle in radians.
         theta : float
-            Zenith angle in radians.
+            Polar angle in radians.
 
         Returns
         -------
@@ -671,7 +673,7 @@ class StoredHemiGrid:
         phi : np.ndarray
             Azimuth angles in radians.
         theta : np.ndarray
-            Zenith angles in radians.
+            Polar angles in radians.
 
         Returns
         -------

@@ -29,10 +29,6 @@ Versioned data storage using Icechunk.
 
 ::: canvod.store.preprocessing
 
-## Metadata
-
-::: canvod.store.metadata
-
 ## Grid Adapters
 
 ::: canvod.store.grid_adapters

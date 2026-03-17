@@ -6,6 +6,7 @@ Loads configuration from multiple YAML files with priority:
 2. User configuration files (highest priority)
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -32,7 +33,7 @@ def find_monorepo_root() -> Path:
     current = Path.cwd().resolve()
 
     # Walk up directory tree looking for .git directory (not file).
-    for parent in [current] + list(current.parents):
+    for parent in [current, *list(current.parents)]:
         git_path = parent / ".git"
         if git_path.exists() and git_path.is_dir():
             return parent
@@ -253,5 +254,9 @@ def load_config(config_dir: Path | None = None) -> CanvodConfig:
     >>> print(config.nasa_earthdata_acc_mail)
     >>> print(config.processing.aux_data.agency)
     """
+    if config_dir is None:
+        env_dir = os.environ.get("CANVOD_CONFIG_DIR")
+        if env_dir:
+            config_dir = Path(env_dir)
     loader = ConfigLoader(config_dir)
     return loader.load()

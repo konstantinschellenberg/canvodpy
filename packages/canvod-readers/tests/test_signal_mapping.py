@@ -1,6 +1,7 @@
 """Tests for GNSS signal mapping system."""
 
 import pytest
+
 from canvod.readers.gnss_specs.bands import Bands
 from canvod.readers.gnss_specs.constellations import (
     BEIDOU,
@@ -35,76 +36,6 @@ class TestSignalIDMapper:
         for system in expected_systems:
             assert system in mapper.SYSTEM_BANDS, f"Missing system: {system}"
             assert len(mapper.SYSTEM_BANDS[system]) > 0
-
-    def test_create_signal_id_gps(self):
-        """Test signal ID creation for GPS."""
-        mapper = SignalIDMapper()
-
-        sid = mapper.create_signal_id("G01", "G01|S1C")
-        assert sid == "G01|L1|C"
-
-        sid = mapper.create_signal_id("G01", "G01|S2W")
-        assert sid == "G01|L2|W"
-
-        sid = mapper.create_signal_id("G01", "G01|S5X")
-        assert sid == "G01|L5|X"
-
-    def test_create_signal_id_galileo(self):
-        """Test signal ID creation for Galileo."""
-        mapper = SignalIDMapper()
-
-        sid = mapper.create_signal_id("E05", "E05|S1C")
-        assert sid == "E05|E1|C"
-
-        sid = mapper.create_signal_id("E05", "E05|S5Q")
-        assert sid == "E05|E5a|Q"
-
-        sid = mapper.create_signal_id("E05", "E05|S7I")
-        assert sid == "E05|E5b|I"
-
-    def test_create_signal_id_glonass(self):
-        """Test signal ID creation for GLONASS."""
-        mapper = SignalIDMapper()
-
-        sid = mapper.create_signal_id("R01", "R01|S1C")
-        assert sid == "R01|G1|C"
-
-        sid = mapper.create_signal_id("R01", "R01|S2P")
-        assert sid == "R01|G2|P"
-
-    def test_create_signal_id_beidou(self):
-        """Test signal ID creation for BeiDou."""
-        mapper = SignalIDMapper()
-
-        sid = mapper.create_signal_id("C01", "C01|S2I")
-        assert sid == "C01|B1I|I"
-
-        sid = mapper.create_signal_id("C01", "C01|S1D")
-        assert sid == "C01|B1C|D"
-
-    def test_create_signal_id_auxiliary(self):
-        """Test X1 auxiliary observation handling."""
-        mapper = SignalIDMapper()
-
-        sid = mapper.create_signal_id("G01", "G01|X1")
-        assert sid == "G01|X1|X"
-
-        sid = mapper.create_signal_id("E05", "E05|X1")
-        assert sid == "E05|X1|X"
-
-    def test_parse_signal_id(self):
-        """Test signal ID parsing."""
-        mapper = SignalIDMapper()
-
-        sv, band, code = mapper.parse_signal_id("G01|L1|C")
-        assert sv == "G01"
-        assert band == "L1"
-        assert code == "C"
-
-        sv, band, code = mapper.parse_signal_id("E05|E5a|Q")
-        assert sv == "E05"
-        assert band == "E5a"
-        assert code == "Q"
 
     def test_get_band_frequency(self):
         """Test band frequency retrieval."""
@@ -162,18 +93,13 @@ class TestSignalIDMapper:
         assert group_l5 is not None
         assert group_l5 == group_e5a
 
-    def test_is_auxiliary_observation(self):
-        """Test auxiliary observation detection."""
+    def test_unknown_band_returns_none(self):
+        """Test unknown band returns None for frequency/bandwidth/group."""
         mapper = SignalIDMapper()
 
-        # X1 should not be auxiliary in BAND_PROPERTIES by default
-        is_aux = mapper.is_auxiliary_observation("G01|X1|X")
-        # This depends on whether X1 has 'auxiliary' flag in BAND_PROPERTIES
-        assert isinstance(is_aux, bool)
-
-        # Regular observations should not be auxiliary
-        is_aux = mapper.is_auxiliary_observation("G01|L1|C")
-        assert is_aux is False
+        assert mapper.get_band_frequency("UnknownBand9") is None
+        assert mapper.get_band_bandwidth("UnknownBand9") is None
+        assert mapper.get_overlapping_group("UnknownBand9") is None
 
 
 class TestBands:
@@ -264,7 +190,7 @@ class TestConstellations:
 
     def test_gps_initialization(self):
         """Test GPS constellation can be initialized."""
-        gps = GPS(use_wiki=False)
+        gps = GPS()
 
         assert gps.constellation == "GPS"
         assert len(gps.svs) > 0
@@ -274,7 +200,7 @@ class TestConstellations:
 
     def test_gps_static_svs(self):
         """Test GPS has static SV list."""
-        gps = GPS(use_wiki=False)
+        gps = GPS()
 
         assert len(gps.svs) == 32
         assert "G01" in gps.svs
@@ -343,60 +269,17 @@ class TestConstellations:
         assert len(sbas.svs) > 0
         assert sbas.svs[0].startswith("S")
 
-    def test_constellation_freqs_lut(self):
-        """Test constellation frequency lookup tables."""
-        gps = GPS(use_wiki=False)
-
-        freqs_lut = gps.freqs_lut
-        assert len(freqs_lut) > 0
-
-        # Check format: SV|*ObsCode
-        sample_key = list(freqs_lut.keys())[0]
-        assert "|" in sample_key
-        assert sample_key.startswith("G")
-
 
 class TestIntegration:
     """Integration tests for signal mapping with RINEX reader."""
-
-    def test_signal_mapper_in_rinex_context(self):
-        """Test SignalIDMapper works in RINEX reader context."""
-        mapper = SignalIDMapper()
-
-        # Simulate RINEX observation processing
-        test_obs_codes = [
-            ("G01", "G01|S1C"),
-            ("G01", "G01|S2W"),
-            ("E05", "E05|S1C"),
-            ("R01", "R01|S1C"),
-        ]
-
-        for sv, obs_code in test_obs_codes:
-            sid = mapper.create_signal_id(sv, obs_code)
-            assert "|" in sid
-            assert sid.startswith(sv)
-
-            # Parse it back
-            parsed_sv, band, code = mapper.parse_signal_id(sid)
-            assert parsed_sv == sv
-            assert len(band) > 0
-            assert len(code) > 0
 
     def test_overlapping_group_filtering(self):
         """Test overlapping group identification for filtering."""
         mapper = SignalIDMapper()
 
-        # Create signal IDs
-        sid_l1 = mapper.create_signal_id("G01", "G01|S1C")
-        sid_e1 = mapper.create_signal_id("E05", "E05|S1C")
-
-        # Get bands
-        _, band_l1, _ = mapper.parse_signal_id(sid_l1)
-        _, band_e1, _ = mapper.parse_signal_id(sid_e1)
-
-        # Check they're in same overlapping group
-        group_l1 = mapper.get_overlapping_group(band_l1)
-        group_e1 = mapper.get_overlapping_group(band_e1)
+        # L1 and E1 should be in same overlapping group
+        group_l1 = mapper.get_overlapping_group("L1")
+        group_e1 = mapper.get_overlapping_group("E1")
 
         assert group_l1 == group_e1  # Should be in same group
 
@@ -410,35 +293,3 @@ class TestIntegration:
 
         assert freq_l1 == freq_e1
         assert freq_l1 == pytest.approx(1575.42)
-
-
-@pytest.mark.slow
-class TestWikipediaCache:
-    """Tests for Wikipedia satellite list caching.
-
-    These tests are marked as slow because they involve network access.
-    """
-
-    def test_wikipedia_cache_initialization(self):
-        """Test WikipediaCache can be initialized."""
-        from canvod.readers.gnss_specs.constellations import WikipediaCache
-
-        cache = WikipediaCache(cache_hours=6)
-        assert cache.cache_file == "gnss_satellites_cache.db"
-        assert cache.cache_hours == 6
-
-    @pytest.mark.skipif(True, reason="Requires network access")
-    def test_wikipedia_fetch_gps(self):
-        """Test fetching GPS satellites from Wikipedia."""
-        gps = GPS(use_wiki=True)
-
-        assert len(gps.svs) > 0
-        assert all(sv.startswith("G") for sv in gps.svs)
-
-    @pytest.mark.skipif(True, reason="Requires network access")
-    def test_wikipedia_fetch_galileo(self):
-        """Test fetching Galileo satellites from Wikipedia."""
-        galileo = GALILEO()
-
-        assert len(galileo.svs) > 0
-        assert all(sv.startswith("E") for sv in galileo.svs)

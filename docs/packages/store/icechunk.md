@@ -113,14 +113,23 @@ icechunk:
   compression_level: 5
   inline_threshold: 512
   get_concurrency: 1
+
+  # Manifest preloading — loads coordinate manifests into memory at session open.
+  # Worth enabling once stores grow beyond a few hundred commits.
+  # manifest_preload_enabled: false
+  # manifest_preload_max_refs: 100000000
+  # manifest_preload_pattern: "epoch|sid"
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `compression_algorithm` | `zstd` | Chunk compressor — `zstd`, `lz4`, or `none` |
+| `compression_algorithm` | `zstd` | Icechunk internal compression — `zstd`, `lz4`, or `gzip` |
 | `compression_level` | `5` | Compressor level (1 = fast, 22 = max for zstd) |
-| `inline_threshold` | `512` | Bytes below which chunks are stored inline in metadata |
-| `get_concurrency` | `1` | Parallel chunk fetches (increase for cloud reads) |
+| `inline_threshold` | `512` | Bytes below which chunks are stored inline in the manifest |
+| `get_concurrency` | `1` | Concurrent partial-value reads (increase for S3/GCS) |
+| `manifest_preload_enabled` | `false` | Pre-load coordinate manifests into memory at session open |
+| `manifest_preload_max_refs` | `100000000` | Cap on chunk refs preloaded |
+| `manifest_preload_pattern` | `"epoch\|sid"` | Regex for arrays to preload |
 
 ---
 
@@ -244,6 +253,6 @@ return snapshot
 ```
 
 !!! info "Hash source"
-    The `"RINEX File Hash"` attribute is set by `Rnxv3Obs.file_hash` — a
-    16-character SHA-256 prefix of the raw RINEX file.
+    The `"File Hash"` attribute is set by the reader (`SbfReader.file_hash` /
+    `Rnxv3Obs.file_hash`) — a 16-character SHA-256 prefix of the raw file.
     Duplicate ingestion is impossible even if the same file is submitted twice.

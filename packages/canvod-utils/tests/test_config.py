@@ -11,8 +11,8 @@ print("=" * 70)
 
 # Test imports
 try:
-    from canvod.utils.config import load_config
-    from canvod.utils.config.models import (
+    from canvod.utils.config import load_config  # noqa: F401
+    from canvod.utils.config.models import (  # noqa: F401
         CanvodConfig,
         ProcessingConfig,
         SidsConfig,

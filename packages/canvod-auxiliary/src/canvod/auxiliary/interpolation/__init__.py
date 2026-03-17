@@ -11,11 +11,11 @@ from canvod.auxiliary.interpolation.interpolator import (
 )
 
 __all__ = [
+    "ClockConfig",
+    "ClockInterpolationStrategy",
     "Interpolator",
     "InterpolatorConfig",
     "Sp3Config",
     "Sp3InterpolationStrategy",
-    "ClockConfig",
-    "ClockInterpolationStrategy",
     "create_interpolator_from_attrs",
 ]

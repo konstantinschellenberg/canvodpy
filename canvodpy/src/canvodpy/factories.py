@@ -35,7 +35,7 @@ Community extension:
 from __future__ import annotations
 
 from abc import ABC
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, TypeVar
 
 from canvodpy.logging import get_logger
 
@@ -44,7 +44,7 @@ log = get_logger(__name__)
 T = TypeVar("T", bound=ABC)
 
 
-class ComponentFactory(Generic[T]):
+class ComponentFactory[T: ABC]:
     """
     Generic factory for creating validated components.
 
@@ -174,15 +174,27 @@ class ReaderFactory(ComponentFactory):
 
     All registered readers must inherit from `GNSSDataReader` ABC.
 
+    Supports two creation modes:
+
+    - **By name:** ``ReaderFactory.create("rinex3", fpath=path)``
+    - **By file:** ``ReaderFactory.create_from_file(path)`` — auto-detects
+      RINEX v2/v3 from the file header.
+
     Examples
     --------
-    >>> from canvod.readers import Rnxv3Obs
-    >>> ReaderFactory.register("rinex3", Rnxv3Obs)
-    >>> reader = ReaderFactory.create("rinex3", path="data.rnx")
-    >>> data = reader.read()
+    >>> from canvodpy import ReaderFactory
+    >>> reader = ReaderFactory.create("rinex3", fpath="station.25o")
+
+    >>> reader = ReaderFactory.create_from_file("station.25o")
     """
 
     _registry: ClassVar[dict[str, type]] = {}
+
+    #: Maps detected format identifiers to registered component names.
+    _format_aliases: ClassVar[dict[str, str]] = {
+        "rinex_v3": "rinex3",
+        "rinex_v2": "rinex2",
+    }
 
     @classmethod
     def _set_abc_class(cls) -> None:
@@ -191,6 +203,92 @@ class ReaderFactory(ComponentFactory):
             from canvod.readers.base import GNSSDataReader
 
             cls._abc_class = GNSSDataReader
+
+    @classmethod
+    def create_from_file(cls, fpath: str | Any, **kwargs: Any) -> Any:
+        """Auto-detect the file format and create the appropriate reader.
+
+        Inspects the first line of the file to determine the RINEX version.
+        Currently detects RINEX v2 and v3.
+
+        Parameters
+        ----------
+        fpath : str or Path
+            Path to the GNSS data file.
+        **kwargs : Any
+            Additional parameters forwarded to the reader constructor.
+
+        Returns
+        -------
+        GNSSDataReader
+            Instantiated reader for the detected format.
+
+        Raises
+        ------
+        FileNotFoundError
+            If *fpath* does not exist.
+        ValueError
+            If the format cannot be determined or no reader is registered
+            for the detected format.
+        """
+        from pathlib import Path
+
+        fpath = Path(fpath)
+        if not fpath.exists():
+            msg = f"File not found: {fpath}"
+            raise FileNotFoundError(msg)
+
+        format_id = cls._detect_format(fpath)
+        name = cls._format_aliases.get(format_id, format_id)
+
+        if name not in cls._registry:
+            msg = (
+                f"No reader registered for detected format {format_id!r} "
+                f"(mapped to {name!r}). Available: {list(cls._registry.keys())}"
+            )
+            raise ValueError(msg)
+
+        log.debug(
+            "auto_detected_format",
+            file=str(fpath.name),
+            format=format_id,
+            reader=name,
+        )
+        return cls.create(name, fpath=fpath, **kwargs)
+
+    @staticmethod
+    def _detect_format(fpath: Any) -> str:
+        """Detect file format from the first line of the file.
+
+        Parameters
+        ----------
+        fpath : Path
+            Path to the file.
+
+        Returns
+        -------
+        str
+            Format identifier (e.g. ``"rinex_v3"``, ``"rinex_v2"``).
+        """
+        from pathlib import Path
+
+        fpath = Path(fpath)
+        with fpath.open() as f:
+            first_line = f.readline()
+
+        try:
+            version_str = first_line[:9].strip()
+            version = float(version_str)
+        except (ValueError, IndexError) as e:
+            msg = f"Cannot determine file format from first line: {e}"
+            raise ValueError(msg) from e
+
+        if 3.0 <= version < 4.0:
+            return "rinex_v3"
+        if 2.0 <= version < 3.0:
+            return "rinex_v2"
+        msg = f"Unsupported RINEX version: {version}"
+        raise ValueError(msg)
 
 
 class GridFactory(ComponentFactory):

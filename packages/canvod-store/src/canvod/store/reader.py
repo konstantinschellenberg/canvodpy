@@ -45,7 +45,7 @@ def _process_single_rinex(
     log.info("rinex_processing_started")
 
     try:
-        rnx = Rnxv3Obs(fpath=rnx_file, include_auxiliary=False)
+        rnx = Rnxv3Obs(fpath=rnx_file)
         ds = rnx.to_ds(write_global_attrs=True)
 
         # Filter variables if specified
@@ -86,11 +86,11 @@ def preprocess_rnx(
     log.info("preprocessing_started")
 
     try:
-        rnx = Rnxv3Obs(fpath=rnx_file, include_auxiliary=False)
+        rnx = Rnxv3Obs(fpath=rnx_file)
         ds = rnx.to_ds(write_global_attrs=True)
 
-        # ✅ Attach cached file hash
-        ds.attrs["RINEX File Hash"] = rnx.file_hash
+        # Attach cached file hash
+        ds.attrs["File Hash"] = rnx.file_hash
 
         # Filter variables if specified
         if keep_vars:
@@ -153,7 +153,8 @@ class IcechunkDataReader:
         if site_name is None:
             site_name = next(iter(config.sites.sites))
         if n_max_workers is None:
-            n_max_workers = config.processing.processing.n_max_threads
+            resources = config.processing.processing.resolve_resources()
+            n_max_workers = resources["n_workers"]
 
         self.matched_dirs = matched_dirs
         self.site_name = site_name
@@ -314,7 +315,7 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("RINEX File Hash")
+                    rinex_hash = ds.attrs.get("File Hash")
                     if not rinex_hash:
                         log.warning("Dataset missing hash → skipping")
                         continue
@@ -342,6 +343,14 @@ class IcechunkDataReader:
                         rx_y=approx_pos.y,
                         rx_z=approx_pos.z,
                     )
+
+                    # --- 3b) Preprocessing pipeline ---
+                    from canvod.ops import build_default_pipeline
+
+                    preprocessing_config = load_config().processing.preprocessing
+                    pipeline = build_default_pipeline(preprocessing_config)
+                    ds, pipeline_result = pipeline(ds)
+                    ds.attrs.update(pipeline_result.to_metadata_dict())
 
                     # --- 4) Store to Icechunk ---
                     existing_groups = self._site.rinex_store.list_groups()
@@ -503,10 +512,10 @@ class IcechunkDataReader:
                     rel_path = self._site.rinex_store.rel_path_for_commit(fname)
                     version = get_version_from_pyproject()
 
-                    rinex_hash = ds.attrs.get("RINEX File Hash")
+                    rinex_hash = ds.attrs.get("File Hash")
                     if not rinex_hash:
                         log.warning(
-                            f"No RINEX hash found in dataset from {fname}. "
+                            f"No file hash found in dataset from {fname}. "
                             "Skipping duplicate detection for this file."
                         )
                         continue
@@ -662,7 +671,7 @@ class IcechunkDataReader:
             )
 
             # Use site's ingestion method
-            self._site.ingest_rinex_data(dataset, receiver_name, commit_message)
+            self._site.ingest_receiver_data(dataset, receiver_name, commit_message)
 
             self._logger.info(
                 f"Successfully appended {receiver_type} data to store as "
@@ -708,106 +717,3 @@ class IcechunkDataReader:
             f"  Available receivers: {dict(available)}\n"
             f"  Workers: {self.n_max_workers}, GC enabled: {self.enable_gc}"
         )
-
-
-# Example usage showing the replacement
-if __name__ == "__main__":
-    from gnssvodpy.data_handler.data_handler import DataDirMatcher
-    from gnssvodpy.utils.date_time import YYYYDOY
-
-    # Example usage
-    matcher = DataDirMatcher.from_root(
-        Path(
-            "/home/nbader/shares/climers/Studies/GNSS_Vegetation_Study/"
-            "05_data/01_Rosalia"
-        )
-    )
-
-    md = MatchedDirs(
-        canopy_data_dir=Path(
-            "/home/nbader/Music/testdir/02_canopy/01_GNSS/01_raw/24302"
-        ),
-        reference_data_dir=Path(
-            "/home/nbader/Music/testdir/01_reference/01_GNSS/01_raw/24302"
-        ),
-        yyyydoy=YYYYDOY.from_str("2024302"),
-    )
-
-    reader = IcechunkDataReader(
-        matched_dirs=md,
-        site_name="Rosalia",
-        n_max_workers=12,  # Configurable threading
-        enable_gc=False,  # Manually force garbage collection
-        gc_delay=0,  # Delay after GC
-    )
-
-    print(f"Reader info: {reader}")
-
-    # Use the generator (same interface as before)
-    data_generator = reader.parsed_rinex_data_gen(
-        keep_vars=load_config().processing.processing.keep_rnx_vars,
-    )
-
-    try:
-        # Get canopy data
-        canopy_ds = next(data_generator)
-        print(f"Canopy dataset: {dict(canopy_ds.sizes)}")
-
-        # Get reference data
-        # reference_ds = next(data_generator)
-        # print(f"Reference dataset: {dict(reference_ds.sizes)}")
-
-    except StopIteration:
-        print("No more data available")
-
-    # reader._site.rinex_store.debug_metadata_calls("canopy")
-
-    print(reader._site.read_receiver_data("canopy"))
-
-    print("and all again, to test skipping of existing data...")
-
-    matcher = DataDirMatcher.from_root(
-        Path(
-            "/home/nbader/shares/climers/Studies/GNSS_Vegetation_Study/"
-            "05_data/01_Rosalia"
-        )
-    )
-    md = MatchedDirs(
-        canopy_data_dir=Path(
-            "/home/nbader/Music/testdir/02_canopy/01_GNSS/01_raw/24302"
-        ),
-        reference_data_dir=Path(
-            "/home/nbader/Music/testdir/01_reference/01_GNSS/01_raw/24302"
-        ),
-        yyyydoy=YYYYDOY.from_str("2024302"),
-    )
-
-    reader = IcechunkDataReader(
-        matched_dirs=md,
-        site_name="Rosalia",
-        n_max_workers=12,  # Configurable threading
-        enable_gc=False,  # Manually force garbage collection
-        gc_delay=0,  # Delay after GC
-    )
-
-    print(f"Reader info: {reader}")
-
-    # Use the generator (same interface as before)
-    data_generator = reader.parsed_rinex_data_gen(
-        keep_vars=load_config().processing.processing.keep_rnx_vars,
-    )
-
-    try:
-        # Get canopy data
-        canopy_ds = next(data_generator)
-        print(f"Canopy dataset: {dict(canopy_ds.sizes)}")
-
-        # Get reference data
-        # reference_ds = next(data_generator)
-        # print(f"Reference dataset: {dict(reference_ds.sizes)}")
-
-    except StopIteration:
-        print("No more data available")
-
-    # reader._site.rinex_store.debug_metadata_calls("canopy")
-    print(reader._site.read_receiver_data("canopy"))

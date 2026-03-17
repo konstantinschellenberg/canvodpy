@@ -10,11 +10,11 @@ The `canvod-vod` package implements vegetation optical depth (VOD) estimation fr
 
 !!! abstract "Tau-Omega Radiative Transfer Model"
 
-    canvod-vod implements the **zeroth-order tau-omega** model for GNSS-Transmissometry,
-    following Humphrey & Frankenberg (2022).
+    canvod-vod implements the **zeroth-order tau-omega** model for [GNSS-Transmissometry](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"},
+    following [Humphrey & Frankenberg (2022)](https://doi.org/10.1016/j.rse.2022.113208){:target="_blank"}.
 
     A reference receiver in open sky and a canopy receiver beneath vegetation observe
-    the same satellite at zenith angle θ. The SNR difference encodes the two-way
+    the same satellite at [polar angle](https://gssc.esa.int/navipedia/index.php/Satellite_Elevation,_Azimuth_and_Visible_Satellites){:target="_blank"} θ. The [SNR](https://gssc.esa.int/navipedia/index.php/GNSS_Measurements){:target="_blank"} difference encodes the two-way
     canopy attenuation:
 
     $$\Delta\text{SNR} = \text{SNR}_\text{canopy} - \text{SNR}_\text{reference}$$
@@ -81,7 +81,7 @@ The `canvod-vod` package implements vegetation optical depth (VOD) estimation fr
 | -------- | ----------- |
 | `VOD` | Vegetation optical depth |
 | `phi` | Azimuth angles (from canopy dataset) |
-| `theta` | Zenith angles (from canopy dataset) |
+| `theta` | Polar angles (from canopy dataset) |
 
 ---
 
@@ -92,16 +92,21 @@ When a single reference receiver serves multiple canopy positions, satellite geo
 ```mermaid
 flowchart TD
     subgraph FIELD["Field Setup"]
-        C1["Canopy 1\n(NE position)"]
-        C2["Canopy 2\n(SW position)"]
-        R1["Reference\n(open sky)"]
+        C1["`**Canopy 1**
+        NE position`"]
+        C2["`**Canopy 2**
+        SW position`"]
+        R1["`**Reference**
+        open sky`"]
     end
 
     subgraph STORE["RINEX Store Groups"]
         SG1["canopy_01"]
         SG2["canopy_02"]
-        SG3["reference_01_canopy_01\n(geometry at canopy_01 pos.)"]
-        SG4["reference_01_canopy_02\n(geometry at canopy_02 pos.)"]
+        SG3["`**reference_01_canopy_01**
+        geometry at canopy_01 pos.`"]
+        SG4["`**reference_01_canopy_02**
+        geometry at canopy_02 pos.`"]
     end
 
     subgraph VOD["VOD Analysis Pairs"]

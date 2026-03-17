@@ -16,6 +16,7 @@ dependencies = [
     "typer>=0.9",
     "rich>=13.0",
     "email-validator>=2.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.scripts]

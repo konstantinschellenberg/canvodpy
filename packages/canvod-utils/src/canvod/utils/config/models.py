@@ -35,7 +35,9 @@ class MetadataConfig(BaseModel):
 
     author: str = Field(..., description="Author name")
     email: EmailStr = Field(..., description="Author email")
+    orcid: str | None = Field(None, description="ORCID identifier")
     institution: str = Field(..., description="Institution name")
+    institution_ror: str | None = Field(None, description="ROR identifier")
     department: str | None = Field(None, description="Department name")
     research_group: str | None = Field(
         None,
@@ -45,6 +47,10 @@ class MetadataConfig(BaseModel):
         None,
         description="Institution/group website",
     )
+    license: str | None = Field(None, description="SPDX license identifier")
+    publisher: str | None = Field(None, description="Publisher name")
+    publisher_url: str | None = Field(None, description="Publisher URL")
+    naming_authority: str | None = Field(None, description="Naming authority URI")
 
     def to_attrs_dict(self) -> dict[str, str]:
         """Convert to a dictionary for xarray attributes.
@@ -133,17 +139,21 @@ class ProcessingParams(BaseModel):
     This is a Pydantic model for configuration validation.
     """
 
-    time_aggregation_seconds: int = Field(
-        15,
-        ge=1,
-        le=300,
-        description="Time aggregation window in seconds",
+    resource_mode: Literal["auto", "manual"] = Field(
+        "auto",
+        description=(
+            "'auto': Dask/OS auto-detects workers and memory (local machines). "
+            "'manual': hard caps via n_max_threads, max_memory_gb, etc. (shared servers)."
+        ),
     )
-    n_max_threads: int = Field(
-        20,
+    n_max_threads: int | None = Field(
+        None,
         ge=1,
         le=100,
-        description="Maximum number of threads for parallel processing",
+        description=(
+            "Max worker processes. Required when resource_mode='manual'. "
+            "Ignored in 'auto'."
+        ),
     )
     keep_rnx_vars: list[str] = Field(
         default_factory=lambda: ["SNR", "Pseudorange", "Phase", "Doppler"],
@@ -153,6 +163,121 @@ class ProcessingParams(BaseModel):
         True,
         description="Treat GLONASS FDMA bands as one band",
     )
+    store_radial_distance: bool = Field(
+        False,
+        description="Store radial distance (r) in the output store",
+    )
+    receiver_position_mode: Literal["shared", "per_receiver"] = Field(
+        "shared",
+        description=(
+            "'shared': all receivers use the canopy receiver position for "
+            "spherical coordinate computation (default, enables 1:1 SNR "
+            "comparison). 'per_receiver': each receiver uses its own RINEX "
+            "header position (physically correct geometry but breaks direct "
+            "SNR comparability between receivers)."
+        ),
+    )
+    file_pairing: Literal["complete", "paired"] = Field(
+        "complete",
+        description=(
+            "'complete': discover files per-receiver independently (all data ingested). "
+            "'paired': only process dates where both receivers in an analysis pair have data."
+        ),
+    )
+    batch_hours: float = Field(
+        24.0,
+        gt=0,
+        le=720,
+        description="Hours of data per processing batch",
+    )
+    max_memory_gb: float | None = Field(
+        None,
+        gt=0,
+        description="Soft RAM limit for processing (None = no limit)",
+    )
+    cpu_affinity: list[int] | None = Field(
+        None,
+        description="Pin workers to specific CPU core IDs (None = no restriction)",
+    )
+    nice_priority: int = Field(
+        0,
+        ge=0,
+        le=19,
+        description="Process nice value (0=normal, 10=low, 19=lowest)",
+    )
+    threads_per_worker: int | None = Field(
+        None,
+        ge=1,
+        le=8,
+        description=(
+            "Threads per Dask worker process. None lets Dask decide (usually 1). "
+            "Values >1 help with numpy/xarray ops and I/O (GIL-releasing) but not "
+            "pure-Python RINEX text parsing. Fewer workers x more threads = less "
+            "memory overhead + shared aux data within a worker."
+        ),
+    )
+    ephemeris_source: Literal["final", "broadcast"] = Field(
+        "final",
+        description=(
+            "'final': compute satellite coordinates from agency final products "
+            "(SP3/CLK). 'broadcast': use broadcast ephemerides from SBF "
+            "SatVisibility blocks (SBF reader_format only, skips SP3/CLK "
+            "download). Broadcast is faster but less accurate (~1-2 m orbit)."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_resource_mode(self) -> "ProcessingParams":
+        """Validate resource_mode constraints.
+
+        In 'manual' mode, ``n_max_threads`` must be set.
+        In 'auto' mode, ``n_max_threads`` is ignored with a warning if set.
+        """
+        if self.resource_mode == "manual" and self.n_max_threads is None:
+            msg = (
+                "n_max_threads is required when resource_mode='manual'. "
+                "Set n_max_threads to the number of worker processes you want."
+            )
+            raise ValueError(msg)
+        if self.resource_mode == "auto" and self.n_max_threads is not None:
+            import warnings
+
+            warnings.warn(
+                f"resource_mode='auto' ignores n_max_threads={self.n_max_threads}. "
+                "Set resource_mode='manual' to enforce hard caps, "
+                "or remove n_max_threads for auto mode.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self
+
+    def resolve_resources(self) -> dict:
+        """Resolve effective resource settings based on resource_mode.
+
+        Returns
+        -------
+        dict
+            Resolved resource values with keys: ``n_workers``,
+            ``max_memory_gb``, ``cpu_affinity``, ``nice_priority``.
+            In auto mode, ``n_workers`` and ``max_memory_gb`` are ``None``
+            (let Dask/OS decide).
+        """
+        if self.resource_mode == "auto":
+            return {
+                "n_workers": None,
+                "max_memory_gb": None,
+                "cpu_affinity": None,
+                "nice_priority": 0,
+                "threads_per_worker": self.threads_per_worker,
+            }
+        # manual mode
+        return {
+            "n_workers": self.n_max_threads,
+            "max_memory_gb": self.max_memory_gb,
+            "cpu_affinity": self.cpu_affinity,
+            "nice_priority": self.nice_priority,
+            "threads_per_worker": self.threads_per_worker,
+        }
 
 
 class CompressionConfig(BaseModel):
@@ -390,6 +515,58 @@ class LoggingConfig(BaseModel):
         return self.get_log_dir() / self.log_file_name
 
 
+class TemporalAggregationConfig(BaseModel):
+    """Temporal aggregation preprocessing settings."""
+
+    enabled: bool = Field(True, description="Enable temporal aggregation")
+    freq: str = Field("1min", description="Aggregation frequency (pandas offset alias)")
+    method: Literal["mean", "median"] = Field("mean", description="Aggregation method")
+
+
+class GridAssignmentConfig(BaseModel):
+    """Grid cell assignment preprocessing settings."""
+
+    enabled: bool = Field(True, description="Enable grid cell assignment")
+    grid_type: str = Field("equal_area", description="Grid type for cell assignment")
+    angular_resolution: float = Field(
+        2.0, gt=0, le=90, description="Angular resolution in degrees"
+    )
+
+
+class PreprocessingConfig(BaseModel):
+    """Preprocessing pipeline configuration."""
+
+    temporal_aggregation: TemporalAggregationConfig = Field(
+        default_factory=TemporalAggregationConfig,
+    )
+    grid_assignment: GridAssignmentConfig = Field(
+        default_factory=GridAssignmentConfig,
+    )
+
+
+class PublicationRef(BaseModel):
+    """A publication reference."""
+
+    doi: str
+    citation: str | None = None
+
+
+class FundingRef(BaseModel):
+    """A funding reference."""
+
+    funder: str
+    funder_ror: str | None = None
+    grant_number: str | None = None
+    award_title: str | None = None
+
+
+class ReferencesConfig(BaseModel):
+    """Publications and funding references."""
+
+    publications: list[PublicationRef] = Field(default_factory=list)
+    funding: list[FundingRef] = Field(default_factory=list)
+
+
 class ProcessingConfig(BaseModel):
     """Complete processing configuration."""
 
@@ -404,6 +581,13 @@ class ProcessingConfig(BaseModel):
     icechunk: IcechunkConfig = Field(default_factory=IcechunkConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    preprocessing: PreprocessingConfig = Field(
+        default_factory=PreprocessingConfig,
+    )
+    references: ReferencesConfig = Field(
+        default_factory=ReferencesConfig,
+        description="Publication and funding references",
+    )
 
 
 # ============================================================================
@@ -430,6 +614,32 @@ class ReceiverConfig(BaseModel):
     description: str | None = Field(
         None,
         description="Human-readable description",
+    )
+    naming: dict | None = Field(
+        None,
+        description="Naming configuration (validated by canvod-virtualiconvname package)",
+    )
+    metadata: dict[str, str | int | float | bool] | None = Field(
+        None,
+        description=(
+            "Freeform receiver metadata written to dataset global attrs. "
+            "Example keys: site_url, antenna_height, species."
+        ),
+    )
+    reader_format: str = Field(
+        "auto",
+        description=(
+            "GNSS data reader format: 'auto', 'rinex3', 'sbf'. "
+            "When 'auto', detected from files at pipeline start."
+        ),
+    )
+    recipe: str | None = Field(
+        None,
+        description=(
+            "Name of a naming recipe (e.g. 'rosalia_reference'). "
+            "Resolved from config/recipes/{recipe}.yaml. "
+            "When set, replaces the 'naming' block for file discovery."
+        ),
     )
 
     @model_validator(mode="after")
@@ -458,10 +668,19 @@ class SiteConfig(BaseModel):
     gnss_site_data_root: str = Field(
         ..., description="Root directory for site GNSS data"
     )
+    description: str | None = Field(None, description="Site description")
+    country: str | None = Field(None, description="Country code (ISO 3166-1)")
+    latitude: float | None = Field(None, description="WGS84 latitude")
+    longitude: float | None = Field(None, description="WGS84 longitude")
+    altitude_m: float | None = Field(None, description="Altitude in meters")
     receivers: dict[str, ReceiverConfig] = Field(..., description="Site receivers")
     vod_analyses: dict[str, VodAnalysisConfig] | None = Field(
         None,
         description="VOD analysis pairs",
+    )
+    naming: dict | None = Field(
+        None,
+        description="Naming configuration (validated by canvod-virtualiconvname package)",
     )
 
     @model_validator(mode="after")

@@ -7,7 +7,10 @@ Uses a mock Site to avoid filesystem dependencies (external drives, store paths)
 
 from unittest.mock import patch
 
+import numpy as np
+import pandas as pd
 import pytest
+import xarray as xr
 from canvodpy.factories import GridFactory, ReaderFactory
 
 from canvodpy import VODWorkflow
@@ -18,6 +21,8 @@ class _FakeSite:
 
     def __init__(self, name: str = "Rosalia"):
         self.name = name
+        self.receivers = {"canopy_01": {}, "reference_01": {}}
+        self.active_receivers = {"canopy_01": {}, "reference_01": {}}
 
 
 def _make_workflow(**kwargs) -> VODWorkflow:
@@ -120,8 +125,11 @@ class TestWorkflowFactoryIntegration:
 
     def test_workflow_respects_factory_registration(self):
         """Should use registered factories."""
-        # If we register a custom component, workflow should find it
-        # This is tested implicitly in factory tests
+        workflow = _make_workflow()
+        # The workflow's grid_name and reader_name must exist in their
+        # respective factory registries
+        assert workflow.grid_name in GridFactory.list_available()
+        assert workflow.reader_name in ReaderFactory.list_available()
 
 
 class TestWorkflowErrorHandling:
@@ -131,10 +139,13 @@ class TestWorkflowErrorHandling:
         """Should fail gracefully with invalid site name."""
         # VODWorkflow passes the string to Site(), which calls GnssResearchSite()
         # which raises KeyError for unknown sites. Mock Site to simulate this.
-        with patch(
-            "canvodpy.workflow.Site",
-            side_effect=KeyError("NonexistentSite123"),
-        ), pytest.raises(KeyError, match="NonexistentSite123"):
+        with (
+            patch(
+                "canvodpy.workflow.Site",
+                side_effect=KeyError("NonexistentSite123"),
+            ),
+            pytest.raises(KeyError, match="NonexistentSite123"),
+        ):
             VODWorkflow(site="NonexistentSite123")
 
     def test_workflow_invalid_grid_type_fails(self):
@@ -150,18 +161,79 @@ class TestWorkflowErrorHandling:
         assert "nonexistent_reader" not in ReaderFactory.list_available()
 
 
+def _make_synthetic_ds(snr_value: float = 20.0) -> xr.Dataset:
+    """Dask-backed (epoch, sid) dataset with SNR, phi, theta."""
+    n_epoch, n_sid = 10, 5
+    ds = xr.Dataset(
+        {
+            "SNR": (["epoch", "sid"], np.full((n_epoch, n_sid), snr_value)),
+            "phi": (
+                ["epoch", "sid"],
+                np.linspace(0, 2 * np.pi, n_epoch * n_sid).reshape(n_epoch, n_sid),
+            ),
+            "theta": (
+                ["epoch", "sid"],
+                np.full((n_epoch, n_sid), np.pi / 4),
+            ),
+        },
+        coords={
+            "epoch": pd.date_range("2025-01-01", periods=n_epoch, freq="15min"),
+            "sid": [f"G{i:02d}|L1|C" for i in range(1, n_sid + 1)],
+        },
+    )
+    return ds.chunk({"epoch": 5})
+
+
 @pytest.mark.integration
 class TestWorkflowProcessing:
     """Integration tests requiring data (marked for CI)."""
 
     def test_process_date_returns_dict(self):
         """process_date should return dict of datasets."""
-        pytest.skip("Requires test data")
+        workflow = _make_workflow()
+        with patch.object(workflow, "_load_rinex", return_value=_make_synthetic_ds()):
+            result = workflow.process_date("2025001", receivers=["canopy_01"])
+
+        assert isinstance(result, dict)
+        assert "canopy_01" in result
+        ds = result["canopy_01"]
+        assert "SNR" in ds.data_vars
+        assert "cell_id_equal_area" in ds
 
     def test_calculate_vod_returns_dataset(self):
         """calculate_vod should return xarray Dataset."""
-        pytest.skip("Requires test data")
+        workflow = _make_workflow()
+
+        def _mock_load(receiver, date, log):
+            snr = 10.0 if "canopy" in receiver else 20.0
+            return _make_synthetic_ds(snr)
+
+        with patch.object(workflow, "_load_rinex", side_effect=_mock_load):
+            vod_ds = workflow.calculate_vod("canopy_01", "reference_01", "2025001")
+
+        assert isinstance(vod_ds, xr.Dataset)
+        assert "VOD" in vod_ds.data_vars
+        assert "phi" in vod_ds.data_vars
+        assert "theta" in vod_ds.data_vars
+        assert np.all(np.isfinite(vod_ds["VOD"].values))
 
     def test_workflow_end_to_end(self):
         """Full workflow from init to VOD calculation."""
-        pytest.skip("Requires test data")
+        workflow = _make_workflow()
+
+        def _mock_load(receiver, date, log):
+            snr = 10.0 if "canopy" in receiver else 20.0
+            return _make_synthetic_ds(snr)
+
+        with patch.object(workflow, "_load_rinex", side_effect=_mock_load):
+            processed = workflow.process_date(
+                "2025001", receivers=["canopy_01", "reference_01"]
+            )
+            vod_ds = workflow.calculate_vod(
+                "canopy_01", "reference_01", "2025001", use_cached=False
+            )
+
+        assert "canopy_01" in processed
+        assert "reference_01" in processed
+        assert "VOD" in vod_ds.data_vars
+        assert set(vod_ds["VOD"].dims) == {"epoch", "sid"}

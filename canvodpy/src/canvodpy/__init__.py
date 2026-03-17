@@ -91,6 +91,7 @@ from canvodpy.fluent import FluentWorkflow
 from canvodpy.functional import (
     assign_grid_cells,
     assign_grid_cells_to_file,
+    augment_with_ephemeris,
     calculate_vod_to_file,
     create_grid,
     create_grid_to_file,
@@ -100,6 +101,9 @@ from canvodpy.functional import (
 
 # Logging (for all users)
 from canvodpy.logging import get_logger, setup_logging
+
+# VOD computation helper
+from canvodpy.vod_computer import VodComputer
 
 # New workflow API
 from canvodpy.workflow import VODWorkflow
@@ -243,6 +247,13 @@ def _register_builtin_components() -> None:
         ReaderFactory.register("rinex3", Rnxv3Obs)
     except ImportError:
         log.debug("canvod-readers not available, skipping reader registration")
+
+    try:
+        from canvod.readers.sbf import SbfReader
+
+        ReaderFactory.register("sbf", SbfReader)
+    except ImportError:
+        log.debug("SbfReader not available, skipping sbf reader registration")
 
     try:
         from canvod.grids import EqualAreaBuilder

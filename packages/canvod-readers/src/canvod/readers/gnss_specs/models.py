@@ -12,6 +12,10 @@ from typing import Any, NoReturn, Self
 
 import pint
 import xarray as xr
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic.dataclasses import dataclass
+from pydantic_core import core_schema
+
 from canvod.readers.gnss_specs.constants import (
     EPOCH_RECORD_INDICATOR,
     IGS_RNX_DUMP_INTERVALS,
@@ -19,11 +23,8 @@ from canvod.readers.gnss_specs.constants import (
     SEPTENTRIO_SAMPLING_INTERVALS,
     UREG,
 )
-from canvod.readers.gnss_specs.constellations import OBS_TYPE_PATTERN, SV_PATTERN
+from canvod.readers.gnss_specs.constellations import SV_PATTERN
 from canvod.readers.gnss_specs.exceptions import IncompleteEpochError, MissingEpochError
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
-from pydantic.dataclasses import dataclass
-from pydantic_core import core_schema
 
 
 def _raise_value_error(message: str) -> NoReturn:
@@ -52,57 +53,11 @@ class Observation:
 
     """
 
-    observation_freq_tag: str  # Combination of SV and Observation code (e.g. 'G01|L1C')
     obs_type: str | None
     value: float | None
     lli: int | None
     ssi: int | None
     frequency: pint.Quantity | None = None
-
-    @field_validator("observation_freq_tag")
-    def validate_observation_code(cls, v: str) -> str:  # noqa: N805
-        """Validate RINEX v3 observation code format.
-
-        Parameters
-        ----------
-        v : str
-            Observation code to validate.
-
-        Returns
-        -------
-        str
-            Validated observation code.
-
-        Raises
-        ------
-        ValueError
-            If format is invalid.
-
-        Examples
-        --------
-        'G01|L1C'  (GPS L1C observation)
-        'R02|C1P'  (GLONASS C1P observation)
-        'E01|S5Q'  (Galileo S5Q observation)
-        'I06|X1'   (IRNSS observation)
-
-        """
-        try:
-            sv, obs_type = v.split("|")
-
-            # Validate satellite part using pre-compiled pattern
-            if not SV_PATTERN.match(sv):
-                msg = f"Invalid satellite identifier in observation code: {sv}"
-                _raise_value_error(msg)
-
-            # More permissive observation type validation to handle all systems
-            if not OBS_TYPE_PATTERN.match(obs_type):
-                msg = f"Invalid observation type in code: {obs_type}"
-                _raise_value_error(msg)
-
-            return v
-        except ValueError as e:
-            msg = f'Invalid observation code format: {v}. Should be "SVN|OBSCODE"'
-            raise ValueError(msg) from e
 
     @field_validator("frequency")
     @classmethod
@@ -137,7 +92,7 @@ class Observation:
         return v
 
     @field_validator("lli", "ssi")
-    def validate_indicators(cls, v: int | None) -> int | None:  # noqa: N805
+    def validate_indicators(cls, v: int | None) -> int | None:
         """Validate LLI and SSI values.
 
         Parameters
@@ -181,7 +136,7 @@ class Satellite:
     observations: list[Observation] = Field(default_factory=list)
 
     @field_validator("sv")
-    def validate_sv(cls, v: str) -> str:  # noqa: N805
+    def validate_sv(cls, v: str) -> str:
         """Validate satellite vehicle identifier format.
 
         Parameters
@@ -228,49 +183,6 @@ class Satellite:
 
         """
         self.observations.append(observation)
-
-    def get_observation(self, observation_freq_tag: str) -> Observation | None:
-        """Get an observation by its code.
-
-        Parameters
-        ----------
-        observation_freq_tag : str
-            Observation frequency tag to search for.
-
-        Returns
-        -------
-        Observation or None
-            Found observation or None if not found.
-
-        """
-        return next(
-            (
-                obs
-                for obs in self.observations
-                if obs.observation_freq_tag == observation_freq_tag
-            ),
-            None,
-        )
-
-    def get_observation_values(self, obs_code: str) -> list[float]:
-        """Get all values for a specific observation code.
-
-        Parameters
-        ----------
-        obs_code : str
-            Observation code to filter by.
-
-        Returns
-        -------
-        list of float
-            List of observation values.
-
-        """
-        return [
-            obs.value
-            for obs in self.observations
-            if obs.observation_freq_tag == obs_code and obs.value is not None
-        ]
 
 
 @dataclass(kw_only=True, frozen=True, config=ConfigDict(slots=True))
@@ -390,7 +302,7 @@ class RnxObsFileModel(BaseModel):
     fpath: Path
 
     @field_validator("fpath")
-    def file_must_exist(cls, v: Path) -> Path:  # noqa: N805
+    def file_must_exist(cls, v: Path) -> Path:
         """Validate that file exists.
 
         Parameters
@@ -415,7 +327,7 @@ class RnxObsFileModel(BaseModel):
         return v
 
     @field_validator("fpath")
-    def file_must_have_correct_suffix(cls, v: Path) -> Path:  # noqa: N805
+    def file_must_have_correct_suffix(cls, v: Path) -> Path:
         """Validate RINEX observation file suffix.
 
         Parameters
@@ -455,7 +367,7 @@ class RnxVersion3Model(BaseModel):
     version: float
 
     @field_validator("version")
-    def version_must_be_3(cls, v: float) -> float:  # noqa: N805
+    def version_must_be_3(cls, v: float) -> float:
         """Validate RINEX version is 3.0x.
 
         Parameters
@@ -631,7 +543,7 @@ class Rnxv3ObsEpochRecordLineModel(BaseModel):
     receiver_clock_offset: float | None = None
 
     @model_validator(mode="before")
-    def parse_epoch(cls, values: dict[str, Any]) -> dict[str, Any]:  # noqa: N805
+    def parse_epoch(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Parse RINEX v3 epoch record line.
 
         Parameters
@@ -767,7 +679,7 @@ class VodDataValidator(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @field_validator("vod_data", mode="before")
-    def validate_vod_data(cls, value: xr.Dataset) -> xr.Dataset:  # noqa: N805
+    def validate_vod_data(cls, value: xr.Dataset) -> xr.Dataset:
         """Validate the VOD data structure.
 
         Parameters

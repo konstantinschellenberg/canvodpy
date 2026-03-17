@@ -24,13 +24,18 @@ jobs:
               run: uv python install
 
             - name: Install just
-              uses: ./.github/actions/setup-just
+              uses: extractions/setup-just@v2
 
             - name: Install the Project
               run: uv sync --locked --dev
 
             - name: Run Tests with Coverage
               run: just test-coverage
+
+            - name: Upload to Coveralls
+              uses: coverallsapp/github-action@v2
+              with:
+                  file: coverage.lcov
 
             - name: Coverage comment
               id: coverage_comment

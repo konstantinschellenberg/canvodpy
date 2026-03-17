@@ -17,12 +17,12 @@ reader = Rnxv3Obs(fpath="station.24o")
 dataset = reader.to_ds()
 ```
 
-Or use the factory for automatic format detection:
+Or use the canvodpy factory for automatic format detection:
 ```python
-from canvod.readers import ReaderFactory
+from canvodpy import ReaderFactory
 
-# Auto-detects format
-reader = ReaderFactory.create("station.24o")
+# Auto-detects format from file header
+reader = ReaderFactory.create_from_file("station.24o")
 dataset = reader.to_ds()
 ```
 
@@ -39,13 +39,16 @@ for matched_dirs in matcher:
 """
 
 from canvod.readers.base import (
+    DEFAULT_REQUIRED_VARS,
+    REQUIRED_ATTRS,
+    REQUIRED_COORDS,
+    REQUIRED_DIMS,
     DatasetStructureValidator,
     GNSSDataReader,
-    # Backwards compatibility aliases
-    GNSSReader,
-    ReaderFactory,
-    RinexReader,
+    SignalID,
+    validate_dataset,
 )
+from canvod.readers.builder import DatasetBuilder
 from canvod.readers.matching import (
     DataDirMatcher,
     MatchedDirs,
@@ -53,20 +56,29 @@ from canvod.readers.matching import (
     PairMatchedDirs,
 )
 from canvod.readers.rinex.v3_04 import Rnxv3Obs
+from canvod.readers.sbf import SbfEpoch, SbfHeader, SbfReader, SbfSignalObs
 from canvod.utils.tools import YYYYDOY
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "DEFAULT_REQUIRED_VARS",
+    "REQUIRED_ATTRS",
+    "REQUIRED_COORDS",
+    "REQUIRED_DIMS",
     "YYYYDOY",
     "DataDirMatcher",
+    "DatasetBuilder",
     "DatasetStructureValidator",
     "GNSSDataReader",
-    "GNSSReader",
     "MatchedDirs",
     "PairDataDirMatcher",
     "PairMatchedDirs",
-    "ReaderFactory",
-    "RinexReader",
     "Rnxv3Obs",
+    "SbfEpoch",
+    "SbfHeader",
+    "SbfReader",
+    "SbfSignalObs",
+    "SignalID",
+    "validate_dataset",
 ]

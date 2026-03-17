@@ -1,6 +1,6 @@
 # RINEX v3.04 Parsing
 
-`Rnxv3Obs` implements a full RINEX v3.04 observation file parser — from raw text to a validated `xarray.Dataset` in a single `to_ds()` call.
+`Rnxv3Obs` implements a full [RINEX v3.04](https://gssc.esa.int/navipedia/index.php/RINEX){:target="_blank"} observation file parser — from raw text to a validated `xarray.Dataset` in a single `to_ds()` call.
 
 ---
 
@@ -25,7 +25,7 @@ A RINEX v3 observation file has two sections separated by `END OF HEADER`:
 +──────────────────────────────────────────────────+
 ```
 
-Supported systems: GPS (G), GLONASS (R), Galileo (E), BeiDou (C), QZSS (J), IRNSS (I), SBAS (S).
+Supported systems: [GPS](https://gssc.esa.int/navipedia/index.php/GPS){:target="_blank"} (G), [GLONASS](https://gssc.esa.int/navipedia/index.php/GLONASS){:target="_blank"} (R), [Galileo](https://gssc.esa.int/navipedia/index.php/Galileo){:target="_blank"} (E), [BeiDou](https://gssc.esa.int/navipedia/index.php/BeiDou){:target="_blank"} (C), [QZSS](https://gssc.esa.int/navipedia/index.php/QZSS){:target="_blank"} (J), [IRNSS](https://gssc.esa.int/navipedia/index.php/IRNSS){:target="_blank"} (I), [SBAS](https://gssc.esa.int/navipedia/index.php/SBAS){:target="_blank"} (S).
 
 ---
 
@@ -35,31 +35,30 @@ Supported systems: GPS (G), GLONASS (R), Galileo (E), BeiDou (C), QZSS (J), IRNS
 classDiagram
     direction LR
     GNSSDataReader <|-- Rnxv3Obs
-    BaseModel <|-- Rnxv3Obs
-    Rnxv3Obs *-- Rnxv3ObsHeader
+    Rnxv3Obs *-- Rnxv3Header
     Rnxv3Obs *-- SignalIDMapper
-    Rnxv3ObsHeader *-- Rnxv3ObsHeaderFileVars
 
     class GNSSDataReader{
         <<abstract>>
         +to_ds()*
         +iter_epochs()*
+        +to_ds_and_auxiliary()
         +file_hash*
     }
 
     class Rnxv3Obs{
         +Path fpath
-        +Rnxv3ObsHeader header
+        +Rnxv3Header header
         +to_ds()
         +iter_epochs()
         +file_hash
     }
 
-    class Rnxv3ObsHeader{
-        +float rinex_version
-        +str rinex_type
-        +dict obs_types
-        +datetime first_obs
+    class Rnxv3Header{
+        +float version
+        +str rinextype
+        +dict obs_codes_per_system
+        +dict~str,datetime~ t0
     }
 ```
 
@@ -79,7 +78,7 @@ reader = Rnxv3Obs(fpath=Path("station.24o"))
 What happens on construction:
 
 1. Pydantic validates that `fpath` exists and is readable.
-2. The header section is parsed into `Rnxv3ObsHeader`.
+2. The header section is parsed into `Rnxv3Header`.
 3. RINEX version (3.x) and file type (`O`) are validated.
 4. Observation type table (`SYS / # / OBS TYPES`) is extracted.
 
@@ -100,7 +99,7 @@ The generator scans forward from `END OF HEADER`, yielding one `Rnxv3ObsEpochRec
 ### Step 3 — Dataset Construction
 
 ```python
-ds = reader.to_ds(keep_rnx_data_vars=["SNR", "Phase"])
+ds = reader.to_ds(keep_data_vars=["SNR", "Phase"])
 ```
 
 The full pipeline:
@@ -108,28 +107,23 @@ The full pipeline:
 === "Collect + Index"
 
     ```python
-    all_epochs = list(self.iter_epochs())
-
-    # Build the full SID index (sorted for reproducibility)
+    # Build the full SID index from header obs codes (sorted)
     mapper = SignalIDMapper()
-    all_sids = sorted({
-        mapper.create_signal_id(obs.sv, obs.code)
-        for epoch in all_epochs
-        for obs in epoch.observations
-    })
+    sorted_sids, sid_props = self._precompute_sids_from_header()
     ```
 
 === "Allocate + Fill"
 
     ```python
     # Pre-allocate — avoids repeated memory reallocation
-    snr_data = np.full((len(epochs), len(sids)), np.nan, dtype=np.float32)
-    sid_to_idx = {sid: i for i, sid in enumerate(all_sids)}
+    snr_data = np.full((n_epochs, len(sorted_sids)), np.nan, dtype=np.float32)
+    sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
 
-    for i, epoch in enumerate(all_epochs):
-        for obs in epoch.observations:
-            sid = mapper.create_signal_id(obs.sv, obs.code)
-            snr_data[i, sid_to_idx[sid]] = obs.snr
+    # Single pass over file lines (no Pydantic objects)
+    for t_idx, (start, end) in enumerate(epoch_batches):
+        for line in lines[start+1:end]:
+            sv = line[:3].strip()
+            # ... inline parsing ...
     ```
 
 === "Build Coordinates"
@@ -156,11 +150,11 @@ The full pipeline:
             "Created":         datetime.now().isoformat(),
             "Software":        f"canvod-readers {__version__}",
             "Institution":     "...",
-            "RINEX File Hash": self.file_hash,
+            "File Hash": self.file_hash,
         },
     )
 
-    self.validate_output(ds, required_vars=keep_rnx_data_vars)
+    validate_dataset(ds, required_vars=keep_data_vars)
     return ds
     ```
 
@@ -173,24 +167,15 @@ The full pipeline:
 ```python
 from pydantic import BaseModel, field_validator
 
-class Rnxv3ObsHeader(BaseModel):
-    rinex_version: float
-    rinex_type:    str
-    obs_types:     dict[str, list[str]]   # system → observation codes
-    interval:      float | None = None
-    first_obs:     datetime | None = None
+class Rnxv3Header(BaseModel):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    @field_validator("rinex_version")
-    def check_version(cls, v):
-        if not (3.0 <= v < 4.0):
-            raise ValueError(f"Expected RINEX v3, got {v}")
-        return v
-
-    @field_validator("rinex_type")
-    def check_type(cls, v):
-        if v != "O":
-            raise ValueError(f"Expected observation file, got {v}")
-        return v
+    version: float
+    rinextype: str
+    obs_codes_per_system: dict[str, list[str]]   # system → observation codes
+    t0: dict[str, datetime]                      # system → first obs time
+    interval: float | None = None
+    # ... many more fields (see source for full list)
 ```
 
 ### Epoch Record

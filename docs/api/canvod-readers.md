@@ -8,9 +8,12 @@ RINEX observation file parsing with validation and GNSS signal specifications.
     options:
       members:
         - GNSSDataReader
-        - Rnxv3Obs
-        - ReaderFactory
+        - SignalID
+        - DatasetBuilder
         - DatasetStructureValidator
+        - validate_dataset
+        - Rnxv3Obs
+        - SbfReader
         - DataDirMatcher
         - PairDataDirMatcher
         - MatchedDirs
@@ -23,6 +26,10 @@ RINEX observation file parsing with validation and GNSS signal specifications.
 ## Base Reader
 
 ::: canvod.readers.base
+
+## Dataset Builder
+
+::: canvod.readers.builder
 
 ## GNSS Specifications
 

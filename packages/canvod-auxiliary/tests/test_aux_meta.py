@@ -12,7 +12,7 @@ import pytest
 def _can_import_pipeline():
     """Check if pipeline can be imported (requires gnssvodpy)."""
     try:
-        from canvod.auxiliary import AuxDataPipeline
+        from canvod.auxiliary import AuxDataPipeline  # noqa: F401
 
         return True
     except (ImportError, AttributeError):
@@ -22,7 +22,7 @@ def _can_import_pipeline():
 def _can_import_augmentation():
     """Check if augmentation can be imported (requires gnssvodpy)."""
     try:
-        from canvod.auxiliary import AuxDataAugmenter
+        from canvod.auxiliary import AuxDataAugmenter  # noqa: F401
 
         return True
     except (ImportError, AttributeError):

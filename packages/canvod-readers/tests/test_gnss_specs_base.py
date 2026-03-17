@@ -1,6 +1,7 @@
 """Test core gnss_specs modules: constants, exceptions, models, utils, metadata."""
 
 import pytest
+
 from canvod.readers.gnss_specs import constants, exceptions, models, utils
 
 
@@ -68,24 +69,10 @@ class TestModels:
 
     def test_observation_creation(self):
         """Test Observation model."""
-        obs = models.Observation(
-            observation_freq_tag="G01|L1C", obs_type="S", value=45.0, lli=None, ssi=5
-        )
+        obs = models.Observation(obs_type="S", value=45.0, lli=None, ssi=5)
 
-        assert obs.observation_freq_tag == "G01|L1C"
         assert obs.value == 45.0
         assert obs.ssi == 5
-
-    def test_observation_validation_invalid_tag(self):
-        """Test observation tag validation."""
-        with pytest.raises(ValueError):
-            models.Observation(
-                observation_freq_tag="INVALID",
-                obs_type="S",
-                value=45.0,
-                lli=None,
-                ssi=None,
-            )
 
     def test_satellite_creation(self):
         """Test Satellite model."""
@@ -101,9 +88,7 @@ class TestModels:
     def test_satellite_add_observation(self):
         """Test adding observations to satellite."""
         sat = models.Satellite(sv="G01")
-        obs = models.Observation(
-            observation_freq_tag="G01|L1C", obs_type="S", value=45.0, lli=None, ssi=5
-        )
+        obs = models.Observation(obs_type="S", value=45.0, lli=None, ssi=5)
 
         sat.add_observation(obs)
         assert len(sat.observations) == 1
@@ -132,14 +117,14 @@ class TestUtils:
         assert utils.isfloat("not_a_number") is False
         assert utils.isfloat("") is False
 
-    def test_rinex_file_hash(self, tmp_path):
-        """Test RINEX file hash generation."""
+    def test_file_hash(self, tmp_path):
+        """Test file hash generation."""
         # Create test file
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")
 
-        hash1 = utils.rinex_file_hash(test_file)
-        hash2 = utils.rinex_file_hash(test_file)
+        hash1 = utils.file_hash(test_file)
+        hash2 = utils.file_hash(test_file)
 
         # Hash should be consistent
         assert hash1 == hash2
@@ -189,3 +174,69 @@ class TestMetadata:
 
         assert hasattr(metadata, "DTYPES")
         assert isinstance(metadata.DTYPES, dict)
+
+
+class TestContractConstants:
+    """Test contract constants and validate_dataset()."""
+
+    def test_constants_importable(self):
+        """Test that contract constants are importable."""
+        from canvod.readers.base import (
+            DEFAULT_REQUIRED_VARS,
+            REQUIRED_ATTRS,
+            REQUIRED_COORDS,
+            REQUIRED_DIMS,
+        )
+
+        assert REQUIRED_DIMS == ("epoch", "sid")
+        assert "epoch" in REQUIRED_COORDS
+        assert "File Hash" in REQUIRED_ATTRS
+        assert "SNR" in DEFAULT_REQUIRED_VARS
+
+    def test_validate_dataset_collects_all_errors(self):
+        """Test validate_dataset reports all violations at once."""
+        import xarray as xr
+
+        from canvod.readers.base import validate_dataset
+
+        empty_ds = xr.Dataset()
+        with pytest.raises(ValueError, match="Dataset validation failed") as exc_info:
+            validate_dataset(empty_ds)
+
+        error_msg = str(exc_info.value)
+        # Should mention missing dims, coords, vars, and attrs
+        assert "dimensions" in error_msg.lower()
+        assert "coordinate" in error_msg.lower()
+        assert "attributes" in error_msg.lower()
+
+    def test_validate_dataset_passes_valid(self):
+        """Test validate_dataset succeeds on a valid dataset."""
+        import numpy as np
+        import xarray as xr
+
+        from canvod.readers.base import validate_dataset
+
+        sids = ["G01|L1|C"]
+        epochs = [np.datetime64("2024-01-01T00:00:00", "ns")]
+        ds = xr.Dataset(
+            data_vars={"SNR": (("epoch", "sid"), np.array([[42.0]], dtype="float32"))},
+            coords={
+                "epoch": ("epoch", epochs),
+                "sid": ("sid", sids),
+                "sv": ("sid", ["G01"]),
+                "system": ("sid", ["G"]),
+                "band": ("sid", ["L1"]),
+                "code": ("sid", ["C"]),
+                "freq_center": ("sid", np.array([1575.42], dtype="float32")),
+                "freq_min": ("sid", np.array([1560.0], dtype="float32")),
+                "freq_max": ("sid", np.array([1590.0], dtype="float32")),
+            },
+            attrs={
+                "Created": "2024-01-01",
+                "Software": "test",
+                "Institution": "test",
+                "File Hash": "abc123",
+            },
+        )
+        # Should not raise
+        validate_dataset(ds)

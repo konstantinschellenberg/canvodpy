@@ -1195,20 +1195,6 @@ class LoadedGrid:
 
         return self.cells["cell_id"][indices].to_numpy()
 
-    def __repr__(self) -> str:
-        """Return the developer-facing representation.
-
-        Returns
-        -------
-        str
-            Representation string.
-        """
-        return (
-            f"LoadedGrid(grid_name='{self.grid_name}', "
-            f"grid_type='{self.metadata.grid_type}', "
-            f"ncells={self.metadata.ncells})"
-        )
-
     def get_cell_boundaries(self, cell_id: int) -> dict[str, Any] | None:
         """
         Get cell boundary information.
@@ -2117,7 +2103,7 @@ def validate_grid_integrity(loaded_grid: LoadedGrid) -> dict[str, Any]:
 
     except Exception as e:
         results["valid"] = False
-        results["errors"].append(f"Validation failed: {str(e)}")
+        results["errors"].append(f"Validation failed: {e!s}")
         logger.error(f"Grid validation error: {e}")
 
     return results
