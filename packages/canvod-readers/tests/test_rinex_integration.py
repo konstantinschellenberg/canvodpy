@@ -12,7 +12,7 @@ from canvod.readers.rinex.v3_04 import Rnxv3Header, Rnxv3Obs
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
 RINEX_FILE = (
     TEST_DATA_DIR
-    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ract001a00.25o"
+    / "valid/rinex_v3_04/01_Rosalia/02_canopy/01_GNSS/01_raw/25001/ROSA01TUW_R_20250010000_15M_05S_AA.rnx"
 )
 
 
@@ -134,8 +134,8 @@ class TestRINEXIntegration:
         # Check band names are valid
         for band in ds.band.values:
             band_str = str(band)
-            # Common band names: L1, L2, L5, E1, E5a, E5b, G1, G2, B1I, etc.
-            assert len(band_str) >= 2, f"Invalid band name: {band_str}"
+            # Common band names: L1, L2, L5, E1, E5a, E5b, G1, G2, B1I, S (IRNSS S-band)
+            assert len(band_str) >= 1, f"Invalid band name: {band_str}"
 
     def test_system_coordinate_matches_signal_ids(self, rinex_file):
         """Test system coordinate matches signal ID system letters."""

@@ -9,15 +9,15 @@ from pathlib import Path
 
 import numpy as np
 import xarray as xr
+from canvod.auxiliary.preprocessing import prep_aux_ds
+from canvod.readers import MatchedDirs, Rnxv3Obs
+from canvod.utils.config import load_config
+from canvod.utils.tools import get_version_from_pyproject
 from canvodpy.logging import get_logger
 from natsort import natsorted
 from tqdm import tqdm
 
-from canvod.auxiliary.preprocessing import prep_aux_ds
-from canvod.readers import MatchedDirs, Rnxv3Obs
 from canvod.store.manager import GnssResearchSite
-from canvod.utils.config import load_config
-from canvod.utils.tools import get_version_from_pyproject
 
 
 # Module-level function for ProcessPoolExecutor (must be pickleable).

@@ -10,3 +10,7 @@ This module contains fundamental GNSS definitions including:
 
 These components are used across all GNSS reader implementations.
 """
+
+from canvod.readers.gnss_specs.satellite_catalog import SatelliteCatalog
+
+__all__ = ["SatelliteCatalog"]

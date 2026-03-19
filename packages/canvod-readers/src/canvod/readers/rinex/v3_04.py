@@ -1125,7 +1125,13 @@ class Rnxv3Obs(GNSSDataReader):
         for start, end in self.get_epoch_record_batches():
             try:
                 info = Rnxv3ObsEpochRecordLineModel(epoch=self._lines[start])
-                data = self._lines[start + 1 : end]
+
+                # Skip event epochs (flag 2-6: special records, not observations)
+                if info.epoch_flag > 1:
+                    continue
+
+                # Filter out blank/whitespace-only lines from data slice
+                data = [line for line in self._lines[start + 1 : end] if line.strip()]
                 epoch = Rnxv3ObsEpochRecord(
                     info=info,
                     data=(
@@ -1133,8 +1139,9 @@ class Rnxv3Obs(GNSSDataReader):
                     ),  # generator here too
                 )
                 yield epoch
-            except (InvalidEpochError, IncompleteEpochError):
-                # Skip unexpected errors silently
+            except (InvalidEpochError, IncompleteEpochError, ValueError):
+                # Skip epochs with validation errors (invalid SV, malformed data,
+                # pydantic ValidationError inherits from ValueError)
                 pass
 
     def iter_epochs_in_range(
@@ -1544,14 +1551,15 @@ class Rnxv3Obs(GNSSDataReader):
                 lut.append((obs_type, "|" + band_name + "|" + code_char))
             system_obs_lut[system] = lut
 
-        # Single pass over all epochs
+        # Single pass over all epochs — skip unparseable epoch lines
+        valid_mask = np.ones(n_epochs, dtype=bool)
         for t_idx, (start, end) in enumerate(epoch_batches):
             epoch_line = lines[start]
 
             # Inline epoch parsing (no Pydantic model)
             m = _EPOCH_RE.match(epoch_line)
             if m is None:
-                timestamps[t_idx] = np.datetime64("NaT", "ns")
+                valid_mask[t_idx] = False
                 continue
 
             year, month, day = int(m[1]), int(m[2]), int(m[3])
@@ -1617,6 +1625,16 @@ class Rnxv3Obs(GNSSDataReader):
                         lli[t_idx, s_idx] = obs_lli
                     if obs_ssi is not None:
                         ssi[t_idx, s_idx] = obs_ssi
+
+        # Drop epochs that failed to parse
+        if not valid_mask.all():
+            timestamps = timestamps[valid_mask]
+            snr = snr[valid_mask]
+            pseudo = pseudo[valid_mask]
+            phase = phase[valid_mask]
+            doppler = doppler[valid_mask]
+            lli = lli[valid_mask]
+            ssi = ssi[valid_mask]
 
         # Build coordinate arrays from pre-computed properties
         sv_list = [sid_properties[sid]["sv"] for sid in sorted_sids]

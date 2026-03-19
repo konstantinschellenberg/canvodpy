@@ -16,6 +16,7 @@ dependencies = [
     "typer>=0.9",
     "rich>=13.0",
     "email-validator>=2.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.scripts]
@@ -24,13 +25,6 @@ canvodpy = "canvod.utils.config.cli:main"
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = ["-v", "--tb=short", "--disable-warnings"]
 
 [tool.uv.build-backend]
 module-name = "canvod.utils"

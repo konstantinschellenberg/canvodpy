@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `canvod-auxiliary` package provides auxiliary data management for GNSS Transmissometry (GNSS-T) analysis. It handles downloading, parsing, preprocessing, and interpolating SP3 ephemerides and CLK clock corrections to augment RINEX observation data with precise satellite positions and timing information.
+The `canvod-auxiliary` package provides auxiliary data management for [GNSS Transmissometry](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"} (GNSS-T) analysis. It handles downloading, parsing, preprocessing, and interpolating [SP3 ephemerides](https://gssc.esa.int/navipedia/index.php/SP3){:target="_blank"} and CLK [clock corrections](https://gssc.esa.int/navipedia/index.php/Precise_Satellite_Clocks){:target="_blank"} to augment RINEX observation data with precise satellite positions and timing information.
 
 ---
 
@@ -34,11 +34,17 @@ Combining these requires:
 4. **Physically correct interpolation** per data type
 
 ```mermaid
-graph LR
-    A["SP3 File\n(sv dimension)"] -->|Download| B["Raw Dataset\n96 epochs · 32 svs"]
-    B -->|Preprocess| C["Preprocessed\n96 epochs · 384 sids"]
-    C -->|Interpolate| D["Interpolated\n2880 epochs · 384 sids"]
-    D -->|Augment| E["RINEX Dataset\n2880 epochs · 384 sids"]
+graph TD
+    A["`**SP3 File**
+    sv dimension`"]
+    A -->|Download| B["`**Raw Dataset**
+    96 epochs, 32 svs`"]
+    B -->|Preprocess| C["`**Preprocessed**
+    96 epochs, 384 sids`"]
+    C -->|Interpolate| D["`**Interpolated**
+    2880 epochs, 384 sids`"]
+    D -->|Augment| E["`**RINEX Dataset**
+    2880 epochs, 384 sids`"]
 ```
 
 ---
@@ -109,11 +115,11 @@ Different data types require different methods based on the underlying physics:
 
     ---
 
-    `ECEFPosition` — Earth-Centred Earth-Fixed (X, Y, Z)
+    `ECEFPosition` — [Earth-Centred Earth-Fixed](https://gssc.esa.int/navipedia/index.php/Reference_Frames_in_GNSS){:target="_blank"} (X, Y, Z)
 
-    `GeodeticPosition` — WGS84 latitude, longitude, altitude
+    `GeodeticPosition` — [WGS84](https://gssc.esa.int/navipedia/index.php/Reference_Frames_in_GNSS){:target="_blank"} latitude, longitude, altitude
 
-    Spherical coordinates (r, θ, φ) relative to receiver position
+    [Spherical coordinates](https://gssc.esa.int/navipedia/index.php/Satellite_Elevation,_Azimuth_and_Visible_Satellites){:target="_blank"} (r, θ, φ) relative to receiver position
 
 -   :fontawesome-solid-cloud-arrow-down: &nbsp; **FTP Download**
 

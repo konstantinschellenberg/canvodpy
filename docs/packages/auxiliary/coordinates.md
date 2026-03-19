@@ -1,6 +1,6 @@
 # Coordinate Systems
 
-canvod-auxiliary works with three coordinate systems. Knowing which one is used where prevents sign errors and unit confusion in downstream VOD calculations.
+canvod-auxiliary works with three [coordinate systems](https://gssc.esa.int/navipedia/index.php/Reference_Frames_in_GNSS){:target="_blank"}. Knowing which one is used where prevents sign errors and unit confusion in downstream VOD calculations.
 
 <div class="grid cards" markdown>
 
@@ -22,7 +22,7 @@ canvod-auxiliary works with three coordinate systems. Knowing which one is used 
 
     ---
 
-    Slant range **r**, zenith angle **θ**, geographic azimuth **φ**.
+    Slant range **r**, polar angle **θ**, geographic azimuth **φ**.
     This is the output added to the obs Dataset for VOD geometry.
 
 </div>
@@ -70,12 +70,12 @@ The key output of the auxiliary pipeline — added to the obs Dataset as `theta`
 | Variable | Symbol | Range | Convention |
 |----------|--------|-------|------------|
 | Slant range | r | ≥ 0 m | Distance from receiver antenna to satellite |
-| Zenith angle | θ | 0 … π | 0 = overhead (zenith), π/2 = horizon |
+| Polar angle | θ | 0 … π | 0 = overhead (zenith), π/2 = horizon |
 | Geographic azimuth | φ | 0 … 2π | 0 = North, π/2 = East, clockwise |
 
-!!! note "Zenith angle vs elevation"
+!!! note "Polar angle vs elevation"
     VOD literature often uses **elevation** angle `e = π/2 − θ`.
-    canvod-auxiliary stores **zenith angle** θ internally.
+    canvod-auxiliary stores **polar angle** θ internally.
     The `cos(θ)` factor in the tau-omega formula uses θ directly:
     `VOD = −ln(T) · cos(θ)`.
 
@@ -110,7 +110,7 @@ from canvod.auxiliary import add_spherical_coords_to_dataset
 augmented_ds = add_spherical_coords_to_dataset(rinex_ds, r, theta, phi)
 
 # New data variables on (epoch, sid):
-# augmented_ds["theta"]   → zenith angle [rad]
+# augmented_ds["theta"]   → polar angle [rad]
 # augmented_ds["phi"]     → geographic azimuth [rad]
 # augmented_ds["r"]       → slant range [m]
 ```

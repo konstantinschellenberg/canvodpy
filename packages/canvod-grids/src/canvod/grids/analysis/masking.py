@@ -111,7 +111,7 @@ class SpatialMask:
     def add_theta_range(
         self, theta_min: float, theta_max: float, degrees: bool = False
     ) -> SpatialMask:
-        """Add polar angle (zenith angle) constraint.
+        """Add polar angle constraint.
 
         Parameters
         ----------

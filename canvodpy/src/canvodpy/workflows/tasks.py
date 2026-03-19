@@ -41,8 +41,15 @@ from canvodpy.orchestrator.interpolator import (
 
 logger = logging.getLogger(__name__)
 
-# RINEX glob patterns (mirrored from processor._get_rinex_files)
-_RINEX_PATTERNS: list[str] = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
+
+# GNSS file glob patterns — sourced from canvod-virtualiconvname BUILTIN_PATTERNS
+def _get_gnss_globs() -> list[str]:
+    from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
+
+    globs: set[str] = set()
+    for name in auto_match_order():
+        globs.update(BUILTIN_PATTERNS[name].file_globs)
+    return sorted(globs)
 
 
 # ---------------------------------------------------------------------------
@@ -91,14 +98,19 @@ def _resolve_date(yyyydoy: str) -> YYYYDOY:
 
 
 def _get_rinex_files(directory: Path) -> list[Path]:
-    """Glob RINEX files from *directory* using standard patterns."""
+    """Glob GNSS data files from *directory* using BUILTIN_PATTERNS globs."""
     from natsort import natsorted
 
-    files: list[Path] = []
     if not directory.exists():
-        return files
-    for pattern in _RINEX_PATTERNS:
-        files.extend(directory.glob(pattern))
+        return []
+
+    files: list[Path] = []
+    seen: set[Path] = set()
+    for pattern in _get_gnss_globs():
+        for path in directory.glob(pattern):
+            if path.is_file() and path not in seen:
+                seen.add(path)
+                files.append(path)
     return natsorted(files)
 
 
@@ -171,6 +183,258 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
         raise RuntimeError(msg)
 
     logger.info("check_rinex: %s %s — all receivers ready", site, date_obj.to_str())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Task 1b — validate_data_dirs
+# ---------------------------------------------------------------------------
+
+
+def _resolve_recipe(recipe_name: str) -> Path:
+    """Resolve a recipe name to its YAML file path.
+
+    Searches ``config/recipes/`` relative to the monorepo root.
+    """
+    from canvod.utils.config.loader import find_monorepo_root
+
+    recipe_path = find_monorepo_root() / "config" / "recipes" / f"{recipe_name}.yaml"
+    if not recipe_path.exists():
+        msg = (
+            f"Recipe file not found: {recipe_path}\n"
+            f"Create it with: just naming-init {recipe_name}"
+        )
+        raise FileNotFoundError(msg)
+    return recipe_path
+
+
+def _validate_receiver_with_recipe(
+    recipe_name: str,
+    receiver_base_dir: Path,
+    reader_format: str | None,
+) -> dict:
+    """Validate a receiver's data directory using a NamingRecipe.
+
+    Returns a result dict with status, counts, and sample canonical names.
+    Raises ValueError on validation failure.
+    """
+    from natsort import natsorted
+
+    from canvod.virtualiconvname.recipe import NamingRecipe
+
+    recipe_path = _resolve_recipe(recipe_name)
+    recipe = NamingRecipe.load(recipe_path)
+
+    # Discover files using the recipe's glob pattern
+    if not receiver_base_dir.exists():
+        return {
+            "status": "valid",
+            "matched": 0,
+            "skipped_format": 0,
+            "unmatched": 0,
+            "overlaps": 0,
+            "warnings": [f"Directory does not exist: {receiver_base_dir}"],
+            "sample_canonical_names": [],
+        }
+
+    # Walk subdirectories or flat depending on layout
+    all_files: list[Path] = []
+    for f in receiver_base_dir.rglob(recipe.glob):
+        if f.is_file():
+            all_files.append(f)
+    all_files = natsorted(all_files)
+
+    matched = []
+    skipped = []
+    unmatched = []
+    errors = []
+
+    for f in all_files:
+        if not recipe.matches(f.name):
+            skipped.append(f)
+            continue
+        try:
+            vf = recipe.to_virtual_file(f)
+            matched.append(vf)
+        except ValueError as exc:
+            unmatched.append(f)
+            errors.append(f"  {f.name}: {exc}")
+
+    # Check for temporal overlaps (same canonical name = duplicate)
+    canonical_counts: dict[str, list[Path]] = {}
+    for vf in matched:
+        key = vf.canonical_str
+        canonical_counts.setdefault(key, []).append(vf.physical_path)
+    duplicates = {k: v for k, v in canonical_counts.items() if len(v) > 1}
+
+    warnings: list[str] = []
+    if duplicates:
+        for cn, paths in duplicates.items():
+            warnings.append(
+                f"Duplicate canonical name {cn}: " + ", ".join(p.name for p in paths)
+            )
+
+    if unmatched:
+        detail = "\n".join(errors[:20])
+        if len(errors) > 20:
+            detail += f"\n  ... and {len(errors) - 20} more"
+        raise ValueError(
+            f"{len(unmatched)} files could not be parsed by recipe "
+            f"'{recipe_name}':\n{detail}"
+        )
+
+    return {
+        "status": "valid",
+        "matched": len(matched),
+        "skipped": len(skipped),
+        "unmatched": 0,
+        "overlaps": len(duplicates),
+        "warnings": warnings,
+        "sample_canonical_names": [vf.canonical_str for vf in matched[:5]],
+    }
+
+
+def validate_data_dirs(site: str) -> dict:
+    """Pre-flight validation of all receiver data directories for a site.
+
+    Checks every receiver's data directory against the naming convention:
+    - All files must map to a canonical ``CanVODFilename``
+    - No temporal overlaps (e.g. daily + sub-daily files for the same day)
+    - Duplicate canonical names are flagged
+
+    Supports two validation modes per receiver:
+    - **Recipe mode**: when ``recipe`` is set in the receiver config,
+      loads a ``NamingRecipe`` from ``config/recipes/{recipe}.yaml``
+    - **Legacy mode**: when ``naming`` dict is set, uses
+      ``SiteNamingConfig`` + ``ReceiverNamingConfig`` + ``DataDirectoryValidator``
+
+    Run this **before** starting a processing campaign to catch data
+    quality issues early.
+
+    Parameters
+    ----------
+    site : str
+        Research site name (must exist in config).
+
+    Returns
+    -------
+    dict
+        ``{"site": str, "valid": bool, "receivers": {name: {status, ...}}}``
+
+    Raises
+    ------
+    ValueError
+        If any receiver directory has validation errors.
+    """
+    config = load_config()
+    available = list(config.sites.sites.keys())
+    if site not in config.sites.sites:
+        msg = f"Unknown site '{site}'. Available sites: {', '.join(available) or '(none)'}"
+        raise KeyError(msg)
+    site_cfg = config.sites.sites[site]
+    base = site_cfg.get_base_path()
+
+    receivers_result: dict[str, dict] = {}
+    all_valid = True
+    errors: list[str] = []
+
+    for name, rcfg in site_cfg.receivers.items():
+        receiver_base_dir = base / rcfg.directory
+        reader_format = rcfg.reader_format
+
+        # Recipe-based validation (preferred)
+        if rcfg.recipe:
+            try:
+                receivers_result[name] = _validate_receiver_with_recipe(
+                    recipe_name=rcfg.recipe,
+                    receiver_base_dir=receiver_base_dir,
+                    reader_format=reader_format,
+                )
+                logger.info(
+                    "validate_data_dirs: %s/%s — %d files via recipe '%s'",
+                    site,
+                    name,
+                    receivers_result[name]["matched"],
+                    rcfg.recipe,
+                )
+            except (ValueError, FileNotFoundError) as exc:
+                all_valid = False
+                errors.append(f"[{name}] {exc}")
+                receivers_result[name] = {"status": "invalid", "error": str(exc)}
+                logger.error("validate_data_dirs: %s/%s — FAILED: %s", site, name, exc)
+            continue
+
+        # Legacy naming-dict validation
+        if rcfg.naming:
+            from canvod.virtualiconvname import (
+                DataDirectoryValidator,
+                ReceiverNamingConfig,
+                SiteNamingConfig,
+            )
+
+            if not site_cfg.naming:
+                msg = (
+                    f"Receiver '{name}' uses naming dict but site '{site}' "
+                    "has no site-level naming config."
+                )
+                raise ValueError(msg)
+
+            site_naming = SiteNamingConfig(**site_cfg.naming)
+            receiver_naming = ReceiverNamingConfig(**rcfg.naming)
+            validator = DataDirectoryValidator()
+
+            try:
+                report = validator.validate_receiver(
+                    site_naming=site_naming,
+                    receiver_naming=receiver_naming,
+                    receiver_type=rcfg.type,
+                    receiver_base_dir=receiver_base_dir,
+                    reader_format=reader_format,
+                )
+                receivers_result[name] = {
+                    "status": "valid",
+                    "matched": len(report.matched),
+                    "skipped_format": len(report.skipped_format),
+                    "unmatched": 0,
+                    "overlaps": 0,
+                    "warnings": report.warnings,
+                    "sample_canonical_names": [
+                        vf.canonical_str for vf in report.matched[:5]
+                    ],
+                }
+                logger.info(
+                    "validate_data_dirs: %s/%s — %d files, all valid",
+                    site,
+                    name,
+                    len(report.matched),
+                )
+            except ValueError as exc:
+                all_valid = False
+                errors.append(f"[{name}] {exc}")
+                receivers_result[name] = {"status": "invalid", "error": str(exc)}
+                logger.error("validate_data_dirs: %s/%s — FAILED: %s", site, name, exc)
+            continue
+
+        # No recipe and no naming — skip
+        receivers_result[name] = {
+            "status": "skipped",
+            "reason": "no recipe or naming config",
+        }
+        logger.warning("Receiver '%s' has no recipe or naming config, skipping", name)
+
+    result = {
+        "site": site,
+        "valid": all_valid,
+        "receivers": receivers_result,
+    }
+
+    if not all_valid:
+        full_report = "\n\n".join(errors)
+        raise ValueError(
+            f"Data directory validation failed for site '{site}':\n\n{full_report}"
+        )
+
+    logger.info("validate_data_dirs: %s — all receivers valid", site)
     return result
 
 

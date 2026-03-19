@@ -46,15 +46,18 @@ canVODpy applies the engineering concept of *Sollbruchstellen* (predetermined br
 
 ```
 Foundation (0 inter-package dependencies):
-  canvod-readers, canvod-grids, canvod-vod, canvod-utils
+  canvod-readers, canvod-grids, canvod-vod, canvod-utils,
+  canvod-virtualiconvname
 
-Consumer (1 dependency each):
-  canvod-auxiliary → canvod-readers
-  canvod-viz       → canvod-grids
-  canvod-store     → canvod-grids
+Consumer (1–2 dependencies each):
+  canvod-auxiliary      → canvod-readers
+  canvod-viz            → canvod-grids
+  canvod-store          → canvod-grids
+  canvod-store-metadata → canvod-utils
+  canvod-ops            → canvod-grids, canvod-utils
 
 Orchestration:
-  canvodpy         → all packages
+  canvodpy              → all packages
 ```
 
 ---
@@ -62,11 +65,14 @@ Orchestration:
 ## ABC + Factory Pattern
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph ABCS["Abstract Base Classes"]
-        READER_ABC["GNSSDataReader\n(to_ds, iter_epochs, file_hash)"]
-        GRID_ABC["BaseGridBuilder\n(build)"]
-        VOD_ABC["VODCalculator\n(calculate_vod)"]
+        READER_ABC["`**GNSSDataReader**
+        to_ds, iter_epochs, file_hash`"]
+        GRID_ABC["`**BaseGridBuilder**
+        build`"]
+        VOD_ABC["`**VODCalculator**
+        calculate_vod`"]
     end
 
     subgraph FACTORIES["Factory Registry"]
@@ -83,7 +89,8 @@ flowchart LR
     end
 
     subgraph CUSTOM["User Extension"]
-        IMPL["Custom class\n(inherits ABC)"]
+        IMPL["`**Custom class**
+        inherits ABC`"]
         REG["Factory.register()"]
     end
 
@@ -191,7 +198,7 @@ canvodpy exposes four API levels — all backed by the same packages:
 ## Configuration Management
 
 ```mermaid
-flowchart LR
+flowchart TD
     subgraph FILES["YAML Files"]
         PROC["processing.yaml"]
         SITES["sites.yaml"]
@@ -200,7 +207,8 @@ flowchart LR
     end
 
     subgraph LOAD["Loader"]
-        MERGE["Deep merge\n(user overrides defaults)"]
+        MERGE["`**Deep merge**
+        user overrides defaults`"]
         PYDANTIC["Pydantic validation"]
     end
 

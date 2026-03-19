@@ -18,6 +18,7 @@ from canvod.readers import MatchedDirs, PairDataDirMatcher
 from canvod.readers.gnss_specs.constants import UREG
 from canvod.store import GnssResearchSite
 from canvod.utils.tools import YYYYDOY
+from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
 
 try:
     from dask.distributed import as_completed as dask_as_completed
@@ -51,8 +52,6 @@ class PipelineOrchestrator:
         (Dask/OS picks based on ``os.cpu_count()``).
     dry_run : bool
         If True, only simulate processing without executing
-    reader_name : str
-        Reader backend to use: ``"rinex3"`` or ``"sbf"`` (default: ``"rinex3"``)
     batch_hours : float
         Hours of data per processing batch (default: 24.0)
     max_memory_gb : float | None
@@ -71,7 +70,6 @@ class PipelineOrchestrator:
         site: GnssResearchSite,
         n_max_workers: int | None = None,
         dry_run: bool = False,
-        reader_name: str = "rinex3",
         batch_hours: float = 24.0,
         max_memory_gb: float | None = None,
         cpu_affinity: list[int] | None = None,
@@ -81,7 +79,6 @@ class PipelineOrchestrator:
         self.site = site
         self.n_max_workers = n_max_workers
         self.dry_run = dry_run
-        self.reader_name = reader_name
         self.batch_hours = batch_hours
         self._batch_duration: pint.Quantity = batch_hours * UREG.hour
         self._max_memory_gb = max_memory_gb
@@ -132,7 +129,10 @@ class PipelineOrchestrator:
         self.pair_matcher = PairDataDirMatcher(
             base_dir=site.site_config["gnss_site_data_root"],
             receivers=site.receivers,
-            analysis_pairs=site.vod_analyses,
+            analysis_pairs={
+                name: cfg.model_dump() if hasattr(cfg, "model_dump") else cfg
+                for name, cfg in site.vod_analyses.items()
+            },
         )
 
         self._logger.info(
@@ -173,9 +173,40 @@ class PipelineOrchestrator:
     def __exit__(self, *exc: object) -> None:
         self.close()
 
+    @staticmethod
+    def _detect_reader_format(data_dir: Path) -> str:
+        """Detect reader format from files in a directory.
+
+        Parameters
+        ----------
+        data_dir : Path
+            Directory containing GNSS data files.
+
+        Returns
+        -------
+        str
+            Detected format name (e.g. ``"rinex3"``, ``"sbf"``).
+            Falls back to ``"rinex3"`` if nothing matches.
+
+        """
+        # Map source pattern names to reader format names
+        _PATTERN_TO_READER = {
+            "septentrio_sbf": "sbf",
+            "rinex_v2_short": "rinex3",
+            "rinex_v3_long": "rinex3",
+            "canvod": "rinex3",
+        }
+        for name in auto_match_order():
+            pat = BUILTIN_PATTERNS[name]
+            if any(
+                f for glob in pat.file_globs for f in data_dir.glob(glob) if f.is_file()
+            ):
+                return _PATTERN_TO_READER.get(name, "rinex3")
+        return "rinex3"
+
     def _group_by_date_and_receiver(
         self,
-    ) -> dict[str, dict[str, tuple[Path, str, Path | None]]]:
+    ) -> dict[str, dict[str, tuple[Path, str, Path | None, str]]]:
         """Group receivers by date, expanding references per canopy via scs_from.
 
         Canopy receivers are deduplicated (processed once with own position).
@@ -185,11 +216,13 @@ class PipelineOrchestrator:
 
         Returns
         -------
-        dict[str, dict[str, tuple[Path, str, Path | None]]]
-            {date: {store_group_name: (data_dir, receiver_type, position_data_dir)}}
+        dict[str, dict[str, tuple[Path, str, Path | None, str]]]
+            {date: {store_group_name: (data_dir, receiver_type, position_data_dir, reader_format)}}
 
         """
-        grouped: dict[str, dict[str, tuple[Path, str, Path | None]]] = defaultdict(dict)
+        grouped: dict[str, dict[str, tuple[Path, str, Path | None, str]]] = defaultdict(
+            dict
+        )
         site_config = self.site._site_config
 
         for pair_dirs in self.pair_matcher:
@@ -197,16 +230,24 @@ class PipelineOrchestrator:
 
             # Add canopy receiver if not already present (uses own position)
             if pair_dirs.canopy_receiver not in grouped[date_key]:
+                canopy_cfg = site_config.receivers.get(pair_dirs.canopy_receiver)
+                canopy_fmt = canopy_cfg.reader_format if canopy_cfg else "auto"
+                if canopy_fmt == "auto":
+                    canopy_fmt = self._detect_reader_format(pair_dirs.canopy_data_dir)
                 grouped[date_key][pair_dirs.canopy_receiver] = (
                     pair_dirs.canopy_data_dir,
                     "canopy",
                     None,
+                    canopy_fmt,
                 )
 
             # Expand reference receiver per canopy in scs_from
             ref_name = pair_dirs.reference_receiver
             ref_cfg = site_config.receivers.get(ref_name)
             if ref_cfg and ref_cfg.type == "reference":
+                ref_fmt = ref_cfg.reader_format
+                if ref_fmt == "auto":
+                    ref_fmt = self._detect_reader_format(pair_dirs.reference_data_dir)
                 canopy_names = site_config.resolve_scs_from(ref_name)
                 for canopy_name in canopy_names:
                     store_group = f"{ref_name}_{canopy_name}"
@@ -225,6 +266,7 @@ class PipelineOrchestrator:
                             pair_dirs.reference_data_dir,
                             "reference",
                             canopy_position_dir,
+                            ref_fmt,
                         )
 
         return grouped
@@ -250,7 +292,7 @@ class PipelineOrchestrator:
         for date_key, receivers in sorted(grouped.items()):
             date_info = {"date": date_key, "receivers": []}
 
-            for receiver_name, (data_dir, receiver_type, _pos_dir) in sorted(
+            for receiver_name, (data_dir, receiver_type, _pos_dir, _fmt) in sorted(
                 receivers.items()
             ):
                 files = list(data_dir.glob("*.2*o"))
@@ -293,10 +335,10 @@ class PipelineOrchestrator:
 
     def _filter_dates(
         self,
-        grouped: dict[str, dict[str, tuple[Path, str, Path | None]]],
+        grouped: dict[str, dict[str, tuple[Path, str, Path | None, str]]],
         start_from: str | None,
         end_at: str | None,
-    ) -> list[tuple[str, dict[str, tuple[Path, str, Path | None]]]]:
+    ) -> list[tuple[str, dict[str, tuple[Path, str, Path | None, str]]]]:
         """Filter and sort dates within the requested range.
 
         Parameters
@@ -377,7 +419,7 @@ class PipelineOrchestrator:
     def _process_single_date(
         self,
         date_key: str,
-        receivers: dict[str, tuple[Path, str, Path | None]],
+        receivers: dict[str, tuple[Path, str, Path | None, str]],
         keep_vars: list[str] | None,
     ) -> tuple[str, dict[str, xr.Dataset], dict[str, float]] | None:
         """Process all receivers for a single date (one DOY).
@@ -387,7 +429,7 @@ class PipelineOrchestrator:
         date_key : str
             YYYYDOY string.
         receivers : dict
-            ``{store_group: (data_dir, receiver_type, position_data_dir)}``.
+            ``{store_group: (data_dir, receiver_type, position_data_dir, reader_format)}``.
         keep_vars : list[str] | None
             Variables to keep in datasets.
 
@@ -407,11 +449,12 @@ class PipelineOrchestrator:
         )
 
         receiver_configs = [
-            (receiver_name, receiver_type, data_dir, position_data_dir)
+            (receiver_name, receiver_type, data_dir, position_data_dir, reader_format)
             for receiver_name, (
                 data_dir,
                 receiver_type,
                 position_data_dir,
+                reader_format,
             ) in sorted(receivers.items())
         ]
 
@@ -496,30 +539,30 @@ class PipelineOrchestrator:
 
     @staticmethod
     def _build_receiver_configs(
-        receivers: dict[str, tuple[Path, str, Path | None]],
-    ) -> list[tuple[str, str, Path, Path | None]]:
+        receivers: dict[str, tuple[Path, str, Path | None, str]],
+    ) -> list[tuple[str, str, Path, Path | None, str]]:
         """Build sorted receiver config tuples from the receivers dict.
 
         Parameters
         ----------
         receivers : dict
-            ``{store_group: (data_dir, receiver_type, position_data_dir)}``.
+            ``{store_group: (data_dir, receiver_type, position_data_dir, reader_format)}``.
 
         Returns
         -------
-        list[tuple[str, str, Path, Path | None]]
-            ``(receiver_name, receiver_type, data_dir, position_data_dir)`` tuples.
+        list[tuple[str, str, Path, Path | None, str]]
+            ``(receiver_name, receiver_type, data_dir, position_data_dir, reader_format)`` tuples.
 
         """
         return [
-            (name, rtype, ddir, pdir)
-            for name, (ddir, rtype, pdir) in sorted(receivers.items())
+            (name, rtype, ddir, pdir, fmt)
+            for name, (ddir, rtype, pdir, fmt) in sorted(receivers.items())
         ]
 
     def _create_processor_for_date(
         self,
         date_key: str,
-        receivers: dict[str, tuple[Path, str, Path | None]],
+        receivers: dict[str, tuple[Path, str, Path | None, str]],
     ) -> RinexDataProcessor:
         """Create a RinexDataProcessor for a single DOY.
 
@@ -528,7 +571,7 @@ class PipelineOrchestrator:
         date_key : str
             YYYYDOY string.
         receivers : dict
-            ``{store_group: (data_dir, receiver_type, position_data_dir)}``.
+            ``{store_group: (data_dir, receiver_type, position_data_dir, reader_format)}``.
 
         Returns
         -------
@@ -555,7 +598,7 @@ class PipelineOrchestrator:
     def _prepare_single_date(
         self,
         date_key: str,
-        receivers: dict[str, tuple[Path, str, Path | None]],
+        receivers: dict[str, tuple[Path, str, Path | None, str]],
         keep_vars: list[str] | None,
     ) -> tuple[RinexDataProcessor, list[tuple], list[tuple[str, list[Path]]]] | None:
         """Prepare one DOY for flat Dask submission (Phase 1 helper).
@@ -587,7 +630,7 @@ class PipelineOrchestrator:
 
     def _process_multi_day_batches(
         self,
-        filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None]]]],
+        filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None, str]]]],
         keep_vars: list[str] | None,
     ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]]]:
         """Process dates in multi-day batches (batch_hours >= 24).
@@ -746,12 +789,17 @@ class PipelineOrchestrator:
             # Build expected counts and receiver→files lookup
             expected_counts: dict[tuple[str, str], int] = {}
             receiver_files_lookup: dict[tuple[str, str], list[Path]] = {}
+            reader_format_lookup: dict[tuple[str, str], str | None] = {}
             for date_key in doy_contexts:
                 _processor, receiver_file_map = doy_contexts[date_key]
                 for receiver_name, rinex_files in receiver_file_map:
                     key = (date_key, receiver_name)
                     expected_counts[key] = len(rinex_files)
                     receiver_files_lookup[key] = rinex_files
+            # Build reader_format lookup from the original receivers dict
+            for date_key, receivers in batch:
+                for store_group, (_, _, _, fmt) in receivers.items():
+                    reader_format_lookup[(date_key, store_group)] = fmt
 
             # Submit all tasks
             t_submit_start = _time.monotonic()
@@ -773,6 +821,9 @@ class PipelineOrchestrator:
             # Streaming collection: write as groups complete
             pending_results: dict[tuple[str, str], list[tuple[Path, xr.Dataset]]] = (
                 defaultdict(list)
+            )
+            pending_aux: dict[tuple[str, str], dict[Path, dict[str, xr.Dataset]]] = (
+                defaultdict(dict)
             )
             completed_counts: dict[tuple[str, str], int] = defaultdict(int)
             tasks_succeeded = 0
@@ -810,8 +861,10 @@ class PipelineOrchestrator:
                     group_key = (date_key, receiver_name)
 
                     try:
-                        fname, ds, _aux, _sids = fut.result()
+                        fname, ds, aux, _sids = fut.result()
                         pending_results[group_key].append((fname, ds))
+                        if aux:
+                            pending_aux[group_key][fname] = aux
                         tasks_succeeded += 1
                     except Exception:
                         tasks_failed += 1
@@ -875,11 +928,17 @@ class PipelineOrchestrator:
                     augmented = sorted(group_results, key=lambda x: x[0].name)
                     processor = doy_contexts[date_key][0]
                     rinex_files = receiver_files_lookup[group_key]
+                    group_aux = pending_aux.pop(group_key, None)
+                    group_fmt = reader_format_lookup.get(group_key)
 
                     t_write_start = _time.monotonic()
                     try:
                         processor._append_to_icechunk(
-                            augmented, receiver_name, rinex_files
+                            augmented,
+                            receiver_name,
+                            rinex_files,
+                            aux_datasets=group_aux or None,
+                            reader_format=group_fmt,
                         )
                     except (OSError, RuntimeError, ValueError):
                         self._logger.exception(
@@ -978,7 +1037,7 @@ class PipelineOrchestrator:
 
     def _process_sub_day_batches(
         self,
-        filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None]]]],
+        filtered_dates: list[tuple[str, dict[str, tuple[Path, str, Path | None, str]]]],
         keep_vars: list[str] | None,
     ) -> Generator[tuple[str, dict[str, xr.Dataset], dict[str, float]]]:
         """Process dates with sub-day file batching (batch_hours < 24).
@@ -1170,8 +1229,19 @@ class SingleReceiverProcessor:
         )
 
     def _get_rinex_files(self) -> list[Path]:
-        """Get sorted list of RINEX files."""
-        return sorted(self.data_dir.glob("*.2*o"))
+        """Get sorted list of GNSS data files using BUILTIN_PATTERNS globs."""
+        globs: set[str] = set()
+        for name in auto_match_order():
+            globs.update(BUILTIN_PATTERNS[name].file_globs)
+
+        files: list[Path] = []
+        seen: set[Path] = set()
+        for g in sorted(globs):
+            for path in self.data_dir.glob(g):
+                if path.is_file() and path not in seen:
+                    seen.add(path)
+                    files.append(path)
+        return sorted(files)
 
     def process(self, keep_vars: list[str] | None = None) -> xr.Dataset:
         """Process all RINEX files for this receiver and write to Icechunk.

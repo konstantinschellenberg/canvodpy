@@ -190,7 +190,7 @@ class TestConstellations:
 
     def test_gps_initialization(self):
         """Test GPS constellation can be initialized."""
-        gps = GPS(use_wiki=False)
+        gps = GPS()
 
         assert gps.constellation == "GPS"
         assert len(gps.svs) > 0
@@ -200,7 +200,7 @@ class TestConstellations:
 
     def test_gps_static_svs(self):
         """Test GPS has static SV list."""
-        gps = GPS(use_wiki=False)
+        gps = GPS()
 
         assert len(gps.svs) == 32
         assert "G01" in gps.svs
@@ -293,35 +293,3 @@ class TestIntegration:
 
         assert freq_l1 == freq_e1
         assert freq_l1 == pytest.approx(1575.42)
-
-
-@pytest.mark.slow
-class TestWikipediaCache:
-    """Tests for Wikipedia satellite list caching.
-
-    These tests are marked as slow because they involve network access.
-    """
-
-    def test_wikipedia_cache_initialization(self):
-        """Test WikipediaCache can be initialized."""
-        from canvod.readers.gnss_specs.constellations import WikipediaCache
-
-        cache = WikipediaCache(cache_hours=6)
-        assert cache.cache_file == "gnss_satellites_cache.db"
-        assert cache.cache_hours == 6
-
-    @pytest.mark.skipif(True, reason="Requires network access")
-    def test_wikipedia_fetch_gps(self):
-        """Test fetching GPS satellites from Wikipedia."""
-        gps = GPS(use_wiki=True)
-
-        assert len(gps.svs) > 0
-        assert all(sv.startswith("G") for sv in gps.svs)
-
-    @pytest.mark.skipif(True, reason="Requires network access")
-    def test_wikipedia_fetch_galileo(self):
-        """Test fetching Galileo satellites from Wikipedia."""
-        galileo = GALILEO()
-
-        assert len(galileo.svs) > 0
-        assert all(sv.startswith("E") for sv in galileo.svs)

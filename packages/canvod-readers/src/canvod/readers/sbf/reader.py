@@ -163,12 +163,12 @@ def _get_bandwidth_mhz(system: str, band: str) -> float:
 # ---------------------------------------------------------------------------
 
 _THETA_ATTRS: dict[str, str] = {
-    "long_name": "Satellite zenith angle",
-    "standard_name": "sensor_zenith_angle",
+    "long_name": "Satellite polar angle",
+    "standard_name": "sensor_polar_angle",
     "units": "degrees",
     "source": "SBF SatVisibility block — reported by receiver firmware",
     "comment": (
-        "Zenith angle (polar angle from vertical): theta = 90 - elevation. "
+        "Polar angle (angle from vertical): theta = 90 - elevation. "
         "0 deg = satellite directly overhead; 90 deg = satellite at horizon. "
         "Computed from the raw SBF Elevation field (scaled by 0.01 deg). "
         "Derived from the receiver's internal navigation solution, NOT from "
@@ -569,6 +569,10 @@ class SbfReader(GNSSDataReader):
     """
 
     model_config = ConfigDict(extra="ignore")
+
+    @property
+    def source_format(self) -> str:
+        return "sbf"
 
     # ------------------------------------------------------------------
     # Pre-scan caches

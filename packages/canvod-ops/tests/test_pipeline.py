@@ -85,7 +85,7 @@ class TestPipelineResult:
 class TestBuildDefaultPipeline:
     def test_default_config(self):
         """Default config should create a pipeline with 2 ops."""
-        pipe = build_default_pipeline()
+        pipe = build_default_pipeline(PreprocessingConfig())
         assert len(pipe._ops) == 2
 
     def test_disabled_temporal(self):

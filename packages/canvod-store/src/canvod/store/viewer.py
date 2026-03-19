@@ -26,6 +26,13 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from canvod.store.store import MyIcechunkStore
 
+# Maps reader_format config values → human-readable labels for the viewer
+_FORMAT_LABELS: dict[str, str] = {
+    "sbf": "SBF",
+    "rinex3": "RINEX v3.04",
+    "rinex2": "RINEX v2",
+}
+
 
 @lru_cache(None)
 def _load_xarray_static_files() -> tuple[str, str]:
@@ -369,13 +376,20 @@ class IcechunkStoreViewer:
     def _get_display_type(self, branch: str = "main") -> str:
         """Compute a human-readable store type label.
 
-        Returns "VOD" for vod stores, "SBF" when any receiver group has
-        ``metadata/sbf_obs`` written, and "RINEX v3.04" otherwise.
+        Resolution order:
+        1. ``source_format`` root attr (set by GNSSReader via orchestrator)
+        2. Presence of ``metadata/sbf_obs`` group (legacy detection)
+        3. Default: "RINEX v3.04" for rinex_store, "VOD" for vod_store
         """
         store_type = self.store.store_type
         if store_type == "vod_store":
             return "VOD"
         if store_type == "rinex_store":
+            # 1. Check root-level source_format attr
+            fmt = self.store.source_format
+            if fmt:
+                return _FORMAT_LABELS.get(fmt, fmt)
+            # 2. Legacy: scan for sbf_obs group
             try:
                 import zarr
 

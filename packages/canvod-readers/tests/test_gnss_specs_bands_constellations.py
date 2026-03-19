@@ -307,6 +307,6 @@ class TestConstellationBase:
 
     def test_can_instantiate_directly(self):
         """ConstellationBase is no longer abstract after removing freqs_lut."""
-        cb = ConstellationBase(constellation="test", use_wiki=False, static_svs=["T01"])
+        cb = ConstellationBase(constellation="test", static_svs=["T01"])
         assert cb.constellation == "test"
         assert cb.svs == ["T01"]

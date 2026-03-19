@@ -10,26 +10,21 @@ description: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrie
 **An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals**
 
 canVODpy aims to be the central community-driven software suite for deriving
-and analyzing canopy Vegetation Optical Depth (VOD) from GNSS
+and analyzing canopy [Vegetation Optical Depth](https://gsics.nesdis.noaa.gov/wiki/Development/ReferenceDocuments){:target="_blank"} (VOD) from [GNSS](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"}
 signal-to-noise ratio observations.
 
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
+[![REUSE](https://img.shields.io/badge/REUSE-3.3-blue)](https://reuse.software/)
+[![ACDD 1.3](https://img.shields.io/badge/ACDD-1.3-4CAF50)](https://wiki.esipfed.org/Attribute_Convention_for_Data_Discovery_1-3)
+[![DataCite 4.5](https://img.shields.io/badge/DataCite-4.5-3F51B5)](https://schema.datacite.org/)
+[![STAC 1.1](https://img.shields.io/badge/STAC-1.1-FF9800)](https://stacspec.org/)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 
 </div>
-
----
-
-!!! tip "Community-Agreed Best Practices and Principles — coming soon"
-
-    canVODpy implements community-agreed best practices and principles
-    for deriving VOD from GNSS Transmissometry — covering raw data
-    preprocessing, nomenclature, retrieval methodology, and more.
-
-    [:octicons-arrow-right-24: Community-Agreed Best Practices & Principles](principles.md)
 
 ---
 
@@ -59,7 +54,7 @@ signal-to-noise ratio observations.
 
     ---
 
-    Equal-area, HEALPix, geodesic and four more grid types.
+    Equal-area, geodesic, HTM and four more grid types.
     KDTree cell assignment in O(n log m).
 
     [:octicons-arrow-right-24: canvod-grids](packages/grids/overview.md)
@@ -77,10 +72,10 @@ signal-to-noise ratio observations.
 
     ---
 
-    Dask Distributed pipeline with per-file commit,
+    Dask Distributed parallel pipeline with per-file commit,
     hash deduplication, and cooperative distributed writing.
 
-    [:octicons-arrow-right-24: Architecture](architecture.md)
+    [:octicons-arrow-right-24: Architecture](architecture.md) · [Dask & Resources](guides/dask-resources.md)
 
 </div>
 
@@ -93,9 +88,17 @@ signal-to-noise ratio observations.
 !!! success "RINEX v3.04"
 
     Text-based standard format from all manufacturers.
-    Satellite geometry computed from SP3 + CLK precise ephemerides.
+    Satellite geometry computed from [SP3](https://gssc.esa.int/navipedia/index.php/SP3){:target="_blank"} + CLK precise [ephemerides](https://gssc.esa.int/navipedia/index.php/Precise_GNSS_Orbits){:target="_blank"}.
 
     **Reader:** `Rnxv3Obs` — all GNSS constellations, all bands
+
+!!! success "Septentrio Binary Format (SBF)"
+
+    Binary format from [Septentrio](https://www.septentrio.com){:target="_blank"} receivers. Includes [broadcast ephemerides](https://gssc.esa.int/navipedia/index.php/Broadcast_Orbits){:target="_blank"}
+    (SatVisibility blocks) for standalone satellite geometry — no SP3/CLK
+    download required.
+
+    **Reader:** `SbfReader` — all GNSS constellations, PVT + DOP metadata
 
 </div>
 
@@ -151,10 +154,12 @@ pip install canvodpy
 ## Processing Pipeline
 
 ```mermaid
-flowchart LR
-    RINEX["RINEX 3.04"] --> PARSE["Parse & Hermite interpolation"]
+flowchart TD
+    RINEX["RINEX 3.04"] --> PARSE["Parse + SP3/CLK interpolation"]
+    SBF["Septentrio SBF"] --> PARSE2["Parse (geometry embedded)"]
     SP3["SP3 / CLK"] --> PARSE
     PARSE --> STORE["Icechunk store"]
+    PARSE2 --> STORE
     STORE --> VOD["Tau-Omega VOD retrieval"]
     VOD --> GRID["Hemispheric grid assignment"]
     GRID --> VIZ["Visualisation"]
@@ -184,7 +189,7 @@ flowchart LR
 
     ---
 
-    7 hemispheric grid types — equal-area, HEALPix, geodesic and more.
+    7 hemispheric grid types — equal-area, geodesic, HTM and more.
     KDTree-backed O(n log m) cell assignment.
 
 -   :fontawesome-solid-leaf: &nbsp; **canvod-vod**
@@ -212,6 +217,27 @@ flowchart LR
     ---
 
     Pydantic configuration, YYYYDOY date utilities, shared tooling.
+
+-   :fontawesome-solid-tag: &nbsp; **canvod-virtualiconvname**
+
+    ---
+
+    Maps arbitrary filenames to canonical canVOD names.
+    NamingRecipe system, pre-flight validation, DuckDB catalog.
+
+-   :fontawesome-solid-wand-magic-sparkles: &nbsp; **canvod-ops**
+
+    ---
+
+    Configurable preprocessing pipeline: temporal aggregation,
+    grid assignment, extensible Op chain.
+
+-   :fontawesome-solid-stamp: &nbsp; **canvod-store-metadata**
+
+    ---
+
+    Store-level provenance (DataCite, ACDD, STAC), compliance validation,
+    inventory builder, STAC catalog export.
 
 -   :fontawesome-solid-circle-nodes: &nbsp; **canvodpy**
 
@@ -242,6 +268,10 @@ flowchart LR
 !!! abstract "Documentation"
 
     `Zensical` · `beautiful-mermaid` · `marimo` notebooks
+
+!!! abstract "AI-assisted development"
+
+    [`Claude Code`](guides/ai-development.md) · 15+ domain skills · persistent memory · `CLAUDE.md`
 
 </div>
 

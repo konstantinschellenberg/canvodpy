@@ -3,7 +3,7 @@
 <!-- Build & Quality -->
 [![Platform Tests](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![Code Coverage](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml)
-[![Coverage Status](https://coveralls.io/repos/github/nfb2021/canvodpy/badge.svg?branch=main)](https://coveralls.io/github/nfb2021/canvodpy?branch=main)
+[![Audit](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 <!-- Python & Platforms -->
@@ -14,170 +14,175 @@
 <!-- Tech Stack -->
 [![Pydantic v2](https://img.shields.io/badge/Pydantic-v2-E92063?logo=pydantic&logoColor=white)](https://docs.pydantic.dev/)
 [![Icechunk](https://img.shields.io/badge/Icechunk-Storage-00A3E0)](https://icechunk.io/)
+[![Dask](https://img.shields.io/badge/Dask-Parallel-FDA061?logo=dask&logoColor=white)](https://www.dask.org/)
 
-<!-- Standards -->
+<!-- Standards & Metadata -->
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
-[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B%20%20%E2%97%8F%20%20%E2%97%8B-orange)](https://fair-software.eu)
+[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
+[![DataCite 4.5](https://img.shields.io/badge/DataCite-4.5-3F51B5)](https://schema.datacite.org/)
+[![ACDD 1.3](https://img.shields.io/badge/ACDD-1.3-4CAF50)](https://wiki.esipfed.org/Attribute_Convention_for_Data_Discovery_1-3)
+[![STAC 1.1](https://img.shields.io/badge/STAC-1.1-FF9800)](https://stacspec.org/)
+[![REUSE](https://img.shields.io/badge/REUSE-3.3-blue)](https://reuse.software/)
+
+<!-- AI & Development -->
+[![Claude Code](https://img.shields.io/badge/Claude_Code-AI_Assisted-cc785c?logo=anthropic&logoColor=white)](https://claude.com/claude-code)
 
 <!-- Project -->
 [![CLIMERS @ TU Wien](https://img.shields.io/badge/CLIMERS-TU_Wien-006699)](https://www.tuwien.at/en/mg/geo/climers)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-An open Python ecosystem for GNSS-Transmissometry (GNSS-T) canopy VOD retrievals. canVODpy aims to become the central community-driven software suite for deriving and analyzing Vegetation Optical Depth from GNSS signal-to-noise ratio observations.
+An open Python ecosystem for GNSS-Transmissometry (GNSS-T) canopy VOD retrievals. canVODpy is a community-driven software suite for deriving and analyzing Vegetation Optical Depth from GNSS signal-to-noise ratio observations.
 
 > [!CAUTION]
 > **Confidential — Pre-release Software.**
 > This software is shared under restricted access. Distribution, redistribution, or publication of this code or any derived results is **not permitted** without explicit written authorization from the author (Nicolas F. Bader, nicolas.bader@tuwien.ac.at). Access is granted solely to individuals authorized by the author.
 
 > [!IMPORTANT]
-> This project is in **beta**. Install from [TestPyPI](https://test.pypi.org/project/canvodpy/) for now.
-> Development requires `uv` and `just`:
+> This project is in **beta**. Development requires `uv` and `just`:
 > - Install `uv`: [uv documentation](https://docs.astral.sh/uv/getting-started/installation/)
 > - Install `just`: [just documentation](https://github.com/casey/just)
-
-> New to Git, GitHub, or Python tooling? See the [Getting Started Guide](docs/guides/getting-started.md) for a complete walkthrough.
 
 ## Overview
 
 canVODpy is organized as a monorepo with independent, composable packages:
 
-- **canvod-readers** - RINEX and GNSS data format readers
-- **canvod-auxiliary** - Auxiliary data handling (orbits, meteorology)
-- **canvod-grids** - Hemispheric grid operations (equal-area, HEALPix)
-- **canvod-vod** - Vegetation Optical Depth calculation algorithms
-- **canvod-store** - Versioned storage via Icechunk
-- **canvod-viz** - Hemispheric and time-series visualization
-- **canvod-utils** - Shared utilities
-- **canvodpy** - Umbrella package with pipeline orchestrator
+| Package | Description |
+|---|---|
+| **canvod-readers** | RINEX v3.04 and SBF binary file readers |
+| **canvod-auxiliary** | SP3/CLK ephemeris download, interpolation, coordinate transforms |
+| **canvod-grids** | 7 hemispheric grid types (equal-area, geodesic, HTM, ...) |
+| **canvod-vod** | Tau-omega VOD retrieval algorithms |
+| **canvod-store** | Versioned storage via Icechunk (Zarr v3) |
+| **canvod-store-metadata** | Store-level provenance (DataCite, ACDD, STAC) |
+| **canvod-viz** | Hemispheric and time-series visualisation |
+| **canvod-ops** | Configurable preprocessing pipeline |
+| **canvod-utils** | Configuration, date utilities, shared tooling |
+| **canvod-virtualiconvname** | Filename mapping and pre-flight validation |
+| **canvod-audit** | Three-tier verification suite (internal consistency, regression, vs gnssvod) |
+| **canvodpy** | Umbrella package — 4 API levels, factory system, orchestrator |
 
 ## Installation
 
 ```bash
-# Install from TestPyPI (beta)
-uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ canvodpy
+uv add canvodpy
 
 # Or install specific components
-uv pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ canvod-readers canvod-grids
+uv add canvod-readers canvod-grids
 ```
+
+## Quick Start
+
+```python
+from canvodpy import process_date, calculate_vod
+
+# Process one day: read + augment + write to Icechunk store
+process_date("Rosalia", "2025001")
+
+# Compute VOD from stored data
+vod = calculate_vod("Rosalia", "canopy_01", "reference_01", "2025001")
+```
+
+Four API levels are available — from one-liners to Airflow-ready stateless functions.
+See the [API Levels guide](https://nfb2021.github.io/canvodpy/guides/api-levels/) for details.
 
 ## Development Setup
 
-### Prerequisites
-
-This project requires two tools that need to be installed separately:
-
-1. **uv** - Fast Python package manager
-   ```bash
-   # macOS/Linux
-   curl -LsSf https://astral.sh/uv/install.sh | sh
-
-   # Windows
-   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-
-   # Or via package manager
-   brew install uv  # macOS
-   ```
-
-2. **just** - Command runner
-   ```bash
-   # macOS/Linux
-   curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash
-
-   # Or via package manager
-   brew install just      # macOS
-   cargo install just     # Rust
-   apt install just       # Ubuntu 23.04+
-   ```
-
-### Setup Steps
-
 ```bash
-# Clone repository
-git clone https://github.com/nfb2021/canvodpy.git
+# Clone repository (with submodules for demo notebooks and test data)
+git clone --recurse-submodules https://github.com/nfb2021/canvodpy.git
 cd canvodpy
 
-# Verify required tools are installed
-just check-dev-tools  # Checks uv, just, python3
+# Verify required tools
+just check-dev-tools
 
-# Install Python dependencies
+# Install dependencies + pre-commit hooks
 uv sync
-
-# Install pre-commit hooks
 just hooks
 
-# Run tests
+# Run tests and code quality checks
 just test
-
-# Check code quality
 just check
 ```
 
-### Available Commands
+### Common Commands
 
-See all available commands:
 ```bash
-just --list
+just --list              # Show all commands
+just test                # Run all tests
+just check               # Lint + format + type-check
+just docs                # Preview documentation locally
+just open-notebook NAME  # Edit a marimo notebook interactively
+just app-notebook NAME   # Run a marimo notebook as read-only app
+just notebooks           # List available notebooks
 ```
-
-Common commands:
-- `just check` - Lint, format, and type-check
-- `just test` - Run all tests
-- `just test-coverage` - Run tests with coverage report
-- `just changelog` - Generate CHANGELOG from commits
-- `just release <VERSION>` - Create a new release
 
 ## Documentation
 
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
-- **[docs/VERSIONING.md](docs/VERSIONING.md)** - Versioning strategy
-- **[docs/RELEASING.md](docs/RELEASING.md)** - Release process
-- **[docs/guides/HOW_RELEASE_WORKS.md](docs/guides/HOW_RELEASE_WORKS.md)** - Release system internals
-- **[docs/guides/PYPI_SETUP.md](docs/guides/PYPI_SETUP.md)** - PyPI publishing setup
+Full documentation is available at **[nfb2021.github.io/canvodpy](https://nfb2021.github.io/canvodpy/)**.
 
-## Usage
+Key pages:
 
-```python
-# Import from namespace packages
-from canvod.readers import Rnxv3Obs
-from canvod.grids import create_hemigrid
-from canvod.vod import VODCalculator
-
-# Or use umbrella package
-import canvodpy
-```
+- [Getting Started](https://nfb2021.github.io/canvodpy/guides/getting-started/)
+- [Architecture & Design Patterns](https://nfb2021.github.io/canvodpy/guides/architecture-design/)
+- [API Levels](https://nfb2021.github.io/canvodpy/guides/api-levels/)
+- [Configuration Guide](https://nfb2021.github.io/canvodpy/guides/configuration/)
+- [Contributing](CONTRIBUTING.md)
 
 ## Project Structure
 
 ```
-canvodpy/                    # Monorepo root
-├── packages/                # Independent packages
-│   ├── canvod-readers/
-│   ├── canvod-auxiliary/
-│   ├── canvod-grids/
-│   ├── canvod-vod/
-│   ├── canvod-store/
-│   ├── canvod-viz/
-│   └── canvod-utils/
-├── canvodpy/               # Umbrella package + orchestrator
-├── .github/                # CI/CD workflows
-├── docs/                   # Documentation
-└── pyproject.toml          # Workspace configuration
+canvodpy/                       # Monorepo root
+├── packages/                   # Independent packages
+│   ├── canvod-readers/         #   RINEX & SBF parsing
+│   ├── canvod-auxiliary/       #   Ephemeris & coordinate transforms
+│   ├── canvod-grids/           #   Hemispheric grid operations
+│   ├── canvod-vod/             #   VOD retrieval algorithms
+│   ├── canvod-store/           #   Icechunk versioned storage
+│   ├── canvod-store-metadata/  #   Store provenance & compliance
+│   ├── canvod-viz/             #   Visualisation
+│   ├── canvod-ops/             #   Preprocessing pipeline
+│   ├── canvod-utils/           #   Configuration & utilities
+│   ├── canvod-virtualiconvname/#   Filename mapping
+│   └── canvod-audit/          #   Three-tier verification suite
+├── canvodpy/                   # Umbrella package + orchestrator
+├── demo/                       # marimo notebooks (submodule)
+├── config/                     # YAML configuration files
+├── docs/                       # Zensical documentation
+├── .github/                    # CI/CD workflows
+├── CONTRIBUTORS.md             # Project contributors
+├── NOTICE                      # Apache 2.0 attribution
+└── LICENSE                     # Apache License 2.0
 ```
+
+## AI-Assisted Development
+
+This project uses [Claude Code](https://claude.com/claude-code) as a development and maintenance tool. The repository includes a comprehensive `CLAUDE.md` that provides the AI agent with:
+
+- **Scientific domain knowledge** — GNSS-T, VOD, signal processing concepts
+- **Architecture context** — monorepo structure, API levels, data contracts
+- **15+ domain skills** — xarray, Zarr, Pydantic, pytest, marimo, and more
+- **Persistent memory** — project decisions, conventions, and known issues across sessions
+
+New contributors can run `claude` in the repo root to get an AI assistant with full project context — it can explain any module, run tests, generate diagrams, and navigate the 12-package monorepo.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
+Contributions of all kinds are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+First-time contributors: add yourself to [CONTRIBUTORS.md](CONTRIBUTORS.md) in your PR.
 
 ## License
 
-Licensed under the Apache License, Version 2.0. See the [LICENSE file](https://github.com/nfb2021/canvodpy/blob/main/LICENSE) for details.
+Licensed under the [Apache License 2.0](LICENSE).
 
-## Author & Affiliation
+This software is provided "as is" without warranty of any kind. See the
+[Impressum](https://nfb2021.github.io/canvodpy/impressum/) for full legal notice
+and AI disclosure.
 
-**Author:** Nicolas François Bader (nicolas.bader@geo.tuwien.ac.at)
+## Affiliation
 
-Developed at the **Climate and Environmental Remote Sensing Research Unit (CLIMERS)**
-Department of Geodesy and Geoinformation
-TU Wien (Vienna University of Technology)
-[https://www.tuwien.at/en/mg/geo/climers](https://www.tuwien.at/en/mg/geo/climers)
+Founded by **Nicolas François Bader**
+
+[Climate and Environmental Remote Sensing Research Unit (CLIMERS)](https://www.tuwien.at/en/mg/geo/climers)
+Department of Geodesy and Geoinformation, TU Wien

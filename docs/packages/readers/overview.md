@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The `canvod-readers` package provides validated parsers for GNSS observation data. It transforms raw receiver files into analysis-ready xarray Datasets, serving as the data ingestion layer for GNSS Transmissometry (GNSS-T) analysis.
+The `canvod-readers` package provides validated parsers for [GNSS](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"} observation data. It transforms raw receiver files into analysis-ready xarray Datasets, serving as the data ingestion layer for [GNSS Transmissometry](https://gssc.esa.int/navipedia/index.php/GNSS){:target="_blank"} (GNSS-T) analysis.
 
 <div class="grid cards" markdown>
 
@@ -33,7 +33,7 @@ The `canvod-readers` package provides validated parsers for GNSS observation dat
 | Feature | `Rnxv3Obs` | `SbfReader` |
 | ------- | ---------- | ----------- |
 | Format | Plain text | Binary |
-| Extension | `.rnx`, `.XXo` | `.XX_`, `*.sbf` |
+| Extension | `.rnx` | `.sbf` |
 | Satellite geometry (θ, φ) | SP3 download | **Embedded** |
 | Extra metadata | Header only | PVT · DOP · quality |
 | `to_ds()` | ✓ | ✓ |
@@ -54,12 +54,14 @@ The `canvod-readers` package provides validated parsers for GNSS observation dat
 
 ```mermaid
 graph TD
-    A1["RINEX v3 File (.XXo)"] --> B1["Rnxv3Obs (+ SP3/CLK)"]
-    A2["SBF File (.XX_)"] --> B2["SbfReader"]
+    A1["RINEX v3 File (.rnx)"] --> B1["Rnxv3Obs (+ SP3/CLK)"]
+    A2["SBF File (.sbf)"] --> B2["SbfReader"]
     B1 --> C["validate_dataset()"]
     B2 --> C
-    C --> D["xarray.Dataset\n(epoch × sid)"]
-    B2 --> E["Metadata Dataset\n(DOP · PVT · θ · φ)"]
+    C --> D["`**xarray.Dataset**
+    epoch x sid`"]
+    B2 --> E["`**Metadata Dataset**
+    DOP, PVT, theta, phi`"]
     D --> F["Downstream Analysis"]
     E --> F
 ```
@@ -132,7 +134,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
     obs_ds, aux = reader.to_ds_and_auxiliary(keep_data_vars=["SNR"])
     meta_ds = aux["sbf_obs"]
 
-    # Zenith angle filter: elevation ≥ 20°
+    # Polar angle filter: elevation ≥ 20°
     snr_filtered = obs_ds["SNR"].where(meta_ds["theta"] <= 70)
     ```
 
@@ -170,7 +172,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 
     datasets = [
         Rnxv3Obs(fpath=f).to_ds(keep_data_vars=["SNR"])
-        for f in sorted(Path("/data/").glob("*.25o"))
+        for f in sorted(Path("/data/").glob("*.rnx"))
     ]
 
     time_series = xr.concat(datasets, dim="epoch")
@@ -226,7 +228,7 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 
     ```python
     from canvod.readers.gnss_specs.constellations import GPS
-    gps = GPS(use_wiki=False)  # static SVs, no network
+    gps = GPS()  # static SVs from IGS SINEX catalog
     gps.BANDS  # {'1': 'L1', '2': 'L2', '5': 'L5'}
     ```
 
@@ -281,9 +283,10 @@ Subclasses only need to inherit from `GNSSDataReader` — no separate `BaseModel
 !!! tip "Batch processing"
 
     For many files, the orchestrator uses **Dask Distributed** with a
-    `LocalCluster` for parallel RINEX processing (falls back to
-    `ProcessPoolExecutor` if Dask is unavailable).  See
-    `canvodpy.orchestrator` for batch pipeline details.
+    `LocalCluster` for parallel processing. Each worker handles one file
+    at a time. Falls back to `ProcessPoolExecutor` if Dask is unavailable.
+    See the [Dask & Resource Management](../../guides/dask-resources.md)
+    guide for configuration and monitoring.
 
 !!! tip "Storage"
 

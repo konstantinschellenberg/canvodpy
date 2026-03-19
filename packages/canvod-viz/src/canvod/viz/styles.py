@@ -1,9 +1,14 @@
 """Styling configuration for visualizations.
 
-Provides consistent styling across 2D matplotlib and 3D plotly visualizations.
+Provides consistent styling across 2D matplotlib and 3D plotly visualizations,
+including publication-quality RSE journal style and colorscale utilities.
 """
 
+from __future__ import annotations
+
+import re
 from dataclasses import dataclass, field
+from functools import wraps
 from typing import Any
 
 
@@ -205,6 +210,31 @@ def create_publication_style() -> PlotStyle:
     )
 
 
+def create_rse_style() -> PlotStyle:
+    """Create styling matching Remote Sensing of Environment journal guidelines.
+
+    Returns
+    -------
+    PlotStyle
+        RSE-compatible styling with Arial/Helvetica fonts, 300 DPI,
+        inward ticks, and colorblind-friendly color cycle.
+
+    """
+    return PlotStyle(
+        colormap="viridis",
+        colorscale="Viridis",
+        background_color="white",
+        text_color="black",
+        font_family="Arial, Helvetica, DejaVu Sans, sans-serif",
+        font_size=11,
+        title_size=14,
+        label_size=12,
+        edge_linewidth=1.0,
+        opacity=0.9,
+        dark_mode=False,
+    )
+
+
 def create_interactive_style(dark_mode: bool = True) -> PlotStyle:
     """Create styling optimized for interactive exploration.
 
@@ -239,3 +269,237 @@ def create_interactive_style(dark_mode: bool = True) -> PlotStyle:
         wireframe_opacity=0.15,
         dark_mode=dark_mode,
     )
+
+
+# ==============================================================================
+# RSE journal style (Remote Sensing of Environment)
+# ==============================================================================
+
+#: Colorblind-friendly palette (Wong, 2011).
+RSE_COLORS: list[str] = [
+    "#0072B2",
+    "#D55E00",
+    "#009E73",
+    "#CC79A7",
+    "#56B4E9",
+    "#E69F00",
+    "#F0E442",
+    "#000000",
+]
+
+
+def _rse_rcparams() -> dict[str, Any]:
+    """Return matplotlib rcParams dict for RSE journal style."""
+    import matplotlib.pyplot as plt
+
+    return {
+        "figure.figsize": (8.0, 6.0),
+        "figure.dpi": 300,
+        "figure.facecolor": "white",
+        "figure.edgecolor": "white",
+        "savefig.facecolor": "white",
+        "savefig.edgecolor": "white",
+        "font.family": "sans-serif",
+        "font.sans-serif": ["Arial", "Helvetica", "DejaVu Sans"],
+        "font.size": 11,
+        "text.color": "black",
+        "axes.linewidth": 1.0,
+        "axes.titlesize": 14,
+        "axes.labelsize": 12,
+        "axes.labelcolor": "black",
+        "axes.edgecolor": "black",
+        "axes.facecolor": "white",
+        "axes.prop_cycle": plt.cycler(color=RSE_COLORS),
+        "xtick.direction": "in",
+        "ytick.direction": "in",
+        "xtick.major.size": 4,
+        "ytick.major.size": 4,
+        "xtick.minor.size": 2,
+        "ytick.minor.size": 2,
+        "xtick.top": True,
+        "ytick.right": True,
+        "xtick.color": "black",
+        "ytick.color": "black",
+        "xtick.labelcolor": "black",
+        "ytick.labelcolor": "black",
+        "legend.frameon": True,
+        "legend.framealpha": 0.8,
+        "legend.fontsize": 10,
+        "legend.edgecolor": "0.8",
+        "errorbar.capsize": 3,
+        "savefig.dpi": 300,
+        "savefig.format": "tiff",
+        "savefig.bbox": "tight",
+        "image.cmap": "viridis",
+    }
+
+
+def apply_rse_style() -> dict[str, Any]:
+    """Apply RSE journal style globally via ``plt.rcParams``.
+
+    Returns
+    -------
+    dict
+        The applied rcParams dictionary.
+
+    """
+    import matplotlib.pyplot as plt
+
+    params = _rse_rcparams()
+    plt.rcParams.update(params)
+    return params
+
+
+def rse_context():
+    """Return a context manager that temporarily applies RSE style.
+
+    Usage::
+
+        with rse_context():
+            fig, ax = plt.subplots()
+            ...
+
+    """
+    import matplotlib.pyplot as plt
+
+    return plt.rc_context(_rse_rcparams())
+
+
+def rse_style(func):
+    """Decorator that applies RSE style to a plotting function.
+
+    The decorated function is expected to return ``(fig, axes)``.
+    """
+
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        import matplotlib.pyplot as plt
+
+        with plt.rc_context(_rse_rcparams()):
+            fig, axes = func(*args, **kwargs)
+            fix_figure_for_dark_mode(fig)
+            return fig, axes
+
+    return wrapper
+
+
+def style_colorbar(cbar, label: str | None = None):
+    """Apply RSE-compatible styling to a matplotlib colorbar.
+
+    Parameters
+    ----------
+    cbar : matplotlib.colorbar.Colorbar
+        Colorbar instance to style.
+    label : str, optional
+        Label text.
+
+    Returns
+    -------
+    matplotlib.colorbar.Colorbar
+        The styled colorbar.
+
+    """
+    cbar.ax.tick_params(colors="black", labelcolor="black", labelsize=10)
+    if label:
+        cbar.set_label(label, color="black", size=12)
+    for spine in cbar.ax.spines.values():
+        spine.set_edgecolor("black")
+    return cbar
+
+
+def fix_figure_for_dark_mode(fig, axes=None):
+    """Set explicit white backgrounds so figures render correctly in dark IDEs.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to fix.
+    axes : list, optional
+        Specific axes; defaults to all axes in the figure.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+
+    """
+    fig.patch.set_facecolor("white")
+    fig.patch.set_edgecolor("white")
+    if axes is None:
+        axes = fig.get_axes()
+    for ax in axes:
+        ax.set_facecolor("white")
+        for spine in ax.spines.values():
+            spine.set_color("black")
+        ax.tick_params(colors="black", labelcolor="black")
+    return fig
+
+
+# ==============================================================================
+# Colorscale — cross-framework colormap conversion
+# ==============================================================================
+
+
+@dataclass
+class Colorscale:
+    """Unified colorscale that converts between Plotly, matplotlib, and palettable.
+
+    Parameters
+    ----------
+    name : str
+        Colorscale identifier.
+    stops : list of (float, str)
+        Normalized ``[(position, color), ...]`` where position is 0–1.
+
+    """
+
+    name: str
+    stops: list[tuple[float, str]] = field(default_factory=list)
+
+    @classmethod
+    def from_matplotlib(cls, cmap_name: str, n_colors: int = 256) -> Colorscale:
+        """Create from a matplotlib colormap name."""
+        import matplotlib.pyplot as plt
+
+        cmap = plt.get_cmap(cmap_name)
+        stops = [
+            (
+                i / (n_colors - 1),
+                f"rgb({int(c[0] * 255)},{int(c[1] * 255)},{int(c[2] * 255)})",
+            )
+            for i, c in ((j, cmap(j / (n_colors - 1))) for j in range(n_colors))
+        ]
+        return cls(name=cmap_name, stops=stops)
+
+    @classmethod
+    def from_colors(cls, colors: list[str], name: str = "custom") -> Colorscale:
+        """Create from a list of color strings (hex, named, or rgb())."""
+        n = len(colors)
+        stops = [(i / (n - 1), c) for i, c in enumerate(colors)]
+        return cls(name=name, stops=stops)
+
+    def to_matplotlib(self, n_colors: int = 256):
+        """Convert to a matplotlib ``LinearSegmentedColormap``.
+
+        Returns
+        -------
+        matplotlib.colors.Colormap
+
+        """
+        from matplotlib.colors import LinearSegmentedColormap, to_rgb
+
+        colors = []
+        for _pos, color_str in self.stops:
+            if color_str.startswith("rgb"):
+                match = re.match(r"rgb\((\d+),?\s*(\d+),?\s*(\d+)\)", color_str)
+                if match:
+                    r, g, b = (int(x) for x in match.groups())
+                    colors.append((r / 255, g / 255, b / 255))
+                else:
+                    raise ValueError(f"Invalid rgb format: {color_str}")
+            else:
+                colors.append(to_rgb(color_str))
+        return LinearSegmentedColormap.from_list(self.name, colors, N=n_colors)
+
+    def to_plotly(self) -> list[tuple[float, str]]:
+        """Return Plotly-compatible colorscale list."""
+        return list(self.stops)

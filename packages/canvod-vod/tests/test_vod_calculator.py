@@ -267,15 +267,6 @@ class TestTauOmegaZerothOrder:
 
     def test_from_icechunkstore_import_error(self):
         """Test ImportError with helpful message when canvod-store not installed."""
-        canopy_ds = xr.Dataset(
-            {
-                "SNR": (["epoch", "sid"], np.full((5, 3), 10.0)),
-                "phi": (["epoch", "sid"], np.zeros((5, 3))),
-                "theta": (["epoch", "sid"], np.full((5, 3), np.pi / 4)),
-            }
-        )
-        sky_ds = canopy_ds.copy()
-
         with unittest.mock.patch.dict("sys.modules", {"canvod.store": None}):
             with pytest.raises(ImportError, match="canvod-store"):
                 TauOmegaZerothOrder.from_icechunkstore("/fake/path")

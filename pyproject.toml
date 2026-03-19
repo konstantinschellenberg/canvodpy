@@ -11,6 +11,7 @@ members = ["packages/*", "canvodpy"]
 
 [dependency-groups]
 dev = [
+    "anywidget>=0.9.21",
     "commitizen>=4.13.3",
     "hypothesis>=6.151.4",
     "ipykernel>=7.1.0",
@@ -24,6 +25,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "pytest-mock>=3.12.0",
     "ruff>=0.14.5",
+    "traitlets>=5.14.3",
     "ty>=0.0.1a27",
     "zensical>=0.0.18",
 ]
@@ -107,12 +109,13 @@ testpaths = [
     "packages/canvod-grids/tests",
     "packages/canvod-readers/tests",
     "packages/canvod-store/tests",
-    "packages/canvod-naming/tests",
+    "packages/canvod-store-metadata/tests",
+    "packages/canvod-virtualiconvname/tests",
     "packages/canvod-utils/tests",
     "packages/canvod-viz/tests",
     "packages/canvod-vod/tests",
     "packages/canvod-ops/tests",
-    "packages/canvod-streamstats/tests",
+    "packages/canvod-audit/tests",
 ]
 addopts = "--cov --cov-report term-missing --cov-report lcov -rsx --verbose --color=yes"
 markers = [
@@ -121,6 +124,20 @@ markers = [
 
 [tool.coverage.run]
 relative_files = true
+source = [
+    "canvodpy/src",
+    "packages/canvod-auxiliary/src",
+    "packages/canvod-grids/src",
+    "packages/canvod-readers/src",
+    "packages/canvod-store/src",
+    "packages/canvod-store-metadata/src",
+    "packages/canvod-virtualiconvname/src",
+    "packages/canvod-utils/src",
+    "packages/canvod-viz/src",
+    "packages/canvod-vod/src",
+    "packages/canvod-ops/src",
+    "packages/canvod-audit/src",
+]
 
 # ============================================================================
 # Commitizen Configuration (Conventional Commits)
@@ -136,11 +153,12 @@ version_files = [
     "packages/canvod-grids/pyproject.toml:version",
     "packages/canvod-vod/pyproject.toml:version",
     "packages/canvod-store/pyproject.toml:version",
+    "packages/canvod-store-metadata/pyproject.toml:version",
     "packages/canvod-viz/pyproject.toml:version",
     "packages/canvod-utils/pyproject.toml:version",
-    "packages/canvod-naming/pyproject.toml:version",
+    "packages/canvod-virtualiconvname/pyproject.toml:version",
     "packages/canvod-ops/pyproject.toml:version",
-    "packages/canvod-streamstats/pyproject.toml:version",
+    "packages/canvod-audit/pyproject.toml:version",
 ]
 tag_format = "v$version"
 update_changelog_on_bump = true
@@ -161,7 +179,7 @@ scopes = [
     "orchestrator",
     "diagnostics",
     "ops",
-    "streamstats",
+    "audit",
     "ci",
     "docs",
     "deps",

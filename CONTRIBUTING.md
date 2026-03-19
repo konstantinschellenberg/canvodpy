@@ -123,18 +123,17 @@ just docs                      # Preview documentation
 
 ## Pull Request Guidelines
 
-1. Include tests for new functionality.
-2. Update documentation if adding features.
+1. Include tests for new functionality — new code must not reduce test coverage.
+2. Update the Zensical documentation in `docs/` if adding or changing public API, behaviour, or configuration.
 3. Ensure compatibility with Python 3.13+.
+4. Add yourself to `CONTRIBUTORS.md` if this is your first contribution.
 
-## Workspace Development
+## Licensing
 
-This project uses a monorepo structure with multiple packages:
-
-- Work on individual packages in `packages/` or `canvodpy/`
-- Run package-specific commands: `just check-package canvod-readers`
-- Run workspace-wide commands: `just check`, `just test`
-- All packages share a single lockfile and virtual environment
+canVODpy is licensed under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+By submitting a pull request, you agree that your contribution is licensed under
+the same terms. The `LICENSE` and `NOTICE` files at the repository root apply to
+all source files. Per-file license headers are not required.
 
 ## Code Quality
 

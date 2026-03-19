@@ -6,6 +6,7 @@ Loads configuration from multiple YAML files with priority:
 2. User configuration files (highest priority)
 """
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -253,5 +254,9 @@ def load_config(config_dir: Path | None = None) -> CanvodConfig:
     >>> print(config.nasa_earthdata_acc_mail)
     >>> print(config.processing.aux_data.agency)
     """
+    if config_dir is None:
+        env_dir = os.environ.get("CANVOD_CONFIG_DIR")
+        if env_dir:
+            config_dir = Path(env_dir)
     loader = ConfigLoader(config_dir)
     return loader.load()

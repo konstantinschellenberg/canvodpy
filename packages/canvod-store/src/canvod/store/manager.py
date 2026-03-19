@@ -19,6 +19,7 @@ import xarray as xr
 if TYPE_CHECKING:
     from canvod.vod import VODCalculator
 
+from canvod.utils.config.models import VodAnalysisConfig
 from canvodpy.logging import get_logger
 
 from canvod.store.store import (
@@ -115,26 +116,23 @@ class GnssResearchSite:
         }
 
     @property
-    def vod_analyses(self) -> dict[str, dict[str, Any]]:
+    def vod_analyses(self) -> dict[str, VodAnalysisConfig]:
         """Get all configured VOD analyses for this site.
 
         Returns auto-derived analyses from scs_from if no explicit
         vod_analyses are configured.
         """
         if self._site_config.vod_analyses is not None:
-            return {
-                name: cfg.model_dump()
-                for name, cfg in self._site_config.vod_analyses.items()
-            }
+            return dict(self._site_config.vod_analyses)
         return self.get_auto_vod_analyses()
 
     @property
-    def active_vod_analyses(self) -> dict[str, dict[str, Any]]:
+    def active_vod_analyses(self) -> dict[str, VodAnalysisConfig]:
         """Get only active VOD analyses for this site."""
         return {
             name: config
             for name, config in self.vod_analyses.items()
-            if config.get("active", True)
+            if getattr(config, "active", True)
         }
 
     def get_receiver_metadata(
@@ -208,24 +206,24 @@ class GnssResearchSite:
         """
         return self._site_config.get_reference_canopy_pairs()
 
-    def get_auto_vod_analyses(self) -> dict[str, dict[str, Any]]:
+    def get_auto_vod_analyses(self) -> dict[str, VodAnalysisConfig]:
         """Derive VOD analysis pairs from scs_from configuration.
 
         Creates one VOD pair per (canopy, reference_for_that_canopy) combination.
 
         Returns
         -------
-        dict[str, dict[str, Any]]
+        dict[str, VodAnalysisConfig]
             Auto-derived VOD analyses keyed by analysis name.
         """
-        analyses: dict[str, dict[str, Any]] = {}
+        analyses: dict[str, VodAnalysisConfig] = {}
         for ref_name, canopy_name in self.get_reference_canopy_pairs():
             analysis_name = f"{canopy_name}_vs_{ref_name}"
-            analyses[analysis_name] = {
-                "canopy_receiver": canopy_name,
-                "reference_receiver": f"{ref_name}_{canopy_name}",
-                "description": f"VOD analysis {canopy_name} vs {ref_name}",
-            }
+            analyses[analysis_name] = VodAnalysisConfig(
+                canopy_receiver=canopy_name,
+                reference_receiver=f"{ref_name}_{canopy_name}",
+                description=f"VOD analysis {canopy_name} vs {ref_name}",
+            )
         return analyses
 
     def validate_site_config(self) -> bool:
@@ -249,8 +247,8 @@ class GnssResearchSite:
         }
 
         for analysis_name, analysis_config in self.vod_analyses.items():
-            canopy_rx = analysis_config["canopy_receiver"]
-            ref_rx = analysis_config["reference_receiver"]
+            canopy_rx = analysis_config.canopy_receiver
+            ref_rx = analysis_config.reference_receiver
 
             if canopy_rx not in self.receivers:
                 raise ValueError(
@@ -275,7 +273,8 @@ class GnssResearchSite:
                 ref_type = self.receivers[ref_rx]["type"]
                 if ref_type != "reference":
                     raise ValueError(
-                        f"Receiver '{ref_rx}' used as reference but type is '{ref_type}'"
+                        f"Receiver '{ref_rx}' used as reference"
+                        f" but type is '{ref_type}'"
                     )
 
         self._logger.debug("Site configuration validation passed")
@@ -516,8 +515,8 @@ class GnssResearchSite:
             )
 
         analysis_config = self.vod_analyses[analysis_name]
-        canopy_receiver = analysis_config["canopy_receiver"]
-        reference_receiver = analysis_config["reference_receiver"]
+        canopy_receiver = analysis_config.canopy_receiver
+        reference_receiver = analysis_config.reference_receiver
 
         self._logger.info(
             f"Preparing VOD input data: {canopy_receiver} vs {reference_receiver}"

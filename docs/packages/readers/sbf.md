@@ -12,7 +12,7 @@ output of Septentrio GNSS receivers (AsteRx SB3, mosaic-X5, PolaRx, etc.).
     The SBF reader differs from `Rnxv3Obs` (RINEX) in one fundamental respect:
     **satellite geometry is embedded in the binary stream**.
     No SP3 ephemeris download is required for quick-look analysis —
-    the receiver's own navigation solution provides azimuth and zenith angle
+    the receiver's own navigation solution provides azimuth and polar angle
     for every tracked signal.
 
 ---
@@ -73,7 +73,7 @@ output of Septentrio GNSS receivers (AsteRx SB3, mosaic-X5, PolaRx, etc.).
     ---
 
     Per-satellite azimuth and elevation for each tracked SV.
-    Converted to geographic azimuth φ and zenith angle θ.
+    Converted to geographic azimuth φ and polar angle θ.
 
 -   :fontawesome-solid-wave-square: &nbsp; **MeasExtra**
 
@@ -96,7 +96,7 @@ Identical structure to `Rnxv3Obs.to_ds()` — a drop-in replacement:
 | -------- | ----- |
 | Dimensions | `(epoch, sid)` |
 | `epoch` coordinate | `datetime64[ns]`, UTC |
-| `sid` coordinate | `"SV\|Band\|Code"` string (e.g. `G07\|L1C\|C`) |
+| `sid` coordinate | `"SV\|Band\|Code"` string (e.g. `G07\|L1\|C`) |
 | Data variables | `SNR` (always), `Pseudorange`, `Phase`, `Doppler` (on request) |
 | Validation | Passes `validate_dataset()` |
 
@@ -125,7 +125,7 @@ under `{receiver}/metadata/sbf_obs` in the Icechunk store.
 
 | Variable | SBF Source | CF `units` | Description |
 | -------- | ---------- | ---------- | ----------- |
-| `theta` | SatVisibility | `degrees` | Zenith angle (0 = overhead, 90 = horizon) |
+| `theta` | SatVisibility | `degrees` | Polar angle (0 = overhead, 90 = horizon) |
 | `phi` | SatVisibility | `degrees` | Geographic azimuth (0 = North, clockwise) |
 | `rise_set` | SatVisibility | `1` | 1 = rising, 0 = setting |
 | `mp_correction_m` | MeasExtra | `m` | Multipath path-delay correction |
@@ -203,7 +203,7 @@ Test a specific flag with `(rx_error & flag_mask) != 0`.
 
 ## Coordinate Conventions
 
-### Zenith angle θ (theta)
+### Polar angle θ (theta)
 
 $$\theta = 90° - \text{elevation}$$
 
@@ -261,8 +261,8 @@ interoperability and scientific reproducibility.
     ```python
     meta_ds["theta"].attrs
     # {
-    #     "long_name":     "Zenith angle",
-    #     "standard_name": "zenith_angle",
+    #     "long_name":     "Polar angle",
+    #     "standard_name": "polar_angle",
     #     "units":         "degrees",
     #     "source":        "SBF SatVisibility block",
     #     "comment":       "theta = 90 - elevation; 0 = overhead, 90 = horizon",
@@ -339,7 +339,7 @@ interoperability and scientific reproducibility.
     ```python
     import xarray as xr
 
-    readers = [SbfReader(fpath=f) for f in sorted(sbf_dir.glob("*.25_"))]
+    readers = [SbfReader(fpath=f) for f in sorted(sbf_dir.glob("*.sbf"))]
 
     obs_list, meta_list = [], []
     for r in readers:
@@ -360,7 +360,7 @@ interoperability and scientific reproducibility.
     # L1C band only
     l1c = daily_obs.sel(sid=[s for s in daily_obs.sid.values if "|L1C|" in s])
 
-    # Zenith angle filter: elevation ≥ 20° → theta ≤ 70°
+    # Polar angle filter: elevation ≥ 20° → theta ≤ 70°
     theta_mask = daily_meta["theta"] <= 70
     snr_high_el = daily_obs["SNR"].where(theta_mask)
     ```
@@ -399,19 +399,116 @@ tuple[xr.Dataset, dict[str, xr.Dataset]]
 
 ---
 
+## Source Format Identification
+
+Every reader exposes a `source_format` property used by the store and viewer
+to identify the data origin. The base class returns `"rinex3"` by default;
+`SbfReader` overrides it:
+
+```python
+reader = SbfReader(fpath=Path("station.25_"))
+reader.source_format  # → "sbf"
+```
+
+This value is written as a root-level Zarr attribute (`source_format`) on first
+ingest. The store viewer uses it to select the correct display labels and to
+detect whether `sbf_obs` metadata is available.
+
+---
+
+## Broadcast Ephemeris: SBF as Geometry Source
+
+The SBF `SatVisibility` block provides satellite azimuth and elevation computed
+by the receiver firmware from broadcast navigation messages. This makes SBF files
+a **self-contained ephemeris source** — no SP3/CLK download needed.
+
+The `SbfBroadcastProvider` (an `EphemerisProvider` implementation) extracts
+theta/phi from the `sbf_obs` auxiliary dataset and aligns them to observation
+epochs and SIDs:
+
+```python
+# Automatic in the orchestrator when ephemeris_source = "broadcast"
+# and reader_format = "sbf"
+
+# Manual usage:
+obs_ds, aux = reader.to_ds_and_auxiliary(keep_data_vars=["SNR"])
+sbf_obs = aux["sbf_obs"]
+
+# theta/phi are already in sbf_obs — no coordinate transform needed
+theta = sbf_obs["theta"]  # polar angle (degrees)
+phi = sbf_obs["phi"]      # geographic azimuth (degrees)
+```
+
+!!! tip "When to use broadcast vs agency final"
+
+    For VOD applications, broadcast ephemeris accuracy (~1-2 m orbit) produces
+    angular errors six orders of magnitude below measurement noise. Use
+    `ephemeris_source: "broadcast"` for immediate processing without internet.
+    See [:octicons-arrow-right-24: Ephemeris Sources](ephemeris-sources.md) for details.
+
+---
+
+## Store Integration
+
+The orchestrator writes the SBF metadata dataset to the Icechunk store
+alongside observations, enabling retrospective quality analysis.
+
+```python
+from canvod.store import MyIcechunkStore
+
+store = MyIcechunkStore(store_path)
+
+# Write metadata (called automatically by orchestrator)
+store.write_sbf_metadata(receiver_name, sbf_obs_ds)
+
+# Read back
+meta_ds = store.read_sbf_metadata(receiver_name)
+
+# Check existence
+if store.sbf_metadata_exists(receiver_name):
+    meta_ds = store.read_sbf_metadata(receiver_name)
+```
+
+The metadata is stored at `{receiver}/metadata/sbf_obs` in the Zarr hierarchy.
+
+---
+
+## Satellite Catalog Enrichment
+
+Combine SBF observations with IGS satellite metadata to add SVN, block type,
+TX power, mass, and orbital plane as coordinates:
+
+```python
+from canvod.readers.gnss_specs import SatelliteCatalog
+
+catalog = SatelliteCatalog.load()
+enriched = catalog.enrich_dataset(obs_ds)
+
+# Now filter by satellite generation
+gps3 = enriched.sel(sid=enriched.coords["block"].str.startswith("GPS-III"))
+```
+
+See [:octicons-arrow-right-24: Satellite Catalog](satellite-catalog.md) for the full API.
+
+---
+
 ## Differences vs. RINEX (`Rnxv3Obs`)
 
 | Aspect | RINEX v3 (`Rnxv3Obs`) | SBF (`SbfReader`) |
 | ------ | --------------------- | ----------------- |
 | Format | Plain text | Binary |
-| File extension | `.rnx`, `.XXo` | `.XX_`, `*.sbf` |
+| File extension | `.rnx` | `.sbf` |
 | Header | Structured text | `ReceiverSetup` block |
 | Geometry (θ, φ) | Requires SP3 download | **Embedded in file** |
 | Metadata | Header only | Full PVT + quality monitoring |
+| `source_format` | `"rinex3"` | `"sbf"` |
 | `to_ds()` | ✓ | ✓ |
 | `iter_epochs()` | ✓ | ✓ |
 | `to_metadata_ds()` | — | ✓ |
 | `to_ds_and_auxiliary()` | Returns `{}` aux | Returns `{"sbf_obs": meta_ds}` |
+| Broadcast ephemeris | Requires `.YYp` NAV file (planned) | Built-in via SatVisibility |
+| SID discovery | Header-based (all declared SVs) | Observation-based (tracked SVs only) |
+| SNR quantization | ~0.001 dB | 0.25 dB (hardware) |
 
 ---
 

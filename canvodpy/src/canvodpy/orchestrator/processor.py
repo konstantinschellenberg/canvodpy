@@ -1,5 +1,7 @@
 """RINEX processing orchestration and Icechunk writing helpers."""
 
+from __future__ import annotations
+
 import contextlib
 import json
 import os
@@ -85,6 +87,9 @@ def preprocess_with_hermite_aux(
     keep_sids: list[str] | None = None,
     reader_name: str = "rinex3",
     use_sbf_geometry: bool = False,
+    store_radial_distance: bool = False,
+    broadcast_canopy_file: Path | None = None,
+    broadcast_canopy_fmt: str | None = None,
 ) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
     """Read RINEX and compute coordinates using Hermite-interpolated aux data from Zarr.
 
@@ -108,6 +113,14 @@ def preprocess_with_hermite_aux(
     use_sbf_geometry : bool, default False
         If True and reader_name is "sbf", skip external orbit/clock downloads
         and transfer theta/phi directly from SBF SatVisibility blocks.
+    store_radial_distance : bool, default False
+        If True, keep the radial distance variable ``r`` in the output.
+    broadcast_canopy_file : Path | None, default None
+        Path to the matching canopy SBF file. When provided (for reference
+        receivers in shared position mode), its sbf_obs theta/phi override
+        the reference file's own geometry.
+    broadcast_canopy_fmt : str | None, default None
+        Reader format for the canopy file (e.g. "sbf").
 
     Returns
     -------
@@ -152,9 +165,38 @@ def preprocess_with_hermite_aux(
 
             # SBF-geometry fast path: use receiver-reported theta/phi, skip ephemeris
             if reader_name == "sbf" and use_sbf_geometry:
-                meta_ds = aux_datasets.get("sbf_obs")
+                # Use canopy file's sbf_obs when provided (reference receiver
+                # in shared position mode), else this file's own sbf_obs
+                if broadcast_canopy_file is not None:
+                    from canvodpy.factories import ReaderFactory
+
+                    canopy_rnx = ReaderFactory.create(
+                        broadcast_canopy_fmt or "sbf", fpath=broadcast_canopy_file
+                    )
+                    _, canopy_aux = canopy_rnx.to_ds_and_auxiliary(
+                        keep_data_vars=None,
+                        write_global_attrs=False,
+                        keep_sids=keep_sids,
+                    )
+                    meta_ds = canopy_aux.get("sbf_obs")
+                else:
+                    meta_ds = aux_datasets.get("sbf_obs")
                 if meta_ds is not None and "theta" in meta_ds and "phi" in meta_ds:
-                    ds = ds.assign_coords(theta=meta_ds["theta"], phi=meta_ds["phi"])
+                    # Align broadcast theta/phi to obs epoch+SID space
+                    geo = meta_ds[["theta", "phi"]]
+                    if "epoch" in geo.dims:
+                        common_epochs = np.intersect1d(
+                            ds.epoch.values, geo.epoch.values
+                        )
+                        geo = geo.sel(epoch=common_epochs)
+                        geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
+                    common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
+                    geo = geo.sel(sid=common_sids)
+                    geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
+                    # SBF SatVisibility stores theta/phi in degrees;
+                    # convert to radians for consistency with agency path.
+                    ds["theta"] = np.deg2rad(geo["theta"])
+                    ds["phi"] = np.deg2rad(geo["phi"])
                 from canvod.auxiliary.preprocessing import flush_sid_accumulators
 
                 sid_issues = flush_sid_accumulators()
@@ -235,6 +277,8 @@ def preprocess_with_hermite_aux(
                 aux_slice,
                 receiver_position,
             )
+            if not store_radial_distance and "r" in ds_augmented:
+                ds_augmented = ds_augmented.drop_vars("r")
             t_coords = time.perf_counter()
 
             log.info(
@@ -523,8 +567,9 @@ class RinexDataProcessor:
         else:
             self.n_max_workers = None
         self._dask_client = dask_client
-        self._reader_name = reader_name
-        self.use_sbf_geometry = use_sbf_geometry
+        self._reader_name = reader_name  # fallback; prefer per-receiver reader_format
+        # use_sbf_geometry: explicit param wins, otherwise read from config
+        self._use_sbf_geometry_override = use_sbf_geometry
         self._logger = get_logger(__name__).bind(
             site=site.site_name,
             workers=self.n_max_workers or os.cpu_count(),
@@ -540,6 +585,14 @@ class RinexDataProcessor:
         config = load_config()
         self._config = config  # cache to avoid re-reading YAML in methods
         self.keep_sids = config.sids.get_sids()
+
+        # Resolve ephemeris source: explicit param > config > default (final)
+        if self._use_sbf_geometry_override:
+            self.use_sbf_geometry = True
+        else:
+            self.use_sbf_geometry = (
+                config.processing.processing.ephemeris_source == "broadcast"
+            )
 
         # Cache config values formerly in globals
         aux_cfg = config.processing.aux_data
@@ -559,7 +612,15 @@ class RinexDataProcessor:
         )
 
         # Initialize auxiliary data pipeline (loads SP3 and CLK files)
-        self.aux_pipeline = self._initialize_aux_pipeline()
+        # Skip when using broadcast ephemerides (no SP3/CLK needed)
+        if self.use_sbf_geometry:
+            self.aux_pipeline = None
+            self._logger.info(
+                "aux_pipeline_skipped",
+                reason="ephemeris_source=broadcast, using SBF SatVisibility",
+            )
+        else:
+            self.aux_pipeline = self._initialize_aux_pipeline()
 
         t_init_end = time.perf_counter()
         self._logger.info(
@@ -630,11 +691,20 @@ class RinexDataProcessor:
         )
         return pipeline
 
-    def _make_reader(self, fpath: Path):
-        """Instantiate the configured GNSS reader for *fpath*."""
+    def _make_reader(self, fpath: Path, reader_format: str | None = None):
+        """Instantiate the configured GNSS reader for *fpath*.
+
+        Parameters
+        ----------
+        fpath : Path
+            GNSS data file.
+        reader_format : str | None
+            Reader format override.  Falls back to ``self._reader_name``.
+
+        """
         from canvodpy.factories import ReaderFactory
 
-        return ReaderFactory.create(self._reader_name, fpath=fpath)
+        return ReaderFactory.create(reader_format or self._reader_name, fpath=fpath)
 
     @staticmethod
     def _parse_sampling_interval_from_filename(filename: str) -> float | None:
@@ -676,6 +746,7 @@ class RinexDataProcessor:
         self,
         rinex_files: list[Path],
         output_path: Path,
+        reader_format: str | None = None,
     ) -> float:
         """Preprocess auxiliary data using proper interpolation strategies."""
         t0 = time.perf_counter()
@@ -703,13 +774,13 @@ class RinexDataProcessor:
                 detection_seconds=round(t1 - t0, 4),
             )
         else:
-            # Fallback: read first RINEX file (slow path)
+            # Fallback: read first GNSS file (slow path)
             self._logger.debug(
                 "sampling_detection_started",
                 sample_file=rinex_files[0].name,
                 reason="filename_parse_failed",
             )
-            first_rnx = self._make_reader(rinex_files[0])
+            first_rnx = self._make_reader(rinex_files[0], reader_format)
             first_ds = first_rnx.to_ds(
                 keep_data_vars=[],
                 write_global_attrs=True,
@@ -840,37 +911,163 @@ class RinexDataProcessor:
 
         return sampling_interval
 
-    def _get_rinex_files(self, rinex_dir: Path) -> list[Path]:
-        """Get sorted list of RINEX files from directory."""
+    def _get_rinex_files(
+        self, rinex_dir: Path, reader_format: str | None = None
+    ) -> list[Path]:
+        """Get sorted list of GNSS data files from directory.
+
+        Uses ``BUILTIN_PATTERNS`` from canvod-virtualiconvname as the
+        single source of truth for file discovery globs.
+
+        Parameters
+        ----------
+        rinex_dir : Path
+            Directory to search.
+        reader_format : str | None
+            If ``"sbf"``, restrict to SBF glob patterns only.
+            Otherwise discovers all recognized GNSS file types.
+
+        """
         if not rinex_dir.exists():
             self._logger.warning("Directory does not exist: %s", rinex_dir)
             return []
 
-        patterns = ["*.??o", "*.??O", "*.rnx", "*.RNX", "*.??_"]
-        rinex_files = []
+        from canvod.virtualiconvname.patterns import BUILTIN_PATTERNS, auto_match_order
 
-        for pattern in patterns:
-            files = list(rinex_dir.glob(pattern))
-            rinex_files.extend(files)
+        if reader_format == "sbf":
+            globs = set(BUILTIN_PATTERNS["septentrio_sbf"].file_globs)
+            # Also include canvod pattern which covers .sbf extension
+            globs.update(
+                g for g in BUILTIN_PATTERNS["canvod"].file_globs if ".sbf" in g
+            )
+        elif reader_format in ("rinex3", "rinex"):
+            # Only RINEX patterns — exclude SBF globs
+            rinex_pattern_names = [
+                n for n in auto_match_order() if n != "septentrio_sbf"
+            ]
+            globs: set[str] = set()
+            for name in rinex_pattern_names:
+                globs.update(BUILTIN_PATTERNS[name].file_globs)
+        else:
+            # "auto" or unknown — use all patterns
+            globs: set[str] = set()
+            for name in auto_match_order():
+                globs.update(BUILTIN_PATTERNS[name].file_globs)
+
+        rinex_files: list[Path] = []
+        seen: set[Path] = set()
+        for g in sorted(globs):
+            for path in rinex_dir.glob(g):
+                if path.is_file() and path not in seen:
+                    seen.add(path)
+                    rinex_files.append(path)
 
         return natsorted(rinex_files)
+
+    def _get_virtual_files(
+        self,
+        receiver_name: str,
+        receiver_base_dir: Path,
+        year: int,
+        doy: int,
+    ) -> list:
+        """Discover and validate files using FilenameMapper.
+
+        Parameters
+        ----------
+        receiver_name : str
+            Receiver name from config.
+        receiver_base_dir : Path
+            Root directory for this receiver's data.
+        year, doy : int
+            Date to discover files for.
+
+        Returns
+        -------
+        list[VirtualFile]
+            Sorted virtual files for the given date.
+
+        Raises
+        ------
+        ValueError
+            If validation fails (unmatched files or overlaps).
+        """
+        from canvod.virtualiconvname import (
+            FilenameMapper,
+            ReceiverNamingConfig,
+            SiteNamingConfig,
+        )
+
+        # Resolve site and receiver naming config
+        site_config = self._get_site_config()
+        receiver_cfg = site_config.receivers[receiver_name]
+
+        if not site_config.naming or not receiver_cfg.naming:
+            self._logger.warning(
+                "naming_config_missing, falling back to _get_rinex_files",
+                receiver=receiver_name,
+            )
+            return []
+
+        site_naming = SiteNamingConfig(**site_config.naming)
+        receiver_naming = ReceiverNamingConfig(**receiver_cfg.naming)
+        receiver_type = receiver_cfg.type
+
+        mapper = FilenameMapper(
+            site_naming=site_naming,
+            receiver_naming=receiver_naming,
+            receiver_type=receiver_type,
+            receiver_base_dir=receiver_base_dir,
+        )
+
+        vfs = mapper.discover_for_date(year, doy)
+
+        # Validate: detect overlaps
+        overlaps = FilenameMapper.detect_overlaps(vfs)
+        if overlaps:
+            overlap_msgs = [
+                f"  {a.canonical_str} <-> {b.canonical_str}" for a, b in overlaps[:10]
+            ]
+            msg = (
+                f"Temporal overlaps detected for {receiver_name} "
+                f"on {year}/{doy:03d}:\n" + "\n".join(overlap_msgs)
+            )
+            raise ValueError(msg)
+
+        return vfs
+
+    def _get_site_config(self):
+        """Get the SiteConfig for the current site."""
+        sites_cfg = self._config.sites
+        # Find our site by matching site name
+        for site_name, site_cfg in sites_cfg.sites.items():
+            if site_name == self.site.site_name:
+                return site_cfg
+        msg = f"Site '{self.site.site_name}' not found in config"
+        raise ValueError(msg)
 
     def _compute_receiver_position(
         self,
         position_files: list[Path],
         receiver_name: str,
+        reader_format: str | None = None,
     ) -> ECEFPosition | None:
-        """Compute ECEF position from the first valid RINEX file header.
+        """Compute ECEF position from the first valid GNSS file.
 
-        Uses header-only parsing (``Rnxv3Header.from_file``) to avoid reading
-        the full RINEX observation data.
+        Uses the ``ReaderFactory`` to create a minimal dataset (header-only)
+        and extracts the ECEF position from its attributes.  This works for
+        any registered reader format (RINEX, SBF, …) without format-specific
+        logic.
 
         Parameters
         ----------
         position_files : list[Path]
-            RINEX files to try (first valid one wins).
+            GNSS files to try (first valid one wins).
         receiver_name : str
             Receiver name for logging.
+        reader_format : str | None
+            Reader format name (e.g. ``"rinex3"``, ``"sbf"``).
+            Falls back to ``self._reader_name`` when *None*.
 
         Returns
         -------
@@ -878,15 +1075,13 @@ class RinexDataProcessor:
             Computed position, or None if no valid file found.
 
         """
-        from canvod.readers.rinex.v3_04 import Rnxv3Header
+        fmt = reader_format or self._reader_name
 
         for ff in position_files:
             try:
-                header = Rnxv3Header.from_file(ff)
-                x = header.approx_position[0].magnitude
-                y = header.approx_position[1].magnitude
-                z = header.approx_position[2].magnitude
-                receiver_position = ECEFPosition(x=x, y=y, z=z)
+                reader = self._make_reader(ff, reader_format=fmt)
+                ds = reader.to_ds(keep_data_vars=[], write_global_attrs=True)
+                receiver_position = ECEFPosition.from_ds_metadata(ds)
                 self._logger.info(
                     "Computed receiver position for %s: %s",
                     receiver_name,
@@ -899,15 +1094,15 @@ class RinexDataProcessor:
                     ff.name,
                     e,
                 )
-            except (OSError, RuntimeError, ValueError) as e:
+            except (KeyError, OSError, RuntimeError, ValueError) as e:
                 self._logger.warning(
-                    "Unexpected error for %s: %s",
+                    "Could not extract position from %s: %s",
                     ff.name,
                     e,
                 )
 
         self._logger.error(
-            "No valid RINEX files found for %s",
+            "No valid GNSS files found for position extraction for %s",
             receiver_name,
         )
         return None
@@ -916,15 +1111,18 @@ class RinexDataProcessor:
         self,
         canopy_files: list[Path],
         date_str: str,
+        reader_format: str | None = None,
     ) -> Path:
         """Ensure auxiliary data is preprocessed and available.
 
         Parameters
         ----------
         canopy_files : list[Path]
-            Canopy RINEX files for sampling detection
+            GNSS files for sampling detection
         date_str : str
             Date string (e.g., '2025213')
+        reader_format : str | None
+            Reader format for the files (used in sampling fallback).
 
         Returns
         -------
@@ -957,7 +1155,9 @@ class RinexDataProcessor:
             rmtree_seconds=round(t1 - t0, 4) if had_cache else 0,
         )
         try:
-            self._preprocess_aux_data_with_hermite(canopy_files, aux_zarr_path)
+            self._preprocess_aux_data_with_hermite(
+                canopy_files, aux_zarr_path, reader_format=reader_format
+            )
 
             if not aux_zarr_path.exists():
                 raise RuntimeError(
@@ -987,6 +1187,7 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1013,6 +1214,8 @@ class RinexDataProcessor:
             Receiver position (computed once)
         receiver_type : str
             Receiver type
+        reader_format : str | None
+            Per-receiver reader format. Falls back to ``self._reader_name``.
 
         Returns
         -------
@@ -1021,12 +1224,26 @@ class RinexDataProcessor:
             augmented_datasets is sorted chronologically by filename.
 
         """
+        effective_reader = reader_format or self._reader_name
+        store_r = self._config.processing.processing.store_radial_distance
         if self._dask_client is not None and _HAS_DISTRIBUTED:
             return self._parallel_process_rinex_dask(
-                rinex_files, keep_vars, aux_zarr_path, receiver_position, receiver_type
+                rinex_files,
+                keep_vars,
+                aux_zarr_path,
+                receiver_position,
+                receiver_type,
+                effective_reader,
+                store_r,
             )
         return self._parallel_process_rinex_pool(
-            rinex_files, keep_vars, aux_zarr_path, receiver_position, receiver_type
+            rinex_files,
+            keep_vars,
+            aux_zarr_path,
+            receiver_position,
+            receiver_type,
+            effective_reader,
+            store_r,
         )
 
     def _parallel_process_rinex_dask(
@@ -1036,6 +1253,8 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
+        store_radial_distance: bool = False,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1067,6 +1286,7 @@ class RinexDataProcessor:
         task_submission_start = time.time()
 
         # Submit all tasks to the Dask cluster
+        effective_reader = reader_format or self._reader_name
         future_to_file = {
             client.submit(
                 preprocess_with_hermite_aux,
@@ -1076,8 +1296,9 @@ class RinexDataProcessor:
                 receiver_position,
                 receiver_type,
                 self.keep_sids,
-                self._reader_name,
+                effective_reader,
                 self.use_sbf_geometry,
+                store_radial_distance,
                 pure=False,
             ): rinex_file
             for rinex_file in rinex_files
@@ -1157,6 +1378,8 @@ class RinexDataProcessor:
         aux_zarr_path: Path,
         receiver_position: ECEFPosition,
         receiver_type: str,
+        reader_format: str | None = None,
+        store_radial_distance: bool = False,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1185,6 +1408,7 @@ class RinexDataProcessor:
         sid_issues_agg: dict[str, set] = {}
         task_submission_start = time.time()
 
+        effective_reader = reader_format or self._reader_name
         with ProcessPoolExecutor(max_workers=self.n_max_workers) as executor:
             futures = {
                 executor.submit(
@@ -1195,8 +1419,9 @@ class RinexDataProcessor:
                     receiver_position,
                     receiver_type,
                     self.keep_sids,
-                    self._reader_name,
+                    effective_reader,
                     self.use_sbf_geometry,
+                    store_radial_distance,
                 ): rinex_file
                 for rinex_file in rinex_files
             }
@@ -1332,7 +1557,9 @@ class RinexDataProcessor:
         try:
             ds_store = xr.open_zarr(
                 session.store, group=receiver_name, consolidated=False
-            ).load()  # .load() to detach from session store before mode="w"
+            ).compute(
+                scheduler="synchronous"
+            )  # synchronous avoids Dask serialization error
         except (KeyError, zarr.errors.GroupNotFoundError):
             return  # New group, nothing to prepare
 
@@ -1547,7 +1774,7 @@ class RinexDataProcessor:
 
                 # Handle different strategies based on self._rinex_store_strategy
                 match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups and idx == 0:
+                    case (False, _) if receiver_name not in groups:
                         # Initial commit
                         log.debug("performing_initial_write", group=receiver_name)
                         msg = f"[v{version}] Initial commit: {rel_path}"
@@ -1719,6 +1946,89 @@ class RinexDataProcessor:
             total_files=len(augmented_datasets),
         )
 
+    def _check_existing_with_temporal_overlap(
+        self,
+        receiver_name: str,
+        augmented_datasets: list[tuple[Path, xr.Dataset]],
+        file_hash_map: dict[Path, str | None],
+    ) -> set[str]:
+        """Check for existing files by hash AND temporal overlap.
+
+        Performs three checks:
+        1. Hash match against store metadata (exact duplicate)
+        2. Temporal overlap against store metadata (e.g. re-run)
+        3. Intra-batch overlap (e.g. daily concat + 15-min sub-files
+           in the same batch)
+
+        Returns the union of all flagged hashes so the caller can treat
+        them as ``exists=True``.
+        """
+        valid_hashes = [h for h in file_hash_map.values() if h]
+        existing_hashes = self.site.rinex_store.batch_check_existing(
+            receiver_name, valid_hashes
+        )
+
+        # Check 2: temporal overlap against store metadata
+        new_hashes = [h for h in valid_hashes if h not in existing_hashes]
+        if new_hashes:
+            file_intervals = []
+            for fname, ds in augmented_datasets:
+                h = file_hash_map[fname]
+                if h and h not in existing_hashes:
+                    file_intervals.append(
+                        (
+                            h,
+                            np.datetime64(ds.epoch.min().values),
+                            np.datetime64(ds.epoch.max().values),
+                        )
+                    )
+            if file_intervals:
+                temporal_overlaps = self.site.rinex_store.check_temporal_overlaps(
+                    receiver_name, file_intervals
+                )
+                existing_hashes |= temporal_overlaps
+
+        # Check 3: intra-batch overlap detection
+        # If a file's time range fully contains other files' ranges,
+        # it's a concatenation file — flag it as redundant.
+        intervals = []
+        for fname, ds in augmented_datasets:
+            h = file_hash_map[fname]
+            if h and h not in existing_hashes:
+                intervals.append(
+                    (
+                        h,
+                        np.datetime64(ds.epoch.min().values),
+                        np.datetime64(ds.epoch.max().values),
+                        len(ds.epoch),
+                    )
+                )
+
+        if len(intervals) > 1:
+            intra_overlaps: set[str] = set()
+            for i, (h_i, s_i, e_i, n_i) in enumerate(intervals):
+                for j, (h_j, s_j, e_j, n_j) in enumerate(intervals):
+                    if i == j:
+                        continue
+                    # Check if file i fully contains file j
+                    if s_i <= s_j and e_i >= e_j:
+                        # File i contains file j — flag the larger file
+                        # (prefer keeping the smaller sub-files)
+                        intra_overlaps.add(h_i)
+                        self._logger.warning(
+                            "intra_batch_overlap",
+                            container_hash=h_i[:16],
+                            container_epochs=n_i,
+                            contained_hash=h_j[:16],
+                            contained_epochs=n_j,
+                            message="Skipping concatenation file that "
+                            "contains sub-files in same batch",
+                        )
+                        break  # Once flagged, no need to check more
+            existing_hashes |= intra_overlaps
+
+        return existing_hashes
+
     def _append_to_icechunk_incrementally(
         self,
         augmented_datasets: list[tuple[Path, xr.Dataset]],
@@ -1747,9 +2057,8 @@ class RinexDataProcessor:
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -1861,12 +2170,16 @@ class RinexDataProcessor:
                                 "dataset_attrs": ds.attrs.copy(),
                                 "exists": exists,
                                 "rel_path": rel_path,
+                                "canonical_name": ds.attrs.get("canonical_name", ""),
+                                "physical_path": ds.attrs.get(
+                                    "physical_path", str(fname)
+                                ),
                             }
                         )
 
                         # Handle data writes using ONLY to_icechunk() with our session
                         match (exists, self._rinex_store_strategy):
-                            case (False, _) if receiver_name not in groups and idx == 0:
+                            case (False, _) if receiver_name not in groups:
                                 # Initial group creation
                                 size_mb = ds_clean.nbytes / (1024 * 1024)
                                 with trace_icechunk_write(
@@ -2048,6 +2361,7 @@ class RinexDataProcessor:
         rinex_files: list[Path],
         aux_datasets: dict[Path, dict[str, xr.Dataset]] | None = None,
         sid_issues: dict[str, list[str]] | None = None,
+        reader_format: str | None = None,
     ) -> None:
         """Batch append with single commit.
 
@@ -2085,9 +2399,8 @@ class RinexDataProcessor:
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -2211,13 +2524,17 @@ class RinexDataProcessor:
                                 "dataset_attrs": ds.attrs.copy(),
                                 "exists": exists,
                                 "rel_path": rel_path,
+                                "canonical_name": ds.attrs.get("canonical_name", ""),
+                                "physical_path": ds.attrs.get(
+                                    "physical_path", str(fname)
+                                ),
                             }
                         )
 
                         # Handle data writes using ONLY to_icechunk() with our session
                         match (exists, self._rinex_store_strategy):
-                            case (False, _) if receiver_name not in groups and idx == 0:
-                                # Initial group creation
+                            case (False, _) if receiver_name not in groups:
+                                # Initial group creation (first non-skipped file)
                                 to_icechunk(ds_clean, session, group=receiver_name)
                                 groups.append(receiver_name)
                                 actions["initial"] += 1
@@ -2352,6 +2669,102 @@ class RinexDataProcessor:
                 log.exception("Batch append failed")
                 raise
 
+        # STEP 5: Set source_format root attr (once, idempotent)
+        if self.site.rinex_store.source_format is None:
+            reader_fmt = reader_format or self._reader_name
+            try:
+                self.site.rinex_store.set_root_attrs(
+                    {"source_format": reader_fmt}, branch=branch
+                )
+                log.info("Set store source_format='%s'", reader_fmt)
+            except Exception:
+                log.warning("Failed to set source_format root attr")
+
+        # STEP 5b: Write rich store metadata (once, on first ingest)
+        try:
+            from canvod.store_metadata import (
+                collect_metadata,
+                metadata_exists,
+                update_metadata,
+                write_metadata,
+            )
+
+            store_path = self.site.rinex_store.store_path
+            site_name = self.site.site_name
+
+            # Find site config from CanvodConfig
+            sites_cfg = self._config.sites
+            site_cfg = None
+            for sn, sc in sites_cfg.sites.items():
+                if sn == site_name:
+                    site_cfg = sc
+                    break
+
+            if site_cfg is not None:
+                reader_fmt = reader_format or self._reader_name
+                if not metadata_exists(store_path, branch=branch):
+                    resources = self._config.processing.processing.resolve_resources()
+                    meta = collect_metadata(
+                        config=self._config,
+                        site_name=site_name,
+                        site_config=site_cfg,
+                        store_type="rinex_store",
+                        source_format=reader_fmt,
+                        store_path=store_path,
+                        dask_workers=resources.get("n_workers"),
+                        dask_threads_per_worker=resources.get("threads_per_worker"),
+                    )
+                    write_metadata(store_path, meta, branch=branch)
+                    log.info("Wrote rich store metadata")
+                else:
+                    now = datetime.now(UTC).isoformat()
+                    update_metadata(
+                        store_path,
+                        {
+                            "temporal.updated": now,
+                            "summaries.history": [
+                                f"{now}: Ingested {len(augmented_datasets)}"
+                                f" files for {receiver_name}"
+                            ],
+                        },
+                        branch=branch,
+                    )
+                    log.info("Updated store metadata timestamp")
+        except Exception:
+            log.debug(
+                "canvod-store-metadata not available or write failed",
+                exc_info=True,
+            )
+
+        # STEP 6: Write SBF metadata datasets (sbf_obs) per receiver
+        # Each file produces its own sbf_obs dataset.  We write them
+        # incrementally to the store (first=overwrite, rest=append) to
+        # avoid an expensive xr.concat in memory.
+        if aux_datasets:
+            sbf_parts = [
+                aux_dict["sbf_obs"]
+                for aux_dict in aux_datasets.values()
+                if "sbf_obs" in aux_dict
+            ]
+            if sbf_parts:
+                try:
+                    self.site.rinex_store.append_metadata_datasets(
+                        sbf_parts, receiver_name, "sbf_obs", branch
+                    )
+                    n_epochs = sum(p.sizes.get("epoch", 0) for p in sbf_parts)
+                    log.info(
+                        "Wrote sbf_obs metadata for %s (%d parts, %d epochs)",
+                        receiver_name,
+                        len(sbf_parts),
+                        n_epochs,
+                    )
+                except Exception:
+                    log.warning(
+                        "Failed to write sbf_obs for %s",
+                        receiver_name,
+                        exc_info=True,
+                    )
+
         # Promote temp branch to main after successful commit
         if is_overwrite and temp_branch:
             try:
@@ -2396,9 +2809,8 @@ class RinexDataProcessor:
         file_hash_map = {
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
         t2 = time.time()
         log.info(
@@ -2493,7 +2905,7 @@ class RinexDataProcessor:
 
                 # Decide write strategy
                 match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups and idx == 0:
+                    case (False, _) if receiver_name not in groups:
                         to_icechunk(ds_clean, session, group=receiver_name)
                         groups.append(receiver_name)
                         return "initial"
@@ -2729,15 +3141,24 @@ class RinexDataProcessor:
         )
 
         # ====================================================================
-        # STEP 2: Compute receiver position ONCE (same for all receivers)
+        # STEP 2: Compute receiver position
         # ====================================================================
+        position_mode = self._config.processing.processing.receiver_position_mode
         first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
-        receiver_position = ECEFPosition.from_ds_metadata(first_ds)
-        self._logger.info(
-            "Computed receiver position (shared): %s",
-            receiver_position,
-        )
+        shared_position = ECEFPosition.from_ds_metadata(first_ds)
+
+        if position_mode == "per_receiver":
+            self._logger.warning(
+                "receiver_position_mode='per_receiver': each receiver will use "
+                "its own RINEX header position. This breaks direct SNR "
+                "comparability between receivers."
+            )
+        else:
+            self._logger.info(
+                "Computed receiver position (shared): %s",
+                shared_position,
+            )
 
         # ====================================================================
         # STEP 3: Process each receiver type
@@ -2768,6 +3189,20 @@ class RinexDataProcessor:
                 "Found %s RINEX files to process",
                 len(rinex_files),
             )
+
+            # 3b'. Determine receiver position for this receiver
+            if position_mode == "per_receiver":
+                receiver_position = self._compute_receiver_position(
+                    rinex_files, receiver_name
+                )
+                if receiver_position is None:
+                    self._logger.error(
+                        "Could not compute position for %s, skipping",
+                        receiver_name,
+                    )
+                    continue
+            else:
+                receiver_position = shared_position
 
             # 3c. Parallel process via Dask (or ProcessPoolExecutor fallback)
             augmented_datasets, aux_datasets, sid_issues = self._parallel_process_rinex(
@@ -2810,7 +3245,7 @@ class RinexDataProcessor:
     def prepare_batch_tasks(
         self,
         keep_vars: list[str] | None,
-        receiver_configs: list[tuple[str, str, Path, Path | None]],
+        receiver_configs: list[tuple[str, str, Path, Path | None, str]],
     ) -> tuple[list[tuple], list[tuple[str, list[Path]]]]:
         """Prepare aux Zarr and task descriptors for flat Dask submission.
 
@@ -2822,8 +3257,8 @@ class RinexDataProcessor:
         ----------
         keep_vars : list[str] | None
             Variables to keep in datasets.
-        receiver_configs : list[tuple[str, str, Path, Path | None]]
-            ``(receiver_name, receiver_type, data_dir, position_data_dir)``
+        receiver_configs : list[tuple[str, str, Path, Path | None, str]]
+            ``(receiver_name, receiver_type, data_dir, position_data_dir, reader_format)``
             tuples.
 
         Returns
@@ -2841,8 +3276,10 @@ class RinexDataProcessor:
             keep_vars = self._config.processing.processing.keep_rnx_vars
 
         # Get first receiver files to infer sampling rate for aux preprocessing
-        first_receiver_name, _first_type, first_data_dir, _ = receiver_configs[0]
-        first_files = self._get_rinex_files(first_data_dir)
+        first_receiver_name, _first_type, first_data_dir, _, first_fmt = (
+            receiver_configs[0]
+        )
+        first_files = self._get_rinex_files(first_data_dir, first_fmt)
 
         if not first_files:
             msg = (
@@ -2857,35 +3294,81 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(first_files, date_str)
+        if self.use_sbf_geometry:
+            aux_zarr_path = None
+            self._logger.info(
+                "aux_preprocessing_skipped",
+                reason="ephemeris_source=broadcast",
+            )
+        else:
+            aux_zarr_path = self._ensure_aux_data_preprocessed(
+                first_files, date_str, reader_format=first_fmt
+            )
         t_aux_done = time.perf_counter()
 
         task_descriptors: list[tuple] = []
         receiver_file_map: list[tuple[str, list[Path]]] = []
+
+        # In broadcast + shared position mode, build a mapping from
+        # timestamp suffix → canopy file path so reference tasks can
+        # read the matching canopy file's sbf_obs on the fly
+        canopy_file_by_timestamp: dict[str, Path] | None = None
+        canopy_reader_fmt: str | None = None
+        position_mode = self._config.processing.processing.receiver_position_mode
+        if self.use_sbf_geometry and position_mode == "shared":
+            for rc_name, rc_type, rc_dir, _, rc_fmt in receiver_configs:
+                if rc_type == "canopy":
+                    canopy_files = self._get_rinex_files(rc_dir, rc_fmt)
+                    if canopy_files:
+                        import re
+
+                        canopy_file_by_timestamp = {}
+                        canopy_reader_fmt = rc_fmt or self._reader_name
+                        for cf in canopy_files:
+                            # Extract timestamp: last chars before extension
+                            # e.g. "ract001a15.25_" → "a15"
+                            m = re.search(r"([a-x]\d{2})\.\d{2}_$", cf.name)
+                            if m:
+                                canopy_file_by_timestamp[m.group(1)] = cf
+                        self._logger.info(
+                            "canopy_broadcast_file_index_built",
+                            canopy_files=len(canopy_file_by_timestamp),
+                        )
+                    break
 
         for (
             receiver_name,
             _receiver_type,
             data_dir,
             position_data_dir,
+            reader_format,
         ) in receiver_configs:
-            rinex_files = self._get_rinex_files(data_dir)
+            rinex_files = self._get_rinex_files(data_dir, reader_format)
             if not rinex_files:
                 self._logger.warning(
                     "no_rinex_files_found",
                     receiver=receiver_name,
                     data_dir=str(data_dir),
+                    reader_format=reader_format,
                 )
                 continue
 
-            position_files = (
-                self._get_rinex_files(position_data_dir)
-                if position_data_dir
-                else rinex_files
-            )
+            if position_mode == "per_receiver":
+                position_files = rinex_files
+                self._logger.warning(
+                    "receiver_position_mode='per_receiver': using %s's own "
+                    "position (breaks direct SNR comparability)",
+                    receiver_name,
+                )
+            else:
+                position_files = (
+                    self._get_rinex_files(position_data_dir, reader_format)
+                    if position_data_dir
+                    else rinex_files
+                )
             t_pos_start = time.perf_counter()
             receiver_position = self._compute_receiver_position(
-                position_files, receiver_name
+                position_files, receiver_name, reader_format=reader_format
             )
             t_pos_end = time.perf_counter()
             self._logger.info(
@@ -2899,7 +3382,21 @@ class RinexDataProcessor:
 
             receiver_file_map.append((receiver_name, rinex_files))
 
+            effective_reader = reader_format or self._reader_name
             for rnx_file in rinex_files:
+                # For reference receivers in broadcast + shared mode,
+                # find matching canopy file by timestamp suffix
+                broadcast_canopy_file = None
+                if (
+                    _receiver_type == "reference"
+                    and canopy_file_by_timestamp is not None
+                ):
+                    import re
+
+                    m = re.search(r"([a-x]\d{2})\.\d{2}_$", rnx_file.name)
+                    if m:
+                        broadcast_canopy_file = canopy_file_by_timestamp.get(m.group(1))
+
                 task_descriptors.append(
                     (
                         rnx_file,
@@ -2908,8 +3405,11 @@ class RinexDataProcessor:
                         receiver_position,
                         receiver_name,
                         self.keep_sids,
-                        self._reader_name,
+                        effective_reader,
                         self.use_sbf_geometry,
+                        False,  # store_radial_distance
+                        broadcast_canopy_file,
+                        canopy_reader_fmt,
                     )
                 )
 
@@ -2929,6 +3429,7 @@ class RinexDataProcessor:
         keep_vars: list[str] | None = None,
         receiver_configs: list[tuple[str, str, Path]]
         | list[tuple[str, str, Path, Path | None]]
+        | list[tuple[str, str, Path, Path | None, str]]
         | None = None,
     ) -> Generator[tuple[str, xr.Dataset, float]]:
         """Generate datasets from RINEX files and append to Icechunk stores.
@@ -2946,8 +3447,10 @@ class RinexDataProcessor:
         keep_vars : list[str], optional
             Variables to keep in datasets (default: from globals)
         receiver_configs : list[tuple], optional
-            List of (receiver_name, receiver_type, data_dir) or
-            (receiver_name, receiver_type, data_dir, position_data_dir) tuples.
+            List of (receiver_name, receiver_type, data_dir),
+            (receiver_name, receiver_type, data_dir, position_data_dir), or
+            (receiver_name, receiver_type, data_dir, position_data_dir, reader_format)
+            tuples.
             When position_data_dir is provided, the receiver position is
             computed from files in that directory instead of data_dir.
             If None, uses default behavior with matched_data_dirs.
@@ -2961,11 +3464,13 @@ class RinexDataProcessor:
         if receiver_configs is None:
             receiver_configs = self._get_default_receiver_configs()
 
-        # Normalize to 4-tuples
-        normalized_configs: list[tuple[str, str, Path, Path | None]] = []
+        # Normalize to 5-tuples
+        normalized_configs: list[tuple[str, str, Path, Path | None, str]] = []
         for cfg in receiver_configs:
             if len(cfg) == 3:
-                normalized_configs.append((*cfg, None))
+                normalized_configs.append((*cfg, None, self._reader_name))
+            elif len(cfg) == 4:
+                normalized_configs.append((*cfg, self._reader_name))
             else:
                 normalized_configs.append(cfg)
 
@@ -2984,10 +3489,10 @@ class RinexDataProcessor:
         # STEP 1: Preprocess aux data ONCE per day with Hermite splines
         # ====================================================================
         # Get first receiver files to infer sampling rate
-        first_receiver_name, _first_receiver_type, first_data_dir, _ = (
+        first_receiver_name, _first_receiver_type, first_data_dir, _, first_fmt = (
             normalized_configs[0]
         )
-        first_files = self._get_rinex_files(first_data_dir)
+        first_files = self._get_rinex_files(first_data_dir, first_fmt)
 
         if not first_files:
             msg = (
@@ -3002,7 +3507,12 @@ class RinexDataProcessor:
             raise ValueError(msg)
 
         date_str = self.matched_data_dirs.yyyydoy.to_str()
-        aux_zarr_path = self._ensure_aux_data_preprocessed(first_files, date_str)
+        if self.use_sbf_geometry:
+            aux_zarr_path = None
+        else:
+            aux_zarr_path = self._ensure_aux_data_preprocessed(
+                first_files, date_str, reader_format=first_fmt
+            )
 
         # ====================================================================
         # STEP 2: Process each receiver, reusing RINEX parsing for
@@ -3019,6 +3529,7 @@ class RinexDataProcessor:
             receiver_type,
             data_dir,
             position_data_dir,
+            reader_format,
         ) in normalized_configs:
             t_rcv_start = time.perf_counter()
 
@@ -3028,28 +3539,38 @@ class RinexDataProcessor:
                 receiver_type=receiver_type,
                 data_dir=str(data_dir),
                 position_from=str(position_data_dir) if position_data_dir else "self",
+                reader_format=reader_format,
             )
 
-            # Get RINEX files for this receiver
-            rinex_files = self._get_rinex_files(data_dir)
+            # Get GNSS files for this receiver (filtered by reader_format)
+            rinex_files = self._get_rinex_files(data_dir, reader_format)
             if not rinex_files:
                 self._logger.warning(
                     "no_rinex_files_found",
                     receiver=receiver_name,
                     data_dir=str(data_dir),
+                    reader_format=reader_format,
                 )
                 continue
 
-            # Compute receiver position: from position_data_dir if set,
-            # otherwise from this receiver's own first file
+            # Compute receiver position
             t_pos_start = time.perf_counter()
-            position_files = (
-                self._get_rinex_files(position_data_dir)
-                if position_data_dir
-                else rinex_files
-            )
+            position_mode = self._config.processing.processing.receiver_position_mode
+            if position_mode == "per_receiver":
+                position_files = rinex_files
+                self._logger.warning(
+                    "receiver_position_mode='per_receiver': using %s's own "
+                    "position (breaks direct SNR comparability)",
+                    receiver_name,
+                )
+            else:
+                position_files = (
+                    self._get_rinex_files(position_data_dir, reader_format)
+                    if position_data_dir
+                    else rinex_files
+                )
             receiver_position = self._compute_receiver_position(
-                position_files, receiver_name
+                position_files, receiver_name, reader_format=reader_format
             )
             t_pos_end = time.perf_counter()
             if receiver_position is None:
@@ -3077,6 +3598,7 @@ class RinexDataProcessor:
                         aux_zarr_path=aux_zarr_path,
                         receiver_position=receiver_position,
                         receiver_type=receiver_name,
+                        reader_format=reader_format,
                     )
                 )
 
@@ -3131,6 +3653,7 @@ class RinexDataProcessor:
                 rinex_files=rinex_files,
                 aux_datasets=aux_datasets,
                 sid_issues=sid_issues,
+                reader_format=reader_format,
             )
             t_write_end = time.perf_counter()
 
@@ -3524,9 +4047,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         file_hash_map = {
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         actions = {
@@ -3670,9 +4192,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
         }
 
-        valid_hashes = [h for h in file_hash_map.values() if h]
-        existing_hashes = self.site.rinex_store.batch_check_existing(
-            receiver_name, valid_hashes
+        existing_hashes = self._check_existing_with_temporal_overlap(
+            receiver_name, augmented_datasets, file_hash_map
         )
 
         t2 = time.time()
@@ -3788,7 +4309,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
 
                     # Handle data writes using ONLY to_icechunk() with our session
                     match (exists, self._rinex_store_strategy):
-                        case (False, _) if receiver_name not in groups and idx == 0:
+                        case (False, _) if receiver_name not in groups:
                             # Initial group creation
                             to_icechunk(ds_clean, session, group=receiver_name)
                             groups.append(receiver_name)
@@ -3994,15 +4515,24 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         )
 
         # ====================================================================
-        # STEP 2: Compute receiver position ONCE (same for all receivers)
+        # STEP 2: Compute receiver position
         # ====================================================================
+        position_mode = self._config.processing.processing.receiver_position_mode
         first_rnx = self._make_reader(canopy_files[0])
         first_ds = first_rnx.to_ds(keep_data_vars=[], write_global_attrs=True)
-        receiver_position = ECEFPosition.from_ds_metadata(first_ds)
-        self._logger.info(
-            "Computed receiver position (shared): %s",
-            receiver_position,
-        )
+        shared_position = ECEFPosition.from_ds_metadata(first_ds)
+
+        if position_mode == "per_receiver":
+            self._logger.warning(
+                "receiver_position_mode='per_receiver': each receiver will use "
+                "its own RINEX header position. This breaks direct SNR "
+                "comparability between receivers."
+            )
+        else:
+            self._logger.info(
+                "Computed receiver position (shared): %s",
+                shared_position,
+            )
 
         # ====================================================================
         # STEP 3: Process each receiver type
@@ -4033,6 +4563,20 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                 "Found %s RINEX files to process",
                 len(rinex_files),
             )
+
+            # 3b'. Determine receiver position for this receiver
+            if position_mode == "per_receiver":
+                receiver_position = self._compute_receiver_position(
+                    rinex_files, receiver_name
+                )
+                if receiver_position is None:
+                    self._logger.error(
+                        "Could not compute position for %s, skipping",
+                        receiver_name,
+                    )
+                    continue
+            else:
+                receiver_position = shared_position
 
             # 3c. Parallel process via Dask (or ProcessPoolExecutor fallback)
             _ = self._cooperative_distributed_writing(

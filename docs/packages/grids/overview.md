@@ -65,7 +65,7 @@ Seven implementations are available, all inheriting from `BaseGridBuilder`:
 
 </div>
 
-All builders accept `angular_resolution` (degrees) and `cutoff_theta` (maximum zenith angle) and return a `GridData` object.
+All builders accept `angular_resolution` (degrees) and `cutoff_theta` (maximum polar angle) and return a `GridData` object.
 
 ---
 
@@ -161,7 +161,7 @@ The `GridData` object returned by all builders provides:
 
 | Module | Purpose |
 | ------ | ------- |
-| `filtering` | Global IQR, Z-score statistical filters |
+| `filtering` | Global IQR, Z-score, SID pattern filters |
 | `per_cell_filtering` | Per-cell variants of the above |
 | `hampel_filtering` | Hampel (median-MAD) outlier detection |
 | `sigma_clip_filter` | Numba-accelerated sigma-clipping |
@@ -170,6 +170,46 @@ The `GridData` object returned by all builders provides:
 | `solar` | Solar geometry (elevation, azimuth) |
 | `temporal` | Diurnal aggregation and analysis |
 | `spatial` | Per-cell spatial statistics |
+| `analysis_storage` | Persistent Icechunk storage for weights, masks, statistics, and per-cell timeseries |
+
+### SIDPatternFilter
+
+`SIDPatternFilter` selects observations by GNSS system, frequency band, and tracking code.
+It operates on the `sid` dimension where SIDs have the format `SV|Band|Code` (e.g. `G01|L1|C`).
+
+=== "Slice (drop non-matching SIDs)"
+
+    ```python
+    from canvod.grids.analysis import SIDPatternFilter
+
+    filt = SIDPatternFilter(system="G", band="L1", code="C")
+    ds_gps_l1c = filt.filter_dataset(ds)  # returns smaller dataset or None
+    ```
+
+=== "Mask (NaN non-matching values)"
+
+    ```python
+    filt = SIDPatternFilter(system="E")
+    ds_masked = filt.apply(ds, "SNR", output_suffix="galileo")
+    ```
+
+### Per-Cell Timeseries Storage
+
+`AnalysisStorage` manages persistent Icechunk storage of analysis results.
+Per-cell timeseries are stored on a dedicated branch, keyed by `system_band_code`:
+
+```python
+from canvod.grids.analysis import AnalysisStorage
+
+storage = AnalysisStorage("/path/to/store")
+
+# Store
+storage.store_percell_timeseries(percell_ds, system="G", band="L1", code="C")
+
+# List and load
+storage.list_percell_datasets()          # ['C_B2b_I', 'E_E1_C', 'G_L1_C', ...]
+ds = storage.load_percell_timeseries(system="G", band="L1", code="C")
+```
 
 ---
 
@@ -189,9 +229,15 @@ The `GridData` object returned by all builders provides:
 ## Role in the VOD Pipeline
 
 ```mermaid
-flowchart LR
-    A["Augmented Dataset\n(epoch × sid, with θ, φ)"] --> B["Grid Assignment\nadd_cell_ids_to_ds_fast"]
-    B --> C["Gridded Dataset\n+ cell_id coordinate"]
-    C --> D["VOD per cell\nTau-Omega inversion"]
-    D --> E["Hemispherical Map\ncanvod-viz"]
+flowchart TD
+    A["`**Augmented Dataset**
+    epoch x sid, with theta, phi`"]
+    A --> B["`**Grid Assignment**
+    add_cell_ids_to_ds_fast`"]
+    B --> C["`**Gridded Dataset**
+    + cell_id coordinate`"]
+    C --> D["`**VOD per cell**
+    Tau-Omega inversion`"]
+    D --> E["`**Hemispherical Map**
+    canvod-viz`"]
 ```

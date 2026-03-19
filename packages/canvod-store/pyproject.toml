@@ -21,7 +21,6 @@ classifiers = [
 
 dependencies = [
     "canvod-grids>=0.1.0",
-    "canvod-ops>=0.1.0",
     "icechunk>=1.1.5",
     "zarr>=3.1.2",
     "xarray>=2023.12.0",
@@ -40,7 +39,6 @@ dev = [
 
 [tool.uv.sources]
 canvod-grids = { workspace = true }
-canvod-ops = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
@@ -48,6 +46,14 @@ build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = "canvod.store"
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

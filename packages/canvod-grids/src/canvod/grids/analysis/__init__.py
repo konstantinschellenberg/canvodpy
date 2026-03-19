@@ -27,6 +27,7 @@ from canvod.grids.analysis.filtering import (
     Filter,
     FilterPipeline,
     IQRFilter,
+    SIDPatternFilter,
     ZScoreFilter,
 )
 from canvod.grids.analysis.hampel_filtering import (
@@ -76,6 +77,7 @@ __all__ = [
     "PerCellIQRFilter",
     "PerCellVODAnalyzer",
     "PerCellZScoreFilter",
+    "SIDPatternFilter",
     # Solar
     "SolarPositionCalculator",
     # Masking

@@ -37,12 +37,32 @@
             "path": "packages/canvod-store",
         },
         {
+            "name": "🐙 canvod-store-metadata",
+            "path": "packages/canvod-store-metadata",
+        },
+        {
             "name": "🖼️ canvod-viz",
             "path": "packages/canvod-viz",
         },
         {
             "name": "🖥️ canvodpy",
             "path": "canvodpy",
+        },
+        {
+            "name": "⚙️ config",
+            "path": "config",
+        },
+        {
+            "name": "📂 demo",
+            "path": "demo",
+        },
+        {
+            "name": "🧪 test-data",
+            "path": "packages/canvod-readers/tests/test_data",
+        },
+        {
+            "name": "🔍 canvod-audit",
+            "path": "packages/canvod-audit",
         },
     ],
     "settings": {
@@ -108,7 +128,7 @@
             "titleBar.activeBackground": "#215732",
             "titleBar.activeForeground": "#e7e7e7",
             "titleBar.inactiveBackground": "#21573299",
-            "titleBar.inactiveForeground": "#e7e7e799",
+            "titleBar.inactiveForeground": "#e7e7e799"
         },
         "liveServer.settings.multiRootWorkspaceName": "🏠 Root",
     },

@@ -5,7 +5,7 @@ description: Implementation of Python implicit namespace packages in canVODpy
 
 # Namespace Packages
 
-canVODpy uses Python 3.3+ **implicit namespace packages** to let seven independent packages share the `canvod.*` import prefix — a unified API backed by separately installable wheels.
+canVODpy uses Python 3.3+ **implicit namespace packages** to let ten independent packages share the `canvod.*` import prefix — a unified API backed by separately installable wheels.
 
 ```python
 from canvod.readers   import Rnxv3Obs
@@ -59,8 +59,11 @@ A namespace package is created by **omitting `__init__.py`** from the shared par
         grids/            ← from canvod-grids
         vod/              ← from canvod-vod
         store/            ← from canvod-store
+        store_metadata/   ← from canvod-store-metadata
         viz/              ← from canvod-viz
         utils/            ← from canvod-utils
+        ops/              ← from canvod-ops
+        virtualiconvname/ ← from canvod-virtualiconvname
     ```
 
 ---
@@ -154,16 +157,3 @@ print(readers.__file__)  # e.g. …/site-packages/canvod/readers/__init__.py
     # CORRECT — creates a namespace sub-package
     module-name = "canvod.readers"
     ```
-
----
-
-## Prior Art
-
-Namespace packages are used by major Python ecosystems:
-
-| Project | Namespace |
-|---------|-----------|
-| Azure SDK | `azure.storage`, `azure.compute`, `azure.ai` |
-| Google Cloud | `google.cloud.storage`, `google.cloud.compute` |
-| Zope | `zope.interface`, `zope.component` |
-| Sphinx extensions | `sphinxcontrib.*` |

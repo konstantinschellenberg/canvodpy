@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     import xarray as xr
 
     from canvod.store import MyIcechunkStore
+    from canvodpy.vod_computer import VodComputer
 
 
 class Site:
@@ -104,6 +105,15 @@ class Site:
         return self._site.active_vod_analyses
 
     @property
+    def vod(self) -> VodComputer:
+        """Lazy VOD computation helper."""
+        if not hasattr(self, "_vod_computer"):
+            from canvodpy.vod_computer import VodComputer
+
+            self._vod_computer = VodComputer(self)
+        return self._vod_computer
+
+    @property
     def rinex_store(self) -> MyIcechunkStore:
         """Access RINEX data store."""
         return self._site.rinex_store
@@ -119,7 +129,6 @@ class Site:
         aux_agency: str | None = None,
         n_workers: int | None = None,
         dry_run: bool = False,
-        reader: str = "rinex3",
         batch_hours: float | None = None,
         max_memory_gb: float | None = None,
         cpu_affinity: list[int] | None = None,
@@ -130,6 +139,9 @@ class Site:
 
         All parameters default to ``None``, which means "read from config".
         Explicit values override the config.
+
+        Reader format is configured per-receiver via ``reader_format`` in
+        ``sites.yaml`` (default: ``"auto"``).
 
         Parameters
         ----------
@@ -143,8 +155,6 @@ class Site:
             (``processing.n_max_threads``).
         dry_run : bool, default False
             If True, simulate processing without execution.
-        reader : str, default "rinex3"
-            Reader to use: ``"rinex3"`` or ``"sbf"``
         batch_hours : float, optional
             Hours of data per processing batch. Default: from config.
         max_memory_gb : float, optional
@@ -169,9 +179,6 @@ class Site:
         >>> pipeline = site.pipeline(n_workers=8, max_memory_gb=16)
         >>> data = pipeline.process_date("2025001")
 
-        >>> # SBF binary files
-        >>> pipeline = site.pipeline(reader="sbf")
-
         """
         return Pipeline(
             site=self,
@@ -179,7 +186,6 @@ class Site:
             aux_agency=aux_agency,
             n_workers=n_workers,
             dry_run=dry_run,
-            reader=reader,
             batch_hours=batch_hours,
             max_memory_gb=max_memory_gb,
             cpu_affinity=cpu_affinity,
@@ -205,6 +211,9 @@ class Pipeline:
     All parameters default to ``None``, which means "read from
     ``config/processing.yaml``". Explicit values override the config.
 
+    Reader format is configured per-receiver via ``reader_format`` in
+    ``sites.yaml`` (default: ``"auto"``).
+
     Parameters
     ----------
     site : Site or str
@@ -218,8 +227,6 @@ class Pipeline:
         (``processing.n_max_threads``).
     dry_run : bool, default False
         If True, simulate without execution.
-    reader : str, default "rinex3"
-        Reader to use: ``"rinex3"`` or ``"sbf"``
     batch_hours : float, optional
         Hours of data per processing batch. Default: from config.
     max_memory_gb : float, optional
@@ -256,7 +263,6 @@ class Pipeline:
         aux_agency: str | None = None,
         n_workers: int | None = None,
         dry_run: bool = False,
-        reader: str = "rinex3",
         batch_hours: float | None = None,
         max_memory_gb: float | None = None,
         cpu_affinity: list[int] | None = None,
@@ -329,7 +335,6 @@ class Pipeline:
             site=site._site,
             n_max_workers=n_workers,
             dry_run=dry_run,
-            reader_name=reader,
             batch_hours=batch_hours,
             max_memory_gb=max_memory_gb,
             cpu_affinity=cpu_affinity,

@@ -323,6 +323,11 @@ class GNSSDataReader(BaseModel, ABC):
         return v
 
     @property
+    def source_format(self) -> str:
+        """Return the format identifier for this reader (e.g. ``"rinex3"``, ``"sbf"``)."""
+        return "rinex3"
+
+    @property
     @abstractmethod
     def file_hash(self) -> str:
         """Return SHA256 hash of file for deduplication.

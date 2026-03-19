@@ -59,10 +59,26 @@ User configuration overrides package defaults for any specified values. Unset ke
     processing:
       keep_rnx_vars: [SNR]
       aggregate_glonass_fdma: true
+      store_radial_distance: false
+      receiver_position_mode: shared     # or per_receiver
+      file_pairing: complete             # or paired
       batch_hours: 24
       resource_mode: auto
       # n_max_threads: 8       # manual mode only
       # max_memory_gb: 16      # manual mode only
+      # threads_per_worker: 1
+      # cpu_affinity: [0, 1, 2, 3]
+      # nice_priority: 10
+
+    preprocessing:
+      temporal_aggregation:
+        enabled: true
+        freq: "1min"
+        method: mean
+      grid_assignment:
+        enabled: true
+        grid_type: equal_area
+        angular_resolution: 2.0
 
     compression:
       zlib: true
@@ -100,9 +116,13 @@ User configuration overrides package defaults for any specified values. Unset ke
           reference_01:
             type: reference
             directory: 01_reference/01_GNSS/01_raw
+            recipe: rosalia_reference.yaml
+            reader_format: rinex3
           canopy_01:
             type: canopy
             directory: 02_canopy/01_GNSS/01_raw
+            recipe: rosalia_canopy.yaml
+            reader_format: auto
             scs_from: null          # use own position
           canopy_02:
             type: canopy
@@ -158,7 +178,7 @@ n_cores = config.processing.processing.n_max_threads
 === "Setup"
 
     ```bash
-    just config-init      # Copy .example templates → config/
+    just config-init      # Copy .example templates + recipe files → config/
     just config-edit processing   # Open processing.yaml in $EDITOR
     just config-edit sites        # Open sites.yaml in $EDITOR
     just config-validate  # Validate all configuration files

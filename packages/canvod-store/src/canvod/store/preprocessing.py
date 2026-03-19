@@ -10,7 +10,6 @@ new modular implementation.
 from typing import Any
 
 import xarray as xr
-
 from canvod.auxiliary.preprocessing import (
     add_future_datavars,
     map_aux_sv_to_sid,

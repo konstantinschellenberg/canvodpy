@@ -9,7 +9,7 @@ canVODpy ships with Airflow-compatible task functions and a DAG template that au
 The pipeline mirrors what `PipelineOrchestrator` does internally, but broken into four independently retriable Airflow tasks:
 
 ```mermaid
-graph LR
+graph TD
     A["check_rinex"] --> B["fetch_aux_data"]
     B --> C["process_rinex"]
     C --> D["calculate_vod"]
