@@ -24,6 +24,8 @@ wait to be asked.
 | `simplify` | Reviewing changed code for reuse, quality, and efficiency | Built-in Claude Code skill |
 | `find-skills` | Discovering and installing new skills | `npx skills add vercel-labs/skills@find-skills -g -y` |
 | `agent-browser` | Browser automation for testing and scraping | `npx skills add vercel-labs/agent-browser@agent-browser -g -y` |
+| `airflow` | Airflow best practices, operators, patterns (Astronomer) | `npx skills add astronomer/agents@airflow -g -y` |
+| `airflow-dag-patterns` | DAG design patterns, TaskFlow API, dynamic DAGs, testing | `npx skills add wshobson/agents@airflow-dag-patterns -g -y` |
 
 ## Scientific context — GNSS-T and Vegetation Optical Depth
 
