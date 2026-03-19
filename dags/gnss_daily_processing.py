@@ -318,8 +318,9 @@ def create_rinex_dag(site_name: str):
             rinex_info: dict,
             ds: str = "{{ ds }}",
         ):
-            """Wait for SP3/CLK products (up to 21 days, mode=reschedule).
+            """Wait for SP3/CLK products to be available (lightweight check).
 
+            Only checks FTP availability — does NOT download or interpolate.
             Abandons after 30 days to prevent permanent DAG run clutter.
             """
             import datetime as dt
@@ -339,12 +340,27 @@ def create_rinex_dag(site_name: str):
                 )
 
             try:
-                from canvodpy.workflows.tasks import fetch_aux_data
+                from canvod.auxiliary.pipeline import AuxDataPipeline
 
-                result = fetch_aux_data(site_name, yyyydoy)
-                return PokeReturnValue(is_done=True, xcom_value=result)
-            except RuntimeError:
+                pipeline = AuxDataPipeline.create_standard()
+                available = pipeline.check_availability(yyyydoy)
+                return PokeReturnValue(
+                    is_done=available,
+                    xcom_value={"sp3_ready": available},
+                )
+            except Exception:
                 return PokeReturnValue(is_done=False)
+
+        @task(execution_timeout=timedelta(hours=2))
+        def t_fetch_aux_data(
+            sp3_info: dict,
+            ds: str = "{{ ds }}",
+        ) -> dict:
+            """Download SP3/CLK and Hermite-interpolate to aux Zarr."""
+            from canvodpy.workflows.tasks import fetch_aux_data
+
+            _ = sp3_info
+            return fetch_aux_data(site_name, _ds_to_yyyydoy(ds))
 
         @task(execution_timeout=timedelta(hours=4))
         def t_process_rinex(
@@ -364,7 +380,8 @@ def create_rinex_dag(site_name: str):
         # Wire ingest chain with sensors
         valid_info = t_validate_dirs()
         rinex_info = t_wait_for_rinex(valid_info=valid_info)
-        aux_info = t_wait_for_sp3(rinex_info=rinex_info)
+        sp3_info = t_wait_for_sp3(rinex_info=rinex_info)
+        aux_info = t_fetch_aux_data(sp3_info=sp3_info)
         process_info = t_process_rinex(aux_info=aux_info, rinex_info=rinex_info)
 
         # Wire shared analysis pipeline

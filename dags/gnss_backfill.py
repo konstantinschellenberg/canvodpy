@@ -113,12 +113,15 @@ def canvod_backfill():
         )
         return dates
 
-    @task(execution_timeout=timedelta(hours=5))
+    @task(execution_timeout=timedelta(hours=48))
     def t_process_date_range(dates: list[str], **context) -> dict:
         """Process each date sequentially.
 
-        Sequential within task to prevent concurrent store writes.
-        Each date runs the full ingest + analysis pipeline.
+        Sequential within task to prevent concurrent store writes
+        (Icechunk max_active_runs=1). Each date runs the full ingest +
+        analysis pipeline. Per-date errors are caught and logged —
+        processing continues to the next date. Idempotent: already-
+        processed dates are skipped by hash dedup in the store layer.
         """
         params = context["params"]
         site = params["site"]
