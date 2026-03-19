@@ -113,7 +113,7 @@ def canvod_backfill():
         )
         return dates
 
-    @task(execution_timeout=timedelta(hours=48))
+    @task(execution_timeout=timedelta(hours=72))
     def t_process_date_range(dates: list[str], **context) -> dict:
         """Process each date sequentially.
 
