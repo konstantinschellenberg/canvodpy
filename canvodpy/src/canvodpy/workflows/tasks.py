@@ -858,7 +858,11 @@ def update_statistics(site: str, yyyydoy: str) -> dict:
         try:
             registry = stats_store.load(rx_type)
         except KeyError:
-            registry = ProfileRegistry()
+            registry = ProfileRegistry(
+                autocovariance_enabled=True,
+                ewma_enabled=True,
+                s4_enabled=True,
+            )
 
         # Load the day's data from the RINEX Icechunk store
         try:
