@@ -85,15 +85,15 @@ class CircularAccumulator:
 
     @property
     def rayleigh_statistic(self) -> float:
-        """Rayleigh test statistic Z = 2 * n * R-bar^2."""
+        """Rayleigh test statistic Z = n * R-bar^2 (Mardia & Jupp, 2000)."""
         if self._count == 0:
             return np.nan
         r = self.mean_resultant_length
-        return 2.0 * self._count * r * r
+        return self._count * r * r
 
     @property
     def rayleigh_p_value(self) -> float:
-        """Approximate p-value for Rayleigh test: exp(-Z)."""
+        """Approximate p-value for Rayleigh test: exp(-Z) where Z = n * R^2."""
         if self._count == 0:
             return np.nan
         z = self.rayleigh_statistic

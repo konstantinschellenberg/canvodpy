@@ -9,9 +9,12 @@ import numpy as np
 
 from canvod.streamstats import (
     DEFAULT_AUTOCOVARIANCE_MAX_LAG,
+    DEFAULT_EWMA_HALFLIFE,
     DEFAULT_HISTOGRAM_BINS,
     CellSignalKey,
+    EWMAAccumulator,
     GKSketch,
+    S4Accumulator,
     StreamingAutocovariance,
     StreamingHistogram,
     WelfordAccumulator,
@@ -20,12 +23,25 @@ from canvod.streamstats import (
 
 @dataclass
 class AccumulatorSet:
-    """Bundle of Welford + GK + Histogram + Autocovariance for a single key."""
+    """Bundle of streaming accumulators for a single CellSignalKey.
+
+    Core (always active):
+    - welford: mean, variance, skewness, kurtosis, min, max
+    - gk: streaming quantiles (ε-approximate)
+
+    Optional (enabled via ProfileRegistry config):
+    - histogram: fixed-bin distribution
+    - autocovariance: lag covariance for effective sample size
+    - ewma: exponentially weighted moving average for non-stationary tracking
+    - s4: amplitude scintillation index (only for SNR variables)
+    """
 
     welford: WelfordAccumulator = field(default_factory=WelfordAccumulator)
     gk: GKSketch = field(default_factory=lambda: GKSketch(epsilon=0.01))
     histogram: StreamingHistogram | None = None
     autocovariance: StreamingAutocovariance | None = None
+    ewma: EWMAAccumulator | None = None
+    s4: S4Accumulator | None = None
 
     def update(self, x: float) -> None:
         """Update all accumulators with a single value."""
@@ -35,6 +51,10 @@ class AccumulatorSet:
             self.histogram.update(x)
         if self.autocovariance is not None:
             self.autocovariance.update(x)
+        if self.ewma is not None:
+            self.ewma.update(x)
+        if self.s4 is not None:
+            self.s4.update(x)
 
     def update_batch(self, values: np.ndarray) -> None:
         """Update all accumulators with an array of values."""
@@ -44,6 +64,10 @@ class AccumulatorSet:
             self.histogram.update_batch(values)
         if self.autocovariance is not None:
             self.autocovariance.update_batch(values)
+        if self.ewma is not None:
+            self.ewma.update_batch(values)
+        if self.s4 is not None:
+            self.s4.update_batch(values)
 
     def merge(self, other: AccumulatorSet) -> AccumulatorSet:
         """Merge another set into this one. Returns self."""
@@ -53,7 +77,15 @@ class AccumulatorSet:
             self.histogram.merge(other.histogram)
         if self.autocovariance is not None and other.autocovariance is not None:
             self.autocovariance.merge(other.autocovariance)
+        if self.ewma is not None and other.ewma is not None:
+            self.ewma.merge(other.ewma)
+        if self.s4 is not None and other.s4 is not None:
+            self.s4.merge(other.s4)
         return self
+
+
+# Variables for which S4 scintillation tracking is meaningful
+_S4_VARIABLES = {"cn0", "snr", "SNR", "C/N0"}
 
 
 class ProfileRegistry:
@@ -67,11 +99,17 @@ class ProfileRegistry:
         gk_epsilon: float = 0.01,
         autocovariance_enabled: bool = False,
         autocovariance_max_lag: int = DEFAULT_AUTOCOVARIANCE_MAX_LAG,
+        ewma_enabled: bool = True,
+        ewma_halflife: float = DEFAULT_EWMA_HALFLIFE,
+        s4_enabled: bool = True,
     ) -> None:
         self._accumulators: dict[CellSignalKey, AccumulatorSet] = {}
         self._gk_epsilon = gk_epsilon
         self._autocovariance_enabled = autocovariance_enabled
         self._autocovariance_max_lag = autocovariance_max_lag
+        self._ewma_enabled = ewma_enabled
+        self._ewma_halflife = ewma_halflife
+        self._s4_enabled = s4_enabled
 
     def get_or_create(self, key: CellSignalKey) -> AccumulatorSet:
         """Return the accumulator set for *key*, creating if needed."""
@@ -85,11 +123,23 @@ class ProfileRegistry:
                 if self._autocovariance_enabled
                 else None
             )
+            ewma = (
+                EWMAAccumulator(half_life=self._ewma_halflife)
+                if self._ewma_enabled
+                else None
+            )
+            s4 = (
+                S4Accumulator()
+                if self._s4_enabled and key.variable in _S4_VARIABLES
+                else None
+            )
             self._accumulators[key] = AccumulatorSet(
                 welford=WelfordAccumulator(),
                 gk=GKSketch(epsilon=self._gk_epsilon),
                 histogram=histogram,
                 autocovariance=autocovariance,
+                ewma=ewma,
+                s4=s4,
             )
         return self._accumulators[key]
 
@@ -139,4 +189,6 @@ class ProfileRegistry:
             "n_cells": len(cell_ids),
             "gk_epsilon": self._gk_epsilon,
             "autocovariance_enabled": self._autocovariance_enabled,
+            "ewma_enabled": self._ewma_enabled,
+            "s4_enabled": self._s4_enabled,
         }

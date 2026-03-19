@@ -101,6 +101,35 @@ class TestSigmaVOD:
         assert np.isnan(sigma_vod(0.0, 0.5, 1.0))
 
 
+class TestDeepFadeEdgeCases:
+    """Verify uncertainty propagation at extreme low SNR (deep fade scenarios)."""
+
+    def test_sigma_vod_very_low_transmissivity(self) -> None:
+        """At T near 0 (deep fade), sigma_vod should be finite or NaN, never negative."""
+        result = sigma_vod(0.01, 0.1, 1.0)
+        assert result >= 0.0 or np.isnan(result)
+
+    def test_sigma_vod_batch_no_negative(self) -> None:
+        """sigma_vod_batch should never produce negative values."""
+        t = np.array([0.001, 0.01, 0.05, 0.1, 0.5, 0.99])
+        theta = np.full_like(t, 0.5)
+        sd = np.full_like(t, 2.0)
+        result = sigma_vod_batch(t, theta, sd)
+        valid = result[np.isfinite(result)]
+        assert np.all(valid >= 0.0), f"Negative sigma_vod found: {valid[valid < 0]}"
+
+    def test_sigma_cn0_at_noise_floor(self) -> None:
+        """At very low SNR (10 dB-Hz, near noise floor), sigma should be large but finite."""
+        result = sigma_cn0(10.0)
+        assert np.isfinite(result)
+        assert result > 0.0
+
+    def test_sigma_vod_near_zero_elevation(self) -> None:
+        """At θ near π/2 (horizon), cos(θ)→0 amplifies VOD uncertainty."""
+        result = sigma_vod(0.5, 0.1, np.pi / 2 - 0.01)
+        assert result >= 0.0 or np.isnan(result)
+
+
 class TestBatchConsistency:
     """Batch variants must agree with scalar functions."""
 

@@ -25,7 +25,7 @@ dependencies = [
     "canvod-utils>=0.1.0",
     "canvod-grids>=0.1.0",
     "canvod-streamstats>=0.1.0",
-    "loguru>=0.7.0",
+    "structlog>=24.1.0",
 ]
 
 [dependency-groups]

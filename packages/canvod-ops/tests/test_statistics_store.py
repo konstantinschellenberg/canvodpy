@@ -111,6 +111,86 @@ class TestStatisticsStore:
 
 
 @pytest.mark.integration
+class TestEwmaS4Store:
+    """Round-trip tests for EWMA and S4 accumulators in StatisticsStore."""
+
+    def test_ewma_roundtrip(self, tmp_path):
+        store_path = tmp_path / "stats.zarr"
+        root = zarr.open_group(str(store_path), mode="w")
+        store = StatisticsStore(root)
+
+        reg = ProfileRegistry(ewma_enabled=True, s4_enabled=False)
+        key = CellSignalKey(1, "G01_L1C", "SNR", "canopy")
+        data = np.array([25.0, 30.0, 35.0, 40.0, 45.0])
+        reg.update_batch(key, data)
+
+        original_ewma_mean = reg[key].ewma.mean
+        store.save(reg, "canopy")
+
+        root2 = zarr.open_group(str(store_path), mode="r")
+        loaded = StatisticsStore(root2).load("canopy")
+
+        assert loaded[key].ewma is not None
+        assert loaded[key].ewma.mean == pytest.approx(original_ewma_mean)
+        assert loaded[key].ewma.count == 5
+
+    def test_s4_roundtrip(self, tmp_path):
+        store_path = tmp_path / "stats.zarr"
+        root = zarr.open_group(str(store_path), mode="w")
+        store = StatisticsStore(root)
+
+        # S4 only created for SNR-like variables (cn0, snr, SNR, C/N0)
+        reg = ProfileRegistry(ewma_enabled=False, s4_enabled=True)
+        key = CellSignalKey(1, "G01_L1C", "cn0", "canopy")
+        data = np.array([35.0, 36.0, 37.0, 38.0, 39.0, 40.0])
+        reg.update_batch(key, data)
+
+        assert reg[key].s4 is not None
+        original_s4 = reg[key].s4.s4
+        store.save(reg, "canopy")
+
+        root2 = zarr.open_group(str(store_path), mode="r")
+        loaded = StatisticsStore(root2).load("canopy")
+
+        assert loaded[key].s4 is not None
+        assert loaded[key].s4.s4 == pytest.approx(original_s4, rel=1e-6)
+
+    def test_s4_not_created_for_non_snr_variable(self, tmp_path):
+        """S4 should only be created for SNR-related variables."""
+        reg = ProfileRegistry(s4_enabled=True)
+        key = CellSignalKey(1, "G01_L1C", "VOD", "canopy")
+        reg.update(key, 0.5)
+        assert reg[key].s4 is None
+
+    def test_ewma_s4_combined_roundtrip(self, tmp_path):
+        store_path = tmp_path / "stats.zarr"
+        root = zarr.open_group(str(store_path), mode="w")
+        store = StatisticsStore(root)
+
+        reg = ProfileRegistry(ewma_enabled=True, s4_enabled=True)
+        key_snr = CellSignalKey(1, "G01_L1C", "cn0", "canopy")
+        key_vod = CellSignalKey(1, "G01_L1C", "VOD", "canopy")
+
+        reg.update_batch(key_snr, np.array([35.0, 40.0, 45.0]))
+        reg.update_batch(key_vod, np.array([0.3, 0.5, 0.7]))
+
+        store.save(reg, "canopy")
+
+        root2 = zarr.open_group(str(store_path), mode="r")
+        loaded = StatisticsStore(root2).load("canopy")
+
+        # SNR key should have both EWMA and S4
+        assert loaded[key_snr].ewma is not None
+        assert loaded[key_snr].s4 is not None
+        assert loaded[key_snr].welford.count == 3
+
+        # VOD key should have EWMA but NOT S4
+        assert loaded[key_vod].ewma is not None
+        assert loaded[key_vod].s4 is None
+        assert loaded[key_vod].welford.mean == pytest.approx(0.5)
+
+
+@pytest.mark.integration
 class TestClimatologyStore:
     def test_save_load_roundtrip(self, tmp_path):
         store_path = tmp_path / "stats.zarr"

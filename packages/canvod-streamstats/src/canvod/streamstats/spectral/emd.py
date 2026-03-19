@@ -1,7 +1,15 @@
-"""Empirical Mode Decomposition (EMD / EEMD / CEEMDAN)."""
+"""Empirical Mode Decomposition (EMD / EEMD / CEEMDAN).
+
+.. deprecated::
+    EMD is marked for removal. It requires the external ``EMD-signal``
+    C library, is batch-only (not streaming), and its trend extraction
+    functionality is better served by :class:`RecursiveLeastSquares`
+    with forgetting factor or :class:`EWMAAccumulator`.
+"""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -40,6 +48,13 @@ def emd_decompose(
     -------
     EMDResult
     """
+    warnings.warn(
+        "emd_decompose is deprecated and will be removed in a future release. "
+        "Use RecursiveLeastSquares with forgetting factor or EWMAAccumulator "
+        "for trend extraction.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     x = np.asarray(values, dtype=np.float64).ravel()
 
     # Filter NaN / Inf values
@@ -89,6 +104,15 @@ def emd_decompose(
 def _get_decomposer(method: str, max_imfs: int | None):
     """Return a callable that performs EMD decomposition."""
     method = method.lower()
+
+    try:
+        import PyEMD  # noqa: F401
+    except ImportError:
+        msg = (
+            "EMD-signal is required for emd_decompose(). "
+            "Install with: pip install 'canvod-streamstats[emd]'"
+        )
+        raise ImportError(msg) from None
 
     if method == "emd":
         from PyEMD import EMD

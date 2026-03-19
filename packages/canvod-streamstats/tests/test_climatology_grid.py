@@ -172,6 +172,43 @@ class TestClimatologyGridMerge:
             g1.merge(g2)
 
 
+class TestClimatologyGridDOYWrapAround:
+    """DOY wrap-around: Dec 31 (DOY 365) → Jan 1 (DOY 1) must be seamless."""
+
+    def test_doy_365_and_1_in_same_bin_with_wide_window(self) -> None:
+        """With doy_window=30, DOY 365 and DOY 1 should fall in nearby bins."""
+        grid = ClimatologyGrid(doy_window=30, tod_window=24)
+        grid.update(doy=365, hour=12.0, value=10.0)
+        grid.update(doy=1, hour=12.0, value=20.0)
+
+        # Both should be queryable
+        m365, _, c365 = grid.climatology_at(365, 12.0)
+        m1, _, c1 = grid.climatology_at(1, 12.0)
+        assert c365 >= 1
+        assert c1 >= 1
+
+    def test_doy_wrap_no_seam_with_default_window(self) -> None:
+        """Default window (15 days): data from late Dec and early Jan
+        should not create an anomalous gap in the climatology."""
+        grid = ClimatologyGrid()  # doy_window=15, tod_window=1
+        # Populate DOY 360-366 and DOY 1-5 with similar values
+        for doy in list(range(360, 367)) + list(range(1, 6)):
+            grid.update(doy=doy, hour=12.0, value=30.0)
+
+        # All should have data
+        for doy in [360, 365, 1, 5]:
+            _, _, count = grid.climatology_at(doy, 12.0)
+            assert count >= 1, f"DOY {doy} has no data — wrap-around seam"
+
+    def test_doy_366_leap_year(self) -> None:
+        """DOY 366 (leap year) should not cause IndexError."""
+        grid = ClimatologyGrid(doy_window=15, tod_window=1)
+        grid.update(doy=366, hour=0.0, value=42.0)
+        m, _, c = grid.climatology_at(366, 0.0)
+        assert c == 1
+        assert m == pytest.approx(42.0)
+
+
 class TestClimatologyGridProperties:
     """Shape and property accessors."""
 

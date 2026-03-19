@@ -19,8 +19,10 @@ classifiers = [
 dependencies = [
     "numpy>=1.26.0",
     "scipy>=1.15.0",
-    "EMD-signal>=1.6.0",
 ]
+
+[project.optional-dependencies]
+emd = ["EMD-signal>=1.6.0"]
 
 [dependency-groups]
 dev = [

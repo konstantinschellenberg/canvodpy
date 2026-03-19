@@ -378,10 +378,10 @@ dependencies = [
     { name = "canvod-grids" },
     { name = "canvod-streamstats" },
     { name = "canvod-utils" },
-    { name = "loguru" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "polars" },
+    { name = "structlog" },
     { name = "xarray" },
     { name = "zarr" },
 ]
@@ -397,10 +397,10 @@ requires-dist = [
     { name = "canvod-grids", editable = "packages/canvod-grids" },
     { name = "canvod-streamstats", editable = "packages/canvod-streamstats" },
     { name = "canvod-utils", editable = "packages/canvod-utils" },
-    { name = "loguru", specifier = ">=0.7.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.1.0" },
     { name = "polars", specifier = ">=1.0.0" },
+    { name = "structlog", specifier = ">=24.1.0" },
     { name = "xarray", specifier = ">=2024.1.0" },
     { name = "zarr", specifier = ">=3.0.0" },
 ]
@@ -548,9 +548,13 @@ name = "canvod-streamstats"
 version = "0.1.0"
 source = { editable = "packages/canvod-streamstats" }
 dependencies = [
-    { name = "emd-signal" },
     { name = "numpy" },
     { name = "scipy" },
+]
+
+[package.optional-dependencies]
+emd = [
+    { name = "emd-signal" },
 ]
 
 [package.dev-dependencies]
@@ -561,10 +565,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "emd-signal", specifier = ">=1.6.0" },
+    { name = "emd-signal", marker = "extra == 'emd'", specifier = ">=1.6.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "scipy", specifier = ">=1.15.0" },
 ]
+provides-extras = ["emd"]
 
 [package.metadata.requires-dev]
 dev = [

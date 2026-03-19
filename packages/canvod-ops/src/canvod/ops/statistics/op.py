@@ -7,12 +7,14 @@ import time
 from typing import Any
 
 import numpy as np
+import structlog
 import xarray as xr
-from loguru import logger
 
 from canvod.ops.base import Op, OpResult
 from canvod.ops.statistics.profile import ProfileRegistry
 from canvod.streamstats import CellSignalKey
+
+logger = structlog.get_logger(__name__)
 
 
 class UpdateStatistics(Op):
@@ -66,7 +68,7 @@ class UpdateStatistics(Op):
         # Find cell_id coordinate
         cell_id_name = self._find_cell_id_coord(ds)
         if cell_id_name is None:
-            logger.warning("UpdateStatistics skipped — no cell_id coordinate found")
+            logger.warning("update_statistics_skipped", reason="no cell_id coordinate")
             return ds, OpResult(
                 op_name=self.name,
                 parameters=params,
@@ -142,10 +144,10 @@ class UpdateStatistics(Op):
 
         duration = time.perf_counter() - t0
         logger.info(
-            "UpdateStatistics: {} updates across {} keys in {:.3f}s",
-            n_updates,
-            len(self._registry),
-            duration,
+            "update_statistics_complete",
+            n_updates=n_updates,
+            n_keys=len(self._registry),
+            duration_s=round(duration, 3),
         )
 
         return ds, OpResult(

@@ -4,10 +4,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
+import structlog
 import xarray as xr
-from loguru import logger
 
 from canvod.ops.base import Op, OpResult
+
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -41,7 +43,7 @@ class Pipeline:
         results: list[OpResult] = []
 
         for op in self._ops:
-            logger.info("Running op: {}", op.name)
+            logger.info("running_op", op_name=op.name)
             ds, op_result = op(ds)
             results.append(op_result)
 
@@ -49,8 +51,8 @@ class Pipeline:
         pr = PipelineResult(results=results, total_duration_seconds=total)
 
         logger.info(
-            "Pipeline complete: {} ops in {:.2f}s",
-            len(results),
-            total,
+            "pipeline_complete",
+            n_ops=len(results),
+            duration_s=round(total, 2),
         )
         return ds, pr

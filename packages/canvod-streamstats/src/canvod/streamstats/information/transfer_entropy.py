@@ -1,7 +1,15 @@
-"""Transfer entropy for causal information flow."""
+"""Transfer entropy for causal information flow.
+
+.. deprecated::
+    Transfer entropy is marked for removal. It is highly noise-sensitive
+    and discretization-dependent, with limited operational benefit for
+    GNSS-T VOD monitoring. Use mutual information or cross-correlation
+    instead.
+"""
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
@@ -30,6 +38,10 @@ def transfer_entropy(
 ) -> TransferEntropyResult:
     """Compute transfer entropy between two time series.
 
+    .. deprecated::
+        Marked for removal. Noise-sensitive with limited operational
+        benefit for GNSS-T. Use :func:`mutual_information` instead.
+
     T_{X→Y} measures the information that past values of X provide about
     the future of Y, beyond what past Y already provides.
 
@@ -46,6 +58,12 @@ def transfer_entropy(
     -------
     TransferEntropyResult
     """
+    warnings.warn(
+        "transfer_entropy is deprecated and will be removed in a future release. "
+        "Use mutual_information() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     x_arr = np.asarray(x, dtype=np.float64).ravel()
     y_arr = np.asarray(y, dtype=np.float64).ravel()
 

@@ -48,6 +48,8 @@ def sigma_cn0(
     """
     t_c_s = t_c_ms / 1000.0
     cn0_linear = 10.0 ** (cn0_db_hz / 10.0)
+    # Floor at 1e-12 to prevent division by zero for blocked signals (-inf dB)
+    cn0_linear = max(cn0_linear, 1e-12)
     variance = (1.0 / (m * t_c_s)) * (1.0 + 1.0 / (t_c_s * cn0_linear)) ** 2
     # Convert variance in linear power domain to dB via delta method:
     # σ_dB ≈ (10/ln10) · σ_linear / cn0_linear
@@ -149,6 +151,8 @@ def sigma_cn0_batch(
     cn0_db_hz = np.asarray(cn0_db_hz, dtype=np.float64)
     t_c_s = t_c_ms / 1000.0
     cn0_linear = 10.0 ** (cn0_db_hz / 10.0)
+    # Floor at 1e-12 to prevent division by zero for blocked signals (-inf dB)
+    cn0_linear = np.maximum(cn0_linear, 1e-12)
     variance = (1.0 / (m * t_c_s)) * (1.0 + 1.0 / (t_c_s * cn0_linear)) ** 2
     sigma_linear = np.sqrt(variance)
     return (10.0 / np.log(10.0)) * sigma_linear / cn0_linear

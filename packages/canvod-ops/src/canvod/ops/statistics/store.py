@@ -9,12 +9,15 @@ import zarr
 
 from canvod.ops.statistics.profile import AccumulatorSet, ProfileRegistry
 from canvod.streamstats import (
+    DEFAULT_EWMA_HALFLIFE,
     DEFAULT_HISTOGRAM_BINS,
     DEFAULT_QUANTILE_PROBS,
     BOCPDAccumulator,
     CellSignalKey,
     ClimatologyGrid,
+    EWMAAccumulator,
     GKSketch,
+    S4Accumulator,
     StreamingAutocovariance,
     StreamingHistogram,
     WelfordAccumulator,
@@ -94,6 +97,23 @@ class StatisticsStore:
         else:
             autocovariances = None
 
+        # Detect EWMA and S4 presence
+        has_ewma = any(registry[k].ewma is not None for k in keys)
+        has_s4 = any(registry[k].s4 is not None for k in keys)
+
+        # EWMA state: 6 float64 per accumulator
+        ewma_states = (
+            np.full((n_cells, n_sids, n_vars, 6), np.nan, dtype=np.float64)
+            if has_ewma
+            else None
+        )
+        # S4 state: same as Welford (8 float64, tracks intensity)
+        s4_states = (
+            np.full((n_cells, n_sids, n_vars, 8), np.nan, dtype=np.float64)
+            if has_s4
+            else None
+        )
+
         for key in keys:
             ci = cell_idx[key.cell_id]
             si = sid_idx[key.signal_id]
@@ -108,6 +128,10 @@ class StatisticsStore:
             if acc.autocovariance is not None and autocovariances is not None:
                 acov_arr = acc.autocovariance.to_array()
                 autocovariances[ci, si, vi, : len(acov_arr)] = acov_arr
+            if acc.ewma is not None and ewma_states is not None:
+                ewma_states[ci, si, vi, :] = acc.ewma.to_array()
+            if acc.s4 is not None and s4_states is not None:
+                s4_states[ci, si, vi, :] = acc.s4._welford.to_array()
 
         # Write to zarr group
         rx_group = self._group.require_group(receiver_type)
@@ -117,6 +141,10 @@ class StatisticsStore:
         _write_array(rx_group, "histograms", histograms)
         if autocovariances is not None:
             _write_array(rx_group, "autocovariance", autocovariances)
+        if ewma_states is not None:
+            _write_array(rx_group, "ewma", ewma_states)
+        if s4_states is not None:
+            _write_array(rx_group, "s4", s4_states)
         _write_array(rx_group, "cell_ids", np.array(cell_ids, dtype=np.int64))
         # Store string coordinate arrays as attributes (Zarr v3 doesn't support object dtype)
         rx_group.attrs["signal_ids"] = list(signal_ids)
@@ -132,6 +160,10 @@ class StatisticsStore:
         rx_group.attrs["quantile_probs"] = list(DEFAULT_QUANTILE_PROBS)
         if autocovariance_max_lag > 0:
             rx_group.attrs["autocovariance_max_lag"] = autocovariance_max_lag
+        if has_ewma:
+            rx_group.attrs["ewma_halflife"] = DEFAULT_EWMA_HALFLIFE
+        if has_s4:
+            rx_group.attrs["s4_enabled"] = True
 
     def load(self, receiver_type: str, epsilon: float = 0.01) -> ProfileRegistry:
         """Load a ProfileRegistry from stored arrays.
@@ -162,10 +194,24 @@ class StatisticsStore:
         has_acov = acov_max_lag > 0 and "autocovariance" in rx_group
         acov_data = np.asarray(rx_group["autocovariance"]) if has_acov else None
 
+        # Load EWMA data if present
+        ewma_halflife = float(
+            rx_group.attrs.get("ewma_halflife", DEFAULT_EWMA_HALFLIFE)
+        )
+        has_ewma = "ewma" in rx_group
+        ewma_data = np.asarray(rx_group["ewma"]) if has_ewma else None
+
+        # Load S4 data if present
+        has_s4 = "s4" in rx_group
+        s4_data = np.asarray(rx_group["s4"]) if has_s4 else None
+
         registry = ProfileRegistry(
             gk_epsilon=epsilon,
             autocovariance_enabled=has_acov,
             autocovariance_max_lag=acov_max_lag if acov_max_lag > 0 else 1440,
+            ewma_enabled=has_ewma,
+            ewma_halflife=ewma_halflife,
+            s4_enabled=has_s4,
         )
 
         for ci, cell_id in enumerate(cell_ids):
@@ -196,6 +242,22 @@ class StatisticsStore:
                                 acov_arr
                             )
 
+                    # Restore EWMA if available
+                    ewma = None
+                    if has_ewma and ewma_data is not None:
+                        ewma_arr = ewma_data[ci, si, vi, :]
+                        if not np.all(np.isnan(ewma_arr)):
+                            ewma = EWMAAccumulator.from_array(ewma_arr)
+
+                    # Restore S4 if available
+                    s4 = None
+                    if has_s4 and s4_data is not None:
+                        s4_arr = s4_data[ci, si, vi, :]
+                        if not np.all(np.isnan(s4_arr)):
+                            s4_acc = S4Accumulator()
+                            s4_acc._welford = WelfordAccumulator.from_array(s4_arr)
+                            s4 = s4_acc
+
                     key = CellSignalKey(
                         cell_id=int(cell_id),
                         signal_id=str(sid),
@@ -208,6 +270,8 @@ class StatisticsStore:
                         gk=GKSketch(epsilon=epsilon),
                         histogram=histogram,
                         autocovariance=autocovariance,
+                        ewma=ewma,
+                        s4=s4,
                     )
                     registry._accumulators[key] = acc
 

@@ -109,6 +109,7 @@ def aggregation_uncertainty(
 
 def effective_sample_size_from_autocovariance(
     autocovariance: np.ndarray,
+    n: int | None = None,
 ) -> float:
     """Convenience: normalise autocovariance to autocorrelation, then compute n_eff.
 
@@ -117,6 +118,10 @@ def effective_sample_size_from_autocovariance(
     autocovariance : np.ndarray
         1-D array of autocovariance values γ(0), γ(1), γ(2), ….
         The first element γ(0) is the variance.
+    n : int or None
+        Actual number of observations.  If ``None``, falls back to
+        ``len(autocovariance)`` as a heuristic (correct when
+        ``max_lag ≈ n``).  Pass the Welford count for accurate results.
 
     Returns
     -------
@@ -125,15 +130,19 @@ def effective_sample_size_from_autocovariance(
     """
     autocovariance = np.asarray(autocovariance, dtype=np.float64)
     if autocovariance.size < 2:
+        return float(n) if n is not None and n >= 1 else 1.0
+
+    # Guard against all-NaN autocovariance (e.g., total signal blockage)
+    if np.all(~np.isfinite(autocovariance)):
         return 1.0
 
     gamma_0 = autocovariance[0]
-    if gamma_0 <= 0.0:
+    if not np.isfinite(gamma_0) or gamma_0 <= 0.0:
         return 1.0
 
     autocorrelations = autocovariance[1:] / gamma_0
-    # n is unknown from autocovariance alone; use length of the full sequence
-    # as a proxy (caller should use effective_sample_size directly when n is
-    # known).  A reasonable heuristic is n ≫ max_lag.
-    n = len(autocovariance)
+    # Replace any NaN/Inf correlations with 0 (treat as uncorrelated)
+    autocorrelations = np.where(np.isfinite(autocorrelations), autocorrelations, 0.0)
+    if n is None:
+        n = len(autocovariance)
     return effective_sample_size(autocorrelations, n)

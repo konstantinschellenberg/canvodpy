@@ -4,10 +4,12 @@ import time
 from typing import Any
 
 import numpy as np
+import structlog
 import xarray as xr
-from loguru import logger
 
 from canvod.ops.base import Op, OpResult
+
+logger = structlog.get_logger(__name__)
 
 
 class GridAssignment(Op):
@@ -104,10 +106,10 @@ class GridAssignment(Op):
         duration = time.perf_counter() - t0
 
         logger.info(
-            "Grid assignment complete: {} cells, {} assigned, {:.2f}s",
-            n_unique,
-            n_assigned,
-            duration,
+            "grid_assignment_complete",
+            n_cells=n_unique,
+            n_assigned=n_assigned,
+            duration_s=round(duration, 2),
         )
 
         output_shape = dict(ds.sizes)

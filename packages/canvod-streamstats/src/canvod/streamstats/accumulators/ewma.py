@@ -105,8 +105,10 @@ class EWMAAccumulator:
             delta = x - old_mean
             s[self._MEAN] = old_mean + a * delta
             if s[self._COUNT] == 2.0:
-                # First variance estimate
-                s[self._VAR] = a * delta * delta
+                # First variance estimate: (1-α) * α * δ² matches the
+                # steady-state Roberts recurrence var = (1-α)*(var + α*δ²)
+                # with var_old = 0
+                s[self._VAR] = (1.0 - a) * a * delta * delta
             else:
                 s[self._VAR] = (1.0 - a) * (s[self._VAR] + a * delta * delta)
 
