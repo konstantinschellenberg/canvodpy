@@ -29,7 +29,6 @@ import xarray as xr
 from canvod.auxiliary.pipeline import AuxDataPipeline
 from canvod.auxiliary.position import ECEFPosition
 from canvod.readers import MatchedDirs
-from canvod.readers.matching.dir_matcher import _has_rinex_files
 from canvod.utils.config import load_config
 from canvod.utils.tools import YYYYDOY
 from canvodpy.orchestrator.interpolator import (
@@ -119,13 +118,59 @@ def _get_rinex_files(directory: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def check_rinex(site: str, yyyydoy: str) -> dict:
-    """Check whether RINEX files exist for both receivers on the given date.
+def _discover_files_for_date(
+    site_cfg,
+    rcfg,
+    receiver_name: str,
+    date_obj: YYYYDOY,
+    base: Path,
+) -> tuple[list[Path], list[str]]:
+    """Discover files for a receiver+date using FilenameMapper or glob fallback.
 
-    Uses the same ``PairDataDirMatcher`` directory scanning logic that the
-    orchestrator uses: the ``receiver.directory`` field from ``sites.yaml``
-    is the relative path from ``gnss_site_data_root`` to the RINEX
-    directories.  Date subdirectories are ``YYDDD`` (5-digit).
+    Returns (file_paths, warnings).
+    """
+    warnings: list[str] = []
+
+    # Prefer FilenameMapper when naming config is available
+    if site_cfg.naming and rcfg.naming:
+        try:
+            from canvod.virtualiconvname import (
+                FilenameMapper,
+                ReceiverNamingConfig,
+                SiteNamingConfig,
+            )
+
+            mapper = FilenameMapper(
+                site_naming=SiteNamingConfig(**site_cfg.naming),
+                receiver_naming=ReceiverNamingConfig(**rcfg.naming),
+                receiver_type=rcfg.type,
+                receiver_base_dir=base / rcfg.directory,
+            )
+            vfs = mapper.discover_for_date(date_obj.year, date_obj.doy)
+            overlaps = FilenameMapper.detect_overlaps(vfs)
+            if overlaps:
+                warnings.append(
+                    f"{receiver_name}: {len(overlaps)} temporal overlaps detected"
+                )
+                overlap_paths = {vf.physical_path for vf in overlaps}
+                vfs = [vf for vf in vfs if vf.physical_path not in overlap_paths]
+            return [vf.physical_path for vf in vfs], warnings
+        except Exception:
+            # Fall back to glob if naming config is invalid
+            pass
+
+    # Fallback: raw glob
+    recv_dir = base / rcfg.directory / date_obj.yydoy
+    files = _get_rinex_files(recv_dir)
+    return files, warnings
+
+
+def check_rinex(site: str, yyyydoy: str) -> dict:
+    """Check whether RINEX files exist for all receivers on the given date.
+
+    Uses ``FilenameMapper`` when naming config is available (prevents
+    duplicate ingest from daily+sub-daily files). Falls back to raw
+    glob when naming config is absent.
 
     Parameters
     ----------
@@ -154,14 +199,16 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
     all_ready = True
 
     for name, rcfg in site_cfg.receivers.items():
-        recv_dir = base / rcfg.directory / date_obj.yydoy
-        has_files = _has_rinex_files(recv_dir)
-        files = _get_rinex_files(recv_dir) if has_files else []
+        files, file_warnings = _discover_files_for_date(
+            site_cfg, rcfg, name, date_obj, base
+        )
+        has_files = len(files) > 0
         receivers[name] = {
-            "directory": str(recv_dir),
+            "directory": str(base / rcfg.directory),
             "has_files": has_files,
             "files": [str(f) for f in files],
             "count": len(files),
+            "warnings": file_warnings,
         }
         if not has_files:
             all_ready = False
@@ -183,6 +230,79 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
         raise RuntimeError(msg)
 
     logger.info("check_rinex: %s %s — all receivers ready", site, date_obj.to_str())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Task 1a-sbf — check_sbf
+# ---------------------------------------------------------------------------
+
+
+def check_sbf(site: str, yyyydoy: str) -> dict:
+    """Check whether SBF files exist for all receivers on the given date.
+
+    Same logic as :func:`check_rinex` but for SBF binary data. SBF files
+    are available immediately after receiver transfer (no sensor wait needed).
+
+    Parameters
+    ----------
+    site : str
+        Research site name (must exist in config).
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "ready": bool, "receivers": {...}}``
+
+    Raises
+    ------
+    RuntimeError
+        If SBF files are missing for any receiver.
+    """
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+    base = site_cfg.get_base_path()
+
+    receivers: dict[str, dict] = {}
+    all_ready = True
+
+    for name, rcfg in site_cfg.receivers.items():
+        files, file_warnings = _discover_files_for_date(
+            site_cfg, rcfg, name, date_obj, base
+        )
+        # Filter to SBF files only
+        sbf_files = [f for f in files if f.suffix.lower() == ".sbf"]
+        has_files = len(sbf_files) > 0
+        receivers[name] = {
+            "directory": str(base / rcfg.directory),
+            "has_files": has_files,
+            "files": [str(f) for f in sbf_files],
+            "count": len(sbf_files),
+            "warnings": file_warnings,
+        }
+        if not has_files:
+            all_ready = False
+
+    result = {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "ready": all_ready,
+        "receivers": receivers,
+    }
+
+    if not all_ready:
+        missing = [n for n, r in receivers.items() if not r["has_files"]]
+        msg = (
+            f"SBF files not yet available for {site} {date_obj.to_str()}: "
+            f"missing receivers {missing}"
+        )
+        logger.warning(msg)
+        raise RuntimeError(msg)
+
+    logger.info("check_sbf: %s %s — all receivers ready", site, date_obj.to_str())
     return result
 
 
@@ -722,6 +842,303 @@ def process_rinex(
         "receivers_processed": receivers_processed,
         "files_written": total_files_written,
     }
+
+
+# ---------------------------------------------------------------------------
+# Task 3b — process_sbf (broadcast ephemeris, no aux Zarr needed)
+# ---------------------------------------------------------------------------
+
+
+def process_sbf(
+    site: str,
+    yyyydoy: str,
+    receiver_files: dict | None = None,
+) -> dict:
+    """Read SBF, augment with broadcast ephemeris, and write to Icechunk store.
+
+    Uses ``SbfBroadcastProvider`` — theta/phi come from SBF ``SatVisibility``
+    blocks embedded in the binary data. No external SP3/CLK needed.
+    Also writes SBF metadata (PVT, DOP, SatVisibility) as ``sbf_obs``.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+    receiver_files : dict, optional
+        ``{receiver_name: {"files": [str, ...], "count": N}}`` from
+        ``check_sbf``.  When ``None``, files are discovered from disk.
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "receivers_processed", "files_written",
+        "sbf_obs_written"}``
+    """
+    from canvod.store import GnssResearchSite
+    from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
+
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+    keep_vars = config.processing.processing.keep_rnx_vars
+    keep_sids = config.sids.get_sids()
+    base = site_cfg.get_base_path()
+
+    research_site = GnssResearchSite(site)
+    receivers_processed: list[str] = []
+    total_files_written = 0
+    sbf_obs_parts: list[xr.Dataset] = []
+
+    # A dummy aux path — preprocess_with_hermite_aux requires it as a
+    # parameter but skips ephemeris loading when use_sbf_geometry=True.
+    dummy_aux_path = Path("/dev/null")
+
+    for recv_name, rcfg in site_cfg.receivers.items():
+        recv_type = rcfg.type
+
+        # Determine store groups
+        if recv_type == "canopy":
+            store_groups = [recv_name]
+        else:
+            canopy_names = site_cfg.resolve_scs_from(recv_name)
+            store_groups = [f"{recv_name}_{cn}" for cn in canopy_names]
+
+        # Resolve SBF files
+        if receiver_files and recv_name in receiver_files:
+            sbf_files = [Path(f) for f in receiver_files[recv_name]["files"]]
+        else:
+            files, _ = _discover_files_for_date(
+                site_cfg, rcfg, recv_name, date_obj, base
+            )
+            sbf_files = [f for f in files if f.suffix.lower() == ".sbf"]
+
+        if not sbf_files:
+            logger.warning("process_sbf: no SBF files for %s, skipping", recv_name)
+            continue
+
+        # Receiver position from first SBF file's metadata
+        position: ECEFPosition | None = None
+        for ff in sbf_files:
+            try:
+                from canvodpy.factories import ReaderFactory
+
+                reader = ReaderFactory.create("sbf", fpath=ff)
+                ds_tmp = reader.to_ds(keep_data_vars=None, write_global_attrs=True)
+                position = ECEFPosition.from_ds_metadata(ds_tmp)
+                break
+            except Exception as exc:
+                logger.warning("SBF position extract failed for %s: %s", ff.name, exc)
+
+        if position is None:
+            logger.error("No valid position for %s — skipping", recv_name)
+            continue
+
+        # Process each SBF file
+        for sbf_file in sbf_files:
+            try:
+                _path, augmented_ds, aux_datasets, _sid_issues = (
+                    preprocess_with_hermite_aux(
+                        rnx_file=sbf_file,
+                        keep_vars=keep_vars,
+                        aux_zarr_path=dummy_aux_path,
+                        receiver_position=position,
+                        receiver_type=recv_name,
+                        keep_sids=keep_sids,
+                        reader_name="sbf",
+                        use_sbf_geometry=True,
+                    )
+                )
+            except Exception:
+                logger.exception("Failed to process SBF %s", sbf_file.name)
+                continue
+
+            # Collect sbf_obs metadata for later writing
+            if "sbf_obs" in aux_datasets:
+                sbf_obs_parts.append(aux_datasets["sbf_obs"])
+
+            # Write to each store group
+            for group in store_groups:
+                file_hash = augmented_ds.attrs.get("File Hash")
+                existing = research_site.rinex_store.batch_check_existing(
+                    group, [file_hash] if file_hash else []
+                )
+                if file_hash and file_hash in existing:
+                    logger.info(
+                        "Skipping duplicate %s in group %s", sbf_file.name, group
+                    )
+                    continue
+
+                research_site.rinex_store.write_or_append_group(
+                    dataset=augmented_ds,
+                    group_name=group,
+                    commit_message=f"Airflow SBF ingest {sbf_file.name}",
+                )
+                total_files_written += 1
+
+        receivers_processed.append(recv_name)
+        logger.info(
+            "process_sbf: %s processed %d files -> groups %s",
+            recv_name,
+            len(sbf_files),
+            store_groups,
+        )
+
+    # Write SBF metadata (sbf_obs) after all files processed
+    sbf_obs_written = False
+    if sbf_obs_parts:
+        try:
+            combined_obs = xr.concat(sbf_obs_parts, dim="epoch")
+            research_site.rinex_store.write_sbf_metadata(combined_obs)
+            sbf_obs_written = True
+            logger.info(
+                "process_sbf: wrote sbf_obs metadata (%d parts)", len(sbf_obs_parts)
+            )
+        except Exception:
+            logger.exception("Failed to write sbf_obs metadata")
+
+    return {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "receivers_processed": receivers_processed,
+        "files_written": total_files_written,
+        "sbf_obs_written": sbf_obs_written,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task 3c — validate_ingest (quality gate between ingest and VOD)
+# ---------------------------------------------------------------------------
+
+
+def validate_ingest(site: str, yyyydoy: str) -> dict:
+    """Spot-check stored data before VOD computation.
+
+    Reads back ingested data from the Icechunk store and verifies basic
+    physical plausibility. Catches corrupt writes, coordinate transform
+    bugs, or SID mismatches before they propagate into VOD.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "valid": bool, "checks": {...}}``
+
+    Raises
+    ------
+    RuntimeError
+        If any check fails (blocks VOD computation).
+    """
+    from canvod.store import GnssResearchSite
+
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+
+    research_site = GnssResearchSite(site)
+    checks: dict[str, dict] = {}
+    all_valid = True
+
+    day_start = np.datetime64(date_obj.date, "D")
+    day_end = day_start + np.timedelta64(1, "D")
+    time_range = (day_start, day_end)
+
+    for recv_name, rcfg in site_cfg.receivers.items():
+        recv_checks: dict[str, str] = {}
+
+        try:
+            ds = research_site.load_rinex_data(
+                receiver_name=recv_name,
+                time_range=time_range,
+            )
+        except Exception:
+            recv_checks["data_loaded"] = "SKIP: no data for this date"
+            checks[recv_name] = recv_checks
+            continue
+
+        n_epochs = ds.sizes.get("epoch", 0)
+        n_sids = ds.sizes.get("sid", 0)
+
+        # Check 1: non-empty
+        if n_epochs == 0 or n_sids == 0:
+            recv_checks["non_empty"] = f"FAIL: {n_epochs} epochs, {n_sids} sids"
+            all_valid = False
+        else:
+            recv_checks["non_empty"] = f"OK: {n_epochs} epochs, {n_sids} sids"
+
+        # Check 2: SNR in plausible range (0-70 dB-Hz)
+        for snr_var in ["cn0", "SNR", "S1C", "S1W", "S2C", "S2W"]:
+            if snr_var in ds.data_vars:
+                snr_vals = ds[snr_var].values[np.isfinite(ds[snr_var].values)]
+                if len(snr_vals) > 0:
+                    snr_min, snr_max = float(snr_vals.min()), float(snr_vals.max())
+                    if snr_min < 0 or snr_max > 70:
+                        recv_checks["snr_range"] = (
+                            f"FAIL: {snr_var} range [{snr_min:.1f}, {snr_max:.1f}]"
+                        )
+                        all_valid = False
+                    else:
+                        recv_checks["snr_range"] = (
+                            f"OK: {snr_var} [{snr_min:.1f}, {snr_max:.1f}]"
+                        )
+                break
+
+        # Check 3: theta (polar angle) in valid range [0, π/2]
+        if "theta" in ds.coords:
+            theta = ds.coords["theta"].values[np.isfinite(ds.coords["theta"].values)]
+            if len(theta) > 0:
+                t_min, t_max = float(theta.min()), float(theta.max())
+                if t_min < -0.01 or t_max > np.pi / 2 + 0.01:
+                    recv_checks["theta_range"] = (
+                        f"FAIL: theta [{t_min:.4f}, {t_max:.4f}] rad"
+                    )
+                    all_valid = False
+                else:
+                    recv_checks["theta_range"] = (
+                        f"OK: theta [{t_min:.4f}, {t_max:.4f}] rad"
+                    )
+
+        # Check 4: phi (azimuth) in valid range [0, 2π]
+        if "phi" in ds.coords:
+            phi = ds.coords["phi"].values[np.isfinite(ds.coords["phi"].values)]
+            if len(phi) > 0:
+                p_min, p_max = float(phi.min()), float(phi.max())
+                if p_min < -0.01 or p_max > 2 * np.pi + 0.01:
+                    recv_checks["phi_range"] = (
+                        f"FAIL: phi [{p_min:.4f}, {p_max:.4f}] rad"
+                    )
+                    all_valid = False
+                else:
+                    recv_checks["phi_range"] = f"OK: phi [{p_min:.4f}, {p_max:.4f}] rad"
+
+        checks[recv_name] = recv_checks
+
+    result = {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "valid": all_valid,
+        "checks": checks,
+    }
+
+    if not all_valid:
+        failed = {
+            r: {k: v for k, v in c.items() if v.startswith("FAIL")}
+            for r, c in checks.items()
+            if any(v.startswith("FAIL") for v in c.values())
+        }
+        msg = f"Ingest validation failed for {site} {date_obj.to_str()}: {failed}"
+        logger.error(msg)
+        raise RuntimeError(msg)
+
+    logger.info("validate_ingest: %s %s — all checks passed", site, date_obj.to_str())
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1440,4 +1857,50 @@ def snapshot_statistics(site: str, yyyydoy: str) -> dict:
         "yyyydoy": date_obj.to_str(),
         "receivers_completed": receivers_completed,
         "status": "ok",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task 10 — cleanup (runs regardless of upstream outcome)
+# ---------------------------------------------------------------------------
+
+
+def cleanup(site: str, yyyydoy: str) -> dict:
+    """Remove temporary files created during pipeline execution.
+
+    Cleans up the aux Zarr store from ``fetch_aux_data`` and any other
+    temporary artifacts. Designed to run with ``TriggerRule.ALL_DONE``
+    so it executes even if upstream tasks fail.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "cleaned": [...]}``
+    """
+    date_obj = _resolve_date(yyyydoy)
+    cleaned: list[str] = []
+
+    # Clean up aux Zarr temp files
+    try:
+        config = load_config()
+        aux_dir = config.processing.storage.get_aux_data_dir()
+        aux_zarr_path = aux_dir / f"aux_{date_obj.to_str()}.zarr"
+        if aux_zarr_path.exists():
+            shutil.rmtree(aux_zarr_path)
+            cleaned.append(str(aux_zarr_path))
+            logger.info("cleanup: removed %s", aux_zarr_path)
+    except Exception:
+        logger.exception("cleanup: failed to remove aux Zarr")
+
+    return {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "cleaned": cleaned,
     }
