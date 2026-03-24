@@ -123,6 +123,75 @@ def compute_spherical_coordinates(
     return r, theta, phi
 
 
+_BROADCAST_OBS_THETA_ATTRS: dict[str, object] = {
+    "long_name": "Satellite polar angle (broadcast ephemeris)",
+    "short_name": "θ_B",
+    "units": "rad",
+    "description": "Polar angle from zenith (+z/Up), broadcast navigation solution",
+    "valid_range": [0.0, np.pi / 2],
+    "convention": "physics (0=zenith, π/2=horizon)",
+    "source": "SBF SatVisibility block — receiver firmware (broadcast ephemeris)",
+    "comment": (
+        "Derived from the receiver's internal broadcast navigation solution. "
+        "NOT from independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+}
+
+_BROADCAST_OBS_PHI_ATTRS: dict[str, object] = {
+    "long_name": "Azimuthal angle (broadcast ephemeris, navigation convention)",
+    "short_name": "φ_B",
+    "units": "rad",
+    "description": "Azimuthal angle from North in ENU frame, clockwise (broadcast)",
+    "valid_range": [0.0, 2 * np.pi],
+    "convention": "navigation (0=North, π/2=East, π=South, 3π/2=West)",
+    "source": "SBF SatVisibility block — receiver firmware (broadcast ephemeris)",
+    "comment": (
+        "Derived from the receiver's internal broadcast navigation solution. "
+        "NOT from independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+}
+
+
+def add_broadcast_spherical_coords_to_dataset(
+    ds: xr.Dataset,
+    theta: np.ndarray,
+    phi: np.ndarray,
+) -> xr.Dataset:
+    """Add broadcast spherical coordinates to xarray Dataset.
+
+    Same convention as :func:`add_spherical_coords_to_dataset` but attrs
+    reflect that values come from the SBF broadcast navigation solution
+    rather than independently-computed SP3/CLK ephemerides.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset with 'epoch' and 'sid' dimensions.
+    theta : np.ndarray
+        Polar angles in radians [0, π].
+    phi : np.ndarray
+        Azimuthal angles in radians [0, 2π).
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with phi and theta variables added.
+    """
+    ds["theta"] = xr.DataArray(
+        theta,
+        coords=[ds["epoch"], ds["sid"]],
+        dims=["epoch", "sid"],
+        attrs=_BROADCAST_OBS_THETA_ATTRS,
+    )
+    ds["phi"] = xr.DataArray(
+        phi,
+        coords=[ds["epoch"], ds["sid"]],
+        dims=["epoch", "sid"],
+        attrs=_BROADCAST_OBS_PHI_ATTRS,
+    )
+    return ds
+
+
 def add_spherical_coords_to_dataset(
     ds: xr.Dataset,
     r: np.ndarray,

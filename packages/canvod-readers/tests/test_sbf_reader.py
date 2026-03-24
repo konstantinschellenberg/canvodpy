@@ -359,29 +359,37 @@ class TestToMetadataDs:
             f"Metadata dataset missing sids from observations: {missing}"
         )
 
-    def test_to_metadata_ds_theta_phi(self, meta_ds: xr.Dataset) -> None:
-        theta = meta_ds["theta"].values
-        phi = meta_ds["phi"].values
+    def test_to_metadata_ds_broadcast_theta_phi(self, meta_ds: xr.Dataset) -> None:
+        theta = meta_ds["broadcast_theta"].values
+        phi = meta_ds["broadcast_phi"].values
         valid_theta = theta[~np.isnan(theta)]
         valid_phi = phi[~np.isnan(phi)]
         if len(valid_theta) > 0:
-            assert np.all(valid_theta >= 0), "theta values must be >= 0"
-            assert np.all(valid_theta <= 90), "theta (polar angle) must be <= 90"
+            assert np.all(valid_theta >= 0), "broadcast_theta values must be >= 0"
+            assert np.all(valid_theta <= np.pi / 2), (
+                "broadcast_theta (polar angle) must be <= pi/2"
+            )
         if len(valid_phi) > 0:
-            assert np.all(valid_phi >= 0), "phi values must be >= 0"
-            assert np.all(valid_phi < 360), "phi (azimuth) must be < 360"
+            assert np.all(valid_phi >= 0), "broadcast_phi values must be >= 0"
+            assert np.all(valid_phi < 2 * np.pi), (
+                "broadcast_phi (azimuth) must be < 2*pi"
+            )
         # Provenance attrs must be present
-        assert "source" in meta_ds["theta"].attrs, (
-            "theta must have 'source' provenance attr"
+        assert "source" in meta_ds["broadcast_theta"].attrs, (
+            "broadcast_theta must have 'source' provenance attr"
         )
-        assert "source" in meta_ds["phi"].attrs, (
-            "phi must have 'source' provenance attr"
+        assert "source" in meta_ds["broadcast_phi"].attrs, (
+            "broadcast_phi must have 'source' provenance attr"
         )
+        assert meta_ds["broadcast_theta"].attrs["units"] == "rad"
+        assert meta_ds["broadcast_phi"].attrs["units"] == "rad"
 
-    def test_to_metadata_ds_theta_phi_not_all_nan(self, meta_ds: xr.Dataset) -> None:
+    def test_to_metadata_ds_broadcast_theta_not_all_nan(
+        self, meta_ds: xr.Dataset
+    ) -> None:
         """At least some epochs must have SatVisibility-derived geometry."""
-        assert not np.all(np.isnan(meta_ds["theta"].values)), (
-            "theta is entirely NaN — SatVisibility blocks absent or not matched?"
+        assert not np.all(np.isnan(meta_ds["broadcast_theta"].values)), (
+            "broadcast_theta is entirely NaN — SatVisibility blocks absent or not matched?"
         )
 
     def test_to_metadata_ds_rise_set_values(self, meta_ds: xr.Dataset) -> None:
@@ -405,7 +413,7 @@ class TestToMetadataDs:
             )
 
     def test_to_metadata_ds_data_vars(self, meta_ds: xr.Dataset) -> None:
-        for var in ("theta", "phi", "rise_set", "mp_correction_m"):
+        for var in ("broadcast_theta", "broadcast_phi", "rise_set", "mp_correction_m"):
             assert var in meta_ds.data_vars, f"Missing metadata data var: {var}"
 
     def test_to_metadata_ds_epoch_coord_dims(self, meta_ds: xr.Dataset) -> None:
@@ -511,13 +519,44 @@ class TestToDsAndAuxiliary:
         meta = aux["sbf_obs"]
         assert set(meta.dims) == {"epoch", "sid"}
 
-    def test_meta_ds_has_theta_phi(
+    def test_meta_ds_has_broadcast_theta_phi(
         self, combined_result: tuple[xr.Dataset, dict]
     ) -> None:
         _, aux = combined_result
         meta = aux["sbf_obs"]
-        assert "theta" in meta.data_vars
-        assert "phi" in meta.data_vars
+        assert "broadcast_theta" in meta.data_vars
+        assert "broadcast_phi" in meta.data_vars
+
+    def test_meta_sid_matches_obs_sid(
+        self, combined_result: tuple[xr.Dataset, dict]
+    ) -> None:
+        """meta_ds SID dimension must be identical to obs_ds SID dimension."""
+        obs, aux = combined_result
+        np.testing.assert_array_equal(
+            aux["sbf_obs"].sid.values,
+            obs.sid.values,
+            err_msg="sbf_obs and obs_ds SID dimensions differ",
+        )
+
+    def test_obs_ds_no_leaked_metadata_coords(
+        self, combined_result: tuple[xr.Dataset, dict]
+    ) -> None:
+        """obs_ds must not contain epoch-level coords leaked from sbf_obs."""
+        obs, _ = combined_result
+        leaked = {
+            "pdop",
+            "hdop",
+            "vdop",
+            "n_sv",
+            "pvt_mode",
+            "h_accuracy_m",
+            "v_accuracy_m",
+            "mean_corr_age_s",
+            "cpu_load",
+            "temperature_c",
+            "rx_error",
+        } & set(obs.coords)
+        assert not leaked, f"Leaked metadata coords in obs_ds: {leaked}"
 
     def test_meta_epoch_count_matches_obs_epoch_count(
         self, combined_result: tuple[xr.Dataset, dict]

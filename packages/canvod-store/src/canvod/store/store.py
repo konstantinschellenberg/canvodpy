@@ -622,8 +622,8 @@ class MyIcechunkStore:
                     # Create time masks for latest data only
                     time_masks = []
                     for row in latest_entries.iter_rows(named=True):
-                        start_time = row["start"]
-                        end_time = row["end"]
+                        start_time = np.datetime64(row["start"], "ns")
+                        end_time = np.datetime64(row["end"], "ns")
                         mask = (ds.epoch >= start_time) & (ds.epoch <= end_time)
                         time_masks.append(mask)
 

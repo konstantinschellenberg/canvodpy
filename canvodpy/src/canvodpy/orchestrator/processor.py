@@ -181,22 +181,42 @@ def preprocess_with_hermite_aux(
                     meta_ds = canopy_aux.get("sbf_obs")
                 else:
                     meta_ds = aux_datasets.get("sbf_obs")
-                if meta_ds is not None and "theta" in meta_ds and "phi" in meta_ds:
-                    # Align broadcast theta/phi to obs epoch+SID space
-                    geo = meta_ds[["theta", "phi"]]
-                    if "epoch" in geo.dims:
-                        common_epochs = np.intersect1d(
-                            ds.epoch.values, geo.epoch.values
+                if (
+                    meta_ds is not None
+                    and "broadcast_theta" in meta_ds
+                    and "broadcast_phi" in meta_ds
+                ):
+                    # Extract broadcast geometry (already in radians from reader)
+                    bt = meta_ds["broadcast_theta"]
+                    bp = meta_ds["broadcast_phi"]
+
+                    # Align to obs epoch space
+                    if "epoch" in bt.dims:
+                        common_epochs = np.intersect1d(ds.epoch.values, bt.epoch.values)
+                        bt = bt.sel(epoch=common_epochs).reindex(
+                            epoch=ds.epoch.values, fill_value=np.nan
                         )
-                        geo = geo.sel(epoch=common_epochs)
-                        geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
-                    common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
-                    geo = geo.sel(sid=common_sids)
-                    geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
-                    # SBF SatVisibility stores theta/phi in degrees;
-                    # convert to radians for consistency with agency path.
-                    ds["theta"] = np.deg2rad(geo["theta"])
-                    ds["phi"] = np.deg2rad(geo["phi"])
+                        bp = bp.sel(epoch=common_epochs).reindex(
+                            epoch=ds.epoch.values, fill_value=np.nan
+                        )
+
+                    # Align to obs SID space
+                    common_sids = sorted(set(ds.sid.values) & set(bt.sid.values))
+                    bt = bt.sel(sid=common_sids).reindex(
+                        sid=ds.sid.values, fill_value=np.nan
+                    )
+                    bp = bp.sel(sid=common_sids).reindex(
+                        sid=ds.sid.values, fill_value=np.nan
+                    )
+
+                    from canvod.auxiliary.position.spherical_coords import (
+                        add_broadcast_spherical_coords_to_dataset,
+                    )
+
+                    # .values prevents epoch-level coord leakage (pdop, hdop, …)
+                    ds = add_broadcast_spherical_coords_to_dataset(
+                        ds, bt.values, bp.values
+                    )
                 from canvod.auxiliary.preprocessing import flush_sid_accumulators
 
                 sid_issues = flush_sid_accumulators()

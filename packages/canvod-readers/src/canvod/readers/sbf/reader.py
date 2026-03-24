@@ -201,6 +201,33 @@ _PHI_ATTRS: dict[str, str] = {
 # (CF-convention style: long_name, units, source, comment, references)
 # ---------------------------------------------------------------------------
 
+_BROADCAST_THETA_ATTRS: dict[str, str] = {
+    "long_name": "Satellite polar angle (broadcast ephemeris)",
+    "short_name": "θ_B",
+    "standard_name": "sensor_polar_angle",
+    "units": "rad",
+    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "comment": (
+        "Polar angle from vertical: 0 = overhead, π/2 = horizon. "
+        "Derived from the SBF Elevation field (converted to radians). "
+        "Based on the receiver's internal broadcast navigation solution, "
+        "NOT independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+}
+_BROADCAST_PHI_ATTRS: dict[str, str] = {
+    "long_name": "Satellite azimuth (broadcast ephemeris, geographic convention)",
+    "short_name": "φ_B",
+    "standard_name": "sensor_azimuth_angle",
+    "units": "rad",
+    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "comment": (
+        "Geographic azimuth: 0 = North, π/2 = East (clockwise). "
+        "Derived from the SBF Azimuth field (converted to radians). "
+        "Based on the receiver's internal broadcast navigation solution, "
+        "NOT independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+}
+
 _RISE_SET_ATTRS: dict[str, object] = {
     "long_name": "Satellite rise/set indicator",
     "flag_values": [0, 1],
@@ -1284,8 +1311,16 @@ class SbfReader(GNSSDataReader):
 
         ds = xr.Dataset(
             data_vars={
-                "theta": (["epoch", "sid"], theta_arr, _THETA_ATTRS),
-                "phi": (["epoch", "sid"], phi_arr, _PHI_ATTRS),
+                "broadcast_theta": (
+                    ["epoch", "sid"],
+                    np.deg2rad(theta_arr),
+                    _BROADCAST_THETA_ATTRS,
+                ),
+                "broadcast_phi": (
+                    ["epoch", "sid"],
+                    np.deg2rad(phi_arr),
+                    _BROADCAST_PHI_ATTRS,
+                ),
                 "rise_set": (["epoch", "sid"], rise_set_arr, _RISE_SET_ATTRS),
                 "mp_correction_m": (
                     ["epoch", "sid"],
@@ -1756,8 +1791,16 @@ class SbfReader(GNSSDataReader):
 
         meta_ds = xr.Dataset(
             data_vars={
-                "theta": (["epoch", "sid"], theta_arr, _THETA_ATTRS),
-                "phi": (["epoch", "sid"], phi_arr, _PHI_ATTRS),
+                "broadcast_theta": (
+                    ["epoch", "sid"],
+                    np.deg2rad(theta_arr),
+                    _BROADCAST_THETA_ATTRS,
+                ),
+                "broadcast_phi": (
+                    ["epoch", "sid"],
+                    np.deg2rad(phi_arr),
+                    _BROADCAST_PHI_ATTRS,
+                ),
                 "rise_set": (["epoch", "sid"], rise_set_arr, _RISE_SET_ATTRS),
                 "mp_correction_m": (
                     ["epoch", "sid"],
@@ -1770,6 +1813,14 @@ class SbfReader(GNSSDataReader):
             coords=coords_meta,
             attrs=attrs_meta,
         )
+
+        # Align meta_ds SID to obs_ds SID.
+        # obs uses sid_props_obs (MeasEpoch); meta uses sid_props_meta (Type1/Type2)
+        # — they can diverge.  Reindex fills missing SIDs with NaN.
+        meta_ds = meta_ds.reindex(sid=obs_ds.sid, fill_value=np.nan)
+        # rise_set is int8 with sentinel -1; NaN fill promotes to float — cast back.
+        if meta_ds["rise_set"].dtype != np.int8:
+            meta_ds["rise_set"] = meta_ds["rise_set"].fillna(-1).astype(np.int8)
 
         return obs_ds, {"sbf_obs": meta_ds}
 
