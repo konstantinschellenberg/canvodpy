@@ -164,17 +164,12 @@ def canvod_backfill():
 
 
 def _process_single_day_sbf(site: str, yyyydoy: str) -> None:
-    """Run the full SBF pipeline for a single day."""
+    """Run the SBF pipeline for a single day (ingest → VOD)."""
     from canvodpy.workflows.tasks import (
         calculate_vod,
         check_sbf,
         cleanup,
-        detect_anomalies,
-        detect_changepoints,
         process_sbf,
-        snapshot_statistics,
-        update_climatology,
-        update_statistics,
         validate_ingest,
     )
 
@@ -182,27 +177,17 @@ def _process_single_day_sbf(site: str, yyyydoy: str) -> None:
     process_sbf(site, yyyydoy, receiver_files=sbf_info["receivers"])
     validate_ingest(site, yyyydoy)
     calculate_vod(site, yyyydoy)
-    update_statistics(site, yyyydoy)
-    update_climatology(site, yyyydoy)
-    detect_anomalies(site, yyyydoy)
-    detect_changepoints(site, yyyydoy)
-    snapshot_statistics(site, yyyydoy)
     cleanup(site, yyyydoy)
 
 
 def _process_single_day_rinex(site: str, yyyydoy: str) -> None:
-    """Run the full RINEX pipeline for a single day."""
+    """Run the RINEX pipeline for a single day (ingest → VOD)."""
     from canvodpy.workflows.tasks import (
         calculate_vod,
         check_rinex,
         cleanup,
-        detect_anomalies,
-        detect_changepoints,
         fetch_aux_data,
         process_rinex,
-        snapshot_statistics,
-        update_climatology,
-        update_statistics,
         validate_ingest,
     )
 
@@ -216,11 +201,6 @@ def _process_single_day_rinex(site: str, yyyydoy: str) -> None:
     )
     validate_ingest(site, yyyydoy)
     calculate_vod(site, yyyydoy)
-    update_statistics(site, yyyydoy)
-    update_climatology(site, yyyydoy)
-    detect_anomalies(site, yyyydoy)
-    detect_changepoints(site, yyyydoy)
-    snapshot_statistics(site, yyyydoy)
     cleanup(site, yyyydoy)
 
 

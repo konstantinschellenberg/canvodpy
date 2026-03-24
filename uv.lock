@@ -376,7 +376,6 @@ version = "0.1.0"
 source = { editable = "packages/canvod-ops" }
 dependencies = [
     { name = "canvod-grids" },
-    { name = "canvod-streamstats" },
     { name = "canvod-utils" },
     { name = "numpy" },
     { name = "pandas" },
@@ -395,7 +394,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "canvod-grids", editable = "packages/canvod-grids" },
-    { name = "canvod-streamstats", editable = "packages/canvod-streamstats" },
     { name = "canvod-utils", editable = "packages/canvod-utils" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pandas", specifier = ">=2.1.0" },
@@ -559,8 +557,11 @@ emd = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "commitizen" },
+    { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -573,8 +574,11 @@ provides-extras = ["emd"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "commitizen", specifier = ">=4.13.0" },
+    { name = "pre-commit", specifier = ">=4.0.0" },
+    { name = "pytest", specifier = ">=9.0.1" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "ruff", specifier = ">=0.14.5" },
 ]
 
 [[package]]

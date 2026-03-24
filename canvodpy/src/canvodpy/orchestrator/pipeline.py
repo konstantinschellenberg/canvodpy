@@ -75,6 +75,7 @@ class PipelineOrchestrator:
         cpu_affinity: list[int] | None = None,
         nice_priority: int = 0,
         threads_per_worker: int | None = None,
+        parallelization_strategy: str = "dask",
     ) -> None:
         self.site = site
         self.n_max_workers = n_max_workers
@@ -123,6 +124,7 @@ class PipelineOrchestrator:
             "nice_priority": nice_priority,
             "threads_per_worker": threads_per_worker,
         }
+        self._use_processpool = parallelization_strategy == "processpool"
         self._cluster_manager: DaskClusterManager | None = None
         self._cluster_creation_attempted = False
 
@@ -147,6 +149,8 @@ class PipelineOrchestrator:
     @property
     def cluster_manager(self) -> DaskClusterManager | None:
         """Lazily create the Dask cluster on first access."""
+        if self._use_processpool:
+            return None
         if not self._cluster_creation_attempted:
             self._cluster_creation_attempted = True
             try:

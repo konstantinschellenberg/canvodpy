@@ -225,6 +225,15 @@ class ProcessingParams(BaseModel):
             "download). Broadcast is faster but less accurate (~1-2 m orbit)."
         ),
     )
+    parallelization_strategy: Literal["dask", "processpool"] = Field(
+        "dask",
+        description=(
+            "'dask': use Dask distributed LocalCluster for parallel RINEX "
+            "processing (default). 'processpool': use ProcessPoolExecutor "
+            "directly, skipping Dask overhead — faster for small datasets or "
+            "when Dask startup latency dominates."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_resource_mode(self) -> "ProcessingParams":

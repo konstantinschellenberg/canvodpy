@@ -4,20 +4,13 @@ Two DAGs per configured site:
 
 **SBF DAG** (``canvod_{site}_sbf``) — same-day results::
 
-    validate_dirs → check_sbf → process_sbf → validate_ingest
-      → calculate_vod ──┐
-      → update_metadata ┘→ update_statistics → update_climatology
-      → detect_anomalies      ─┐
-      → detect_changepoints   ─┤→ snapshot_statistics → cleanup
+    validate_dirs → check_sbf → process_sbf
+      → validate_ingest → calculate_vod → cleanup
 
 **RINEX DAG** (``canvod_{site}_rinex``) — agency-quality, delayed::
 
     validate_dirs → wait_for_rinex → wait_for_sp3 → fetch_aux_data
-      → process_rinex → validate_ingest → calculate_vod ──┐
-                                        → update_metadata ┘
-      → update_statistics → update_climatology
-      → detect_anomalies      ─┐
-      → detect_changepoints   ─┤→ snapshot_statistics → cleanup
+      → process_rinex → validate_ingest → calculate_vod → cleanup
 
 Requirements
 ------------
@@ -106,7 +99,7 @@ _START_DATE = datetime(2025, 1, 1)
 
 
 def _wire_analysis_pipeline(site_name: str, ingest_info: dict):
-    """Wire the shared analysis tasks: VOD → statistics → anomalies → cleanup.
+    """Wire the shared analysis tasks: validate → VOD → cleanup.
 
     Returns the final cleanup task result for DAG completion tracking.
     """
@@ -131,77 +124,20 @@ def _wire_analysis_pipeline(site_name: str, ingest_info: dict):
         _ = ingest_valid
         return calculate_vod(site_name, _ds_to_yyyydoy(ds))
 
-    @task(execution_timeout=timedelta(hours=1))
-    def t_update_statistics(
-        vod_info: dict,
-        ds: str = "{{ ds }}",
-    ) -> dict:
-        from canvodpy.workflows.tasks import update_statistics
-
-        _ = vod_info
-        return update_statistics(site_name, _ds_to_yyyydoy(ds))
-
-    @task(execution_timeout=timedelta(hours=1))
-    def t_update_climatology(
-        stats_info: dict,
-        ds: str = "{{ ds }}",
-    ) -> dict:
-        from canvodpy.workflows.tasks import update_climatology
-
-        _ = stats_info
-        return update_climatology(site_name, _ds_to_yyyydoy(ds))
-
-    @task
-    def t_detect_anomalies(
-        clim_info: dict,
-        ds: str = "{{ ds }}",
-    ) -> dict:
-        from canvodpy.workflows.tasks import detect_anomalies
-
-        _ = clim_info
-        return detect_anomalies(site_name, _ds_to_yyyydoy(ds))
-
-    @task
-    def t_detect_changepoints(
-        clim_info: dict,
-        ds: str = "{{ ds }}",
-    ) -> dict:
-        from canvodpy.workflows.tasks import detect_changepoints
-
-        _ = clim_info
-        return detect_changepoints(site_name, _ds_to_yyyydoy(ds))
-
-    @task
-    def t_snapshot_statistics(
-        anomaly_info: dict,
-        cp_info: dict,
-        ds: str = "{{ ds }}",
-    ) -> dict:
-        from canvodpy.workflows.tasks import snapshot_statistics
-
-        _ = anomaly_info
-        _ = cp_info
-        return snapshot_statistics(site_name, _ds_to_yyyydoy(ds))
-
     @task(trigger_rule=TriggerRule.ALL_DONE)
     def t_cleanup(
-        snapshot_info: dict,
+        vod_info: dict,
         ds: str = "{{ ds }}",
     ) -> dict:
         from canvodpy.workflows.tasks import cleanup
 
-        _ = snapshot_info
+        _ = vod_info
         return cleanup(site_name, _ds_to_yyyydoy(ds))
 
     # Wire the chain
     ingest_valid = t_validate_ingest(process_info=ingest_info)
     vod_info = t_calculate_vod(ingest_valid=ingest_valid)
-    stats_info = t_update_statistics(vod_info=vod_info)
-    clim_info = t_update_climatology(stats_info=stats_info)
-    anomaly_info = t_detect_anomalies(clim_info=clim_info)
-    cp_info = t_detect_changepoints(clim_info=clim_info)
-    snapshot_info = t_snapshot_statistics(anomaly_info=anomaly_info, cp_info=cp_info)
-    return t_cleanup(snapshot_info=snapshot_info)
+    return t_cleanup(vod_info=vod_info)
 
 
 # ---------------------------------------------------------------------------

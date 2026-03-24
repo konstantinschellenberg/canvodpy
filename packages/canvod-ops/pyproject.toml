@@ -24,7 +24,6 @@ dependencies = [
     "zarr>=3.0.0",
     "canvod-utils>=0.1.0",
     "canvod-grids>=0.1.0",
-    "canvod-streamstats>=0.1.0",
     "structlog>=24.1.0",
 ]
 
@@ -37,7 +36,6 @@ dev = [
 [tool.uv.sources]
 canvod-utils = { workspace = true }
 canvod-grids = { workspace = true }
-canvod-streamstats = { workspace = true }
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
