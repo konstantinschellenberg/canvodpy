@@ -30,9 +30,10 @@ _SECONDS_PER_GPS_WEEK: int = 604_800
 
 # ---------------------------------------------------------------------------
 # Signal number extraction from Type + ObsInfo bytes (extended signal table)
-# Source: RefGuide-4.14.0, MeasEpochChannelType1.Type, p.261
+# Source: RefGuide-4.14.0, MeasEpochChannelType1.Type, p.262; ObsInfo p.264
 #   bits 0-4 of Type = SigIdxLo
 #   If SigIdxLo == 31: actual signal num = (ObsInfo bits 3-7) + 32
+#   Signal type number table: Section 4.1.10, pp.255-256
 # ---------------------------------------------------------------------------
 
 
@@ -53,7 +54,7 @@ def decode_signal_num(type_byte: int, obs_info: int) -> int:
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType1.Type, p.261.
+    Source: RefGuide-4.14.0, MeasEpochChannelType1.Type, p.262.
     Bits 5-7 of Type encode the antenna descriptor; they are ignored here.
     """
     sig_idx_lo = type_byte & 0x1F  # bits 0-4
@@ -67,10 +68,15 @@ def decode_signal_num(type_byte: int, obs_info: int) -> int:
 
 # ---------------------------------------------------------------------------
 # CN0 scaling
-# Source: RefGuide-4.14.0, MeasEpochChannelType1.CN0, p.261
+# Source: RefGuide-4.14.0, MeasEpochChannelType1.CN0, p.264
+#   Field: u1, scale 0.25 dB-Hz/LSB
 #   C/N0 [dB-Hz] = raw * 0.25 + 10  for all signals except 1 (L1P) and 2 (L2P)
-#   C/N0 [dB-Hz] = raw * 0.25       for signals 1 and 2 (no +10 dB offset)
-# Do-Not-Use: raw == 0
+#   C/N0 [dB-Hz] = raw * 0.25       for signals 1 and 2 (codeless P-code; no +10 offset)
+#   Do-Not-Use: raw == 255 (u1 max; field is set to 255 when C/N0 not available)
+#   Signal numbers 1 (GPS L1P) and 2 (GPS L2P) use semi-codeless tracking → lower
+#   typical C/N0 and fixed minimum mask of 1 dB-Hz enforced by firmware.
+#   Source: Section 4.1.10 (signal type table) p.255-256;
+#           MeasEpochChannelType1 table p.262-264.
 # ---------------------------------------------------------------------------
 
 
@@ -88,14 +94,19 @@ def cn0_dbhz(raw: int, sig_num: int) -> pint.Quantity | None:
     -------
     pint.Quantity or None
         C/N0 as a ``Quantity`` in ``dBHz``, or ``None`` if Do-Not-Use
-        (``raw == 0``).
+        (raw == 255).
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType1.CN0, p.261.
-    Only GPS L1P (sig 1) and GPS L2P (sig 2) omit the +10 dB offset.
+    Source: RefGuide-4.14.0, MeasEpochChannelType1.CN0, p.264.
+    Field definition: u1, scale 0.25 dB-Hz/LSB, Do-Not-Use = 255.
+    Resolution is 0.25 dB-Hz; use MeasExtra.Misc CN0HighRes (p.268) to
+    extend to 0.03125 dB-Hz if MeasExtra is logged.
+    Signal numbers 1 (GPS L1P, RINEX 1W) and 2 (GPS L2P, RINEX 2W) are
+    tracked semi-codeless and use C/N0 = raw * 0.25 (no +10 dB-Hz offset).
+    All other signals use C/N0 = raw * 0.25 + 10.
     """
-    if raw == 0:
+    if raw == 255:
         return None
     match sig_num:
         case 1 | 2:
@@ -107,8 +118,9 @@ def cn0_dbhz(raw: int, sig_num: int) -> pint.Quantity | None:
 
 # ---------------------------------------------------------------------------
 # Type1 pseudorange
-# Source: RefGuide-4.14.0, MeasEpochChannelType1, p.261
-#   CodeMSB = Misc & 0x0F  (bits 0-3)
+# Source: RefGuide-4.14.0, MeasEpochChannelType1, p.262-264
+#   Misc field (u1, p.264): bits 0-3 = CodeMSB; bits 4-7 = antenna/reserved
+#   CodeLSB field (u4, p.263)
 #   PR [m]  = (CodeMSB * 4_294_967_296 + CodeLSB) * 0.001
 # Do-Not-Use: CodeMSB == 0 AND CodeLSB == 0
 # ---------------------------------------------------------------------------
@@ -131,7 +143,7 @@ def pseudorange_m(misc: int, code_lsb: int) -> pint.Quantity | None:
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType1, p.261.
+    Source: RefGuide-4.14.0, MeasEpochChannelType1, p.262.
     """
     code_msb = misc & 0x0F
     if code_msb == 0 and code_lsb == 0:
@@ -141,9 +153,10 @@ def pseudorange_m(misc: int, code_lsb: int) -> pint.Quantity | None:
 
 # ---------------------------------------------------------------------------
 # Type1 Doppler
-# Source: RefGuide-4.14.0, MeasEpochChannelType1.Doppler, p.261
+# Source: RefGuide-4.14.0, MeasEpochChannelType1.Doppler, p.263
+#   Field: i4, scale 0.0001 Hz/LSB
 #   D [Hz] = raw * 0.0001
-# Do-Not-Use: raw == -2_147_483_648  (i4 minimum)
+# Do-Not-Use: raw == -2_147_483_648  (i4 minimum = 0x80000000)
 # ---------------------------------------------------------------------------
 
 _DOPPLER_DNU: int = -(1 << 31)  # -2_147_483_648
@@ -165,7 +178,7 @@ def doppler_hz(raw: int) -> pint.Quantity | None:
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType1.Doppler, p.261.
+    Source: RefGuide-4.14.0, MeasEpochChannelType1.Doppler, p.263.
     """
     if raw == _DOPPLER_DNU:
         return None
@@ -174,7 +187,8 @@ def doppler_hz(raw: int) -> pint.Quantity | None:
 
 # ---------------------------------------------------------------------------
 # Type1 carrier phase
-# Source: RefGuide-4.14.0, MeasEpochChannelType1, p.261
+# Source: RefGuide-4.14.0, MeasEpochChannelType1, p.263-264
+#   CarrierMSB field: i1, p.263; CarrierLSB field: u2, p.263
 #   λ          = c / freq_hz
 #   L [cycles] = PR [m] / λ  +  (CarrierMSB * 65536 + CarrierLSB) * 0.001
 # Do-Not-Use: CarrierMSB == -128 AND CarrierLSB == 0
@@ -208,7 +222,7 @@ def phase_cycles(
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType1, p.261.
+    Source: RefGuide-4.14.0, MeasEpochChannelType1, p.263-264.
     Uses :data:`~canvod.readers.gnss_specs.constants.SPEEDOFLIGHT`.
     """
     if carrier_msb == -128 and carrier_lsb == 0:
@@ -221,7 +235,8 @@ def phase_cycles(
 
 # ---------------------------------------------------------------------------
 # OffsetMSB decoding for Type2 sub-blocks
-# Source: RefGuide-4.14.0, MeasEpochChannelType2.OffsetMSB, p.263
+# Source: RefGuide-4.14.0, MeasEpochChannelType2.OffsetsMSB, p.264
+#   Field: u1
 #   bits 0-2: CodeOffsetMSB    (3-bit two's-complement, range -4 to +3)
 #   bits 3-7: DopplerOffsetMSB (5-bit two's-complement, range -16 to +15)
 # ---------------------------------------------------------------------------
@@ -250,7 +265,7 @@ def decode_offsets_msb(offset_msb: int) -> tuple[int, int]:
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType2.OffsetMSB, p.263.
+    Source: RefGuide-4.14.0, MeasEpochChannelType2.OffsetsMSB, p.264.
     """
     code_raw = offset_msb & 0x07  # bits 0-2
     doppler_raw = (offset_msb >> 3) & 0x1F  # bits 3-7
@@ -259,7 +274,8 @@ def decode_offsets_msb(offset_msb: int) -> tuple[int, int]:
 
 # ---------------------------------------------------------------------------
 # Type2 pseudorange
-# Source: RefGuide-4.14.0, MeasEpochChannelType2, p.263
+# Source: RefGuide-4.14.0, MeasEpochChannelType2, p.264
+#   CodeOffsetLSB field: u2
 #   PR_type2 [m] = PR_type1 [m]  +  (CodeOffsetMSB * 65536 + CodeOffsetLSB) * 0.001
 # Do-Not-Use: CodeOffsetMSB == -4 AND CodeOffsetLSB == 0
 # ---------------------------------------------------------------------------
@@ -288,7 +304,7 @@ def pr2_m(
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType2, p.263.
+    Source: RefGuide-4.14.0, MeasEpochChannelType2, p.264.
     """
     if code_offset_msb == -4 and code_offset_lsb == 0:
         return None
@@ -298,7 +314,8 @@ def pr2_m(
 
 # ---------------------------------------------------------------------------
 # Type2 Doppler
-# Source: RefGuide-4.14.0, MeasEpochChannelType2, p.263
+# Source: RefGuide-4.14.0, MeasEpochChannelType2, p.264
+#   DopplerOffsetLSB field: u2, scale 1e-4 Hz/LSB
 #   D_type2 [Hz] = D_type1 * (freq_type2 / freq_type1)
 #                + (DopplerOffsetMSB * 65536 + DopplerOffsetLSB) * 1e-4
 # Do-Not-Use: DopplerOffsetMSB == -16 AND DopplerOffsetLSB == 0
@@ -334,7 +351,7 @@ def doppler2_hz(
 
     Notes
     -----
-    Source: RefGuide-4.14.0, MeasEpochChannelType2, p.263.
+    Source: RefGuide-4.14.0, MeasEpochChannelType2, p.264.
     """
     if doppler_offset_msb == -16 and doppler_offset_lsb == 0:
         return None
@@ -345,10 +362,12 @@ def doppler2_hz(
 
 # ---------------------------------------------------------------------------
 # GLONASS FDMA carrier frequencies
-# Source: RefGuide-4.14.0, Table 4.1.10, p. 256 (frequency column footnote)
+# Source: RefGuide-4.14.0, Signal type table Section 4.1.10 p.255-256
+#         (frequency column footnote for GLONASS FDMA signals, sig_nums 8-12)
+#         ChannelStatus block (Block 4013) p.393, ChannelSatInfo.FreqNr
 #   G1 [MHz] = 1602.000 + (FreqNr - 8) * 9/16
 #   G2 [MHz] = 1246.000 + (FreqNr - 8) * 7/16
-# FreqNr: ChannelStatus_ChannelSatInfo.FreqNr
+# FreqNr: ChannelStatus.ChannelSatInfo.FreqNr
 #   FreqNr = GLONASS slot number + 8;  valid range 1..21 (slot -7..+13)
 # ---------------------------------------------------------------------------
 

@@ -234,6 +234,17 @@ class ProcessingParams(BaseModel):
             "when Dask startup latency dominates."
         ),
     )
+    store_sbf_raw_observables: bool = Field(
+        True,
+        description=(
+            "When reading SBF files, include the pre-correction 'raw' observable "
+            "variables in obs_ds: SNR_raw (before CN0HighRes), "
+            "Pseudorange_unsmoothed (before Hatch filter), "
+            "Pseudorange_raw (before Hatch + multipath filters), and "
+            "Phase_raw (before carrier multipath correction). "
+            "Set to False to reduce dataset size when raw quantities are not needed."
+        ),
+    )
 
     @model_validator(mode="after")
     def validate_resource_mode(self) -> "ProcessingParams":

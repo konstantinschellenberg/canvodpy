@@ -26,6 +26,8 @@ edit_uri = "edit/main/docs/"
 extra_css = ["assets/canvod-nordic.css"]
 extra_javascript = [
   "assets/mermaid-init.js",
+  "assets/mathjax-init.js",
+  "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js",
 ]
 
 # --------------------------------------------------------------------------
@@ -47,6 +49,7 @@ nav = [
       { "Overview" = "packages/readers/overview.md" },
       { "RINEX v3.04 Format" = "packages/readers/rinex-format.md" },
       { "SBF Reader" = "packages/readers/sbf.md" },
+      { "SBF Field Decoding" = "packages/readers/sbf-decoding.md" },
       { "Ephemeris Sources" = "packages/readers/ephemeris-sources.md" },
       { "Satellite Catalog (IGS SINEX)" = "packages/readers/satellite-catalog.md" },
       { "Reader Architecture" = "packages/readers/architecture.md" },

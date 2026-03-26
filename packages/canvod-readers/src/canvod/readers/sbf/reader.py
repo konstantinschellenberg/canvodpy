@@ -166,13 +166,18 @@ _THETA_ATTRS: dict[str, str] = {
     "long_name": "Satellite polar angle",
     "standard_name": "sensor_polar_angle",
     "units": "degrees",
-    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "source": "SBF SatVisibility block (Block 4012) — reported by receiver firmware",
     "comment": (
         "Polar angle (angle from vertical): theta = 90 - elevation. "
         "0 deg = satellite directly overhead; 90 deg = satellite at horizon. "
-        "Computed from the raw SBF Elevation field (scaled by 0.01 deg). "
+        "Computed from SatVisibility.SatInfo.Elevation (i2, scale 0.01 deg/LSB, "
+        "Do-Not-Use -32768). "
         "Derived from the receiver's internal navigation solution, NOT from "
         "independently-computed satellite ephemerides."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "SatVisibility block (Block 4012), SatInfo sub-block, field Elevation, p.401."
     ),
     # Missing observations encoded as NaN (IEEE float32 missing-value convention).
     # No _FillValue attr: xarray/Zarr use NaN natively for float32.
@@ -181,16 +186,20 @@ _PHI_ATTRS: dict[str, str] = {
     "long_name": "Satellite azimuth (geographic convention)",
     "standard_name": "sensor_azimuth_angle",
     "units": "degrees",
-    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "source": "SBF SatVisibility block (Block 4012) — reported by receiver firmware",
     "comment": (
         "Geographic (compass) azimuth: 0° = North, 90° = East, 180° = South, "
-        "270° = West (clockwise from North). This is the raw SBF Azimuth field "
-        "scaled to degrees (* 0.01), with no additional transformation applied. "
+        "270° = West (clockwise from North). SatVisibility.SatInfo.Azimuth "
+        "(u2, scale 0.01 deg/LSB, Do-Not-Use 65535). "
         "NOTE: this is NOT the mathematical spherical-coordinate azimuthal angle phi, "
         "which is measured counterclockwise from East. "
         "To convert: phi_spherical = 90 deg - phi_stored (mod 360 deg). "
         "Derived from the receiver's internal navigation solution, NOT from "
         "independently-computed satellite ephemerides."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "SatVisibility block (Block 4012), SatInfo sub-block, field Azimuth, p.401."
     ),
     # Missing observations encoded as NaN (IEEE float32 missing-value convention).
     # No _FillValue attr: xarray/Zarr use NaN natively for float32.
@@ -206,12 +215,17 @@ _BROADCAST_THETA_ATTRS: dict[str, str] = {
     "short_name": "θ_B",
     "standard_name": "sensor_polar_angle",
     "units": "rad",
-    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "source": "SBF SatVisibility block (Block 4012) — reported by receiver firmware",
     "comment": (
         "Polar angle from vertical: 0 = overhead, π/2 = horizon. "
-        "Derived from the SBF Elevation field (converted to radians). "
+        "Derived from SatVisibility.SatInfo.Elevation (i2, scale 0.01 deg/LSB, "
+        "Do-Not-Use -32768), converted to radians via theta = (90 - elevation_deg) * π/180. "
         "Based on the receiver's internal broadcast navigation solution, "
         "NOT independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "SatVisibility block (Block 4012), SatInfo sub-block, field Elevation, p.401."
     ),
 }
 _BROADCAST_PHI_ATTRS: dict[str, str] = {
@@ -219,12 +233,17 @@ _BROADCAST_PHI_ATTRS: dict[str, str] = {
     "short_name": "φ_B",
     "standard_name": "sensor_azimuth_angle",
     "units": "rad",
-    "source": "SBF SatVisibility block — reported by receiver firmware",
+    "source": "SBF SatVisibility block (Block 4012) — reported by receiver firmware",
     "comment": (
         "Geographic azimuth: 0 = North, π/2 = East (clockwise). "
-        "Derived from the SBF Azimuth field (converted to radians). "
+        "Derived from SatVisibility.SatInfo.Azimuth (u2, scale 0.01 deg/LSB, "
+        "Do-Not-Use 65535), converted to radians via phi = azimuth_deg * π/180. "
         "Based on the receiver's internal broadcast navigation solution, "
         "NOT independently-computed satellite ephemerides (e.g. SP3/CLK)."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "SatVisibility block (Block 4012), SatInfo sub-block, field Azimuth, p.401."
     ),
 }
 
@@ -242,143 +261,314 @@ _RISE_SET_ATTRS: dict[str, object] = {
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "SatVisibility block, SatInfo sub-block, field RiseSet."
+        "SatVisibility block (Block 4012), SatInfo sub-block, field RiseSet, p.401. "
+        "Raw field: u1, scale 1; 0=setting, 1=rising, 255=unknown (→ stored as -1)."
     ),
 }
 
 _MP_CORRECTION_ATTRS: dict[str, object] = {
     "long_name": "Pseudorange multipath correction",
     "units": "m",
-    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
     "comment": (
         "Multipath mitigation correction applied to the pseudorange by the receiver. "
-        "Add this value to the pseudorange to recover the raw pseudorange as it would "
-        "be without multipath mitigation. Resolution: 0.001 m (1 mm)."
+        "Add this value to the pseudorange to recover the raw unmitigated pseudorange. "
+        "Raw field: i2, scale 0.001 m/LSB (resolution 1 mm). No Do-Not-Use value."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "MeasExtra block, MeasExtraChannelSub sub-block, field MPCorrection."
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field MPCorrection, p.265."
     ),
 }
 
 _CODE_VAR_ATTRS: dict[str, object] = {
     "long_name": "Code tracking noise variance",
-    "units": "cm^2",
-    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "units": "m^2",
+    "valid_max": 65534e-4,
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
     "comment": (
-        "Estimated code tracking noise variance stored as the raw integer from the "
-        "SBF field (1 count = 0.0001 m² = 1 cm²). "
-        "Values saturate at 65534 cm² (≥6.55 m²); raw DoNotUse value 65535 → NaN."
+        "Estimated code tracking noise variance. "
+        "Raw field: u2, scale 0.0001 m²/LSB (stored here after applying scale). "
+        "Values saturate at 65534 counts (= 6.5534 m²); raw Do-Not-Use 65535 → NaN."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "MeasExtra block, MeasExtraChannelSub sub-block, field CodeVar."
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field CodeVar, p.265."
     ),
 }
 
 _CARRIER_VAR_ATTRS: dict[str, object] = {
     "long_name": "Carrier phase tracking noise variance",
     "units": "mcycles^2",
-    "source": "SBF MeasExtra block — reported by receiver firmware",
+    "valid_max": 65534.0,
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
     "comment": (
-        "Estimated carrier phase tracking noise variance in squared millicycles "
-        "(1 count = 1 mcycle²). Values saturate at 65534 mcycles²; "
-        "raw DoNotUse value 65535 → NaN. "
-        "Multiply by the MeasExtra DopplerVarFactor to obtain the Doppler "
+        "Estimated carrier phase tracking noise variance. "
+        "Raw field: u2, scale 1 mcycle²/LSB. "
+        "Values saturate at 65534 mcycles²; raw Do-Not-Use 65535 → NaN. "
+        "Multiply by the MeasExtra.DopplerVarFactor to obtain the Doppler "
         "measurement variance."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "MeasExtra block, MeasExtraChannelSub sub-block, field CarrierVar."
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field CarrierVar, p.265."
+    ),
+}
+
+_CN0_HIGHRES_CORRECTION_ATTRS: dict[str, object] = {
+    "long_name": "C/N0 high-resolution correction from MeasExtra",
+    "units": "dB-Hz",
+    "valid_min": 0.0,
+    "valid_max": 7 * 0.03125,  # CN0HighRes max value 7 → 0.21875 dB-Hz
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
+    "comment": (
+        "High-resolution C/N0 extension from MeasExtra.MeasExtraChannelSub.Misc "
+        "bits 0-2 (CN0HighRes, u3, range 0-7). "
+        "Add to the SNR variable (from MeasEpoch, 0.25 dB-Hz resolution) to obtain "
+        "C/N0 at 0.03125 dB-Hz (1/32 dB-Hz) resolution: "
+        "  C/N0_highres = SNR + cn0_highres_correction. "
+        "NaN if MeasExtra was not logged or no measurement available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field Misc bits 0-2 (CN0HighRes), p.265."
+    ),
+}
+
+_SMOOTHING_CORR_ATTRS: dict[str, object] = {
+    "long_name": "Pseudorange Hatch-filter smoothing correction",
+    "units": "m",
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
+    "comment": (
+        "Smoothing correction applied to the pseudorange by the Hatch filter. "
+        "Add to the stored pseudorange to recover the raw unsmoothed measurement. "
+        "Raw field: i2, scale 0.001 m/LSB. "
+        "NaN if MeasExtra was not logged or no measurement available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field SmoothingCorr, p.265."
+    ),
+}
+
+_LOCK_TIME_ATTRS: dict[str, object] = {
+    "long_name": "Carrier phase lock time",
+    "units": "s",
+    "valid_min": 0,
+    "valid_max": 65534,
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
+    "comment": (
+        "Duration of continuous carrier phase tracking for this signal. "
+        "Reset to 0 on reacquisition or cycle slip. "
+        "Raw field: u2, scale 1 s/LSB, clipped to 65534 s; Do-Not-Use 65535 → NaN."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field LockTime, p.265."
+    ),
+}
+
+_CUM_LOSS_CONT_ATTRS: dict[str, object] = {
+    "long_name": "Cumulative loss-of-continuity counter",
+    "units": "1",
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
+    "comment": (
+        "Modulo-256 counter that increments each time continuous carrier phase "
+        "tracking is interrupted (cycle slip or reacquisition after loss of lock). "
+        "A change between consecutive epochs indicates a cycle slip. "
+        "Raw field: u1, no Do-Not-Use value."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field CumLossCont, p.265."
+    ),
+}
+
+_CAR_MP_CORR_ATTRS: dict[str, object] = {
+    "long_name": "Carrier phase multipath correction",
+    "units": "cycles",
+    "source": "SBF MeasExtra block (Block 4000) — reported by receiver firmware",
+    "comment": (
+        "Multipath correction for the carrier phase measurement. "
+        "Add to the stored carrier phase to recover the raw unmitigated phase. "
+        "Raw field: i1, scale 1/512 cycles/LSB (1.953125 mcycles/LSB). "
+        "NaN if MeasExtra was not logged or no measurement available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field CarMPCorr, p.265."
+    ),
+}
+
+_SNR_RAW_ATTRS: dict[str, object] = {
+    "long_name": "C/N0 before CN0HighRes correction (0.25 dB-Hz resolution)",
+    "units": "dB-Hz",
+    "valid_min": 0.0,
+    "source": "SBF MeasEpoch block (Block 4027) — before CN0HighRes correction",
+    "comment": (
+        "Carrier-to-noise density at the native MeasEpoch resolution of 0.25 dB-Hz, "
+        "before the high-resolution extension from MeasExtra is applied. "
+        "SNR is the corrected version (0.03125 dB-Hz when MeasExtra is available). "
+        "NaN where no observation was present."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasEpoch block (Block 4027), MeasEpochChannelType1 sub-block, "
+        "field CN0, p.264."
+    ),
+}
+
+_PSEUDORANGE_UNSMOOTHED_ATTRS: dict[str, object] = {
+    "long_name": "Pseudorange before Hatch-filter carrier smoothing",
+    "units": "m",
+    "source": "SBF MeasEpoch + MeasExtra (Blocks 4027, 4000)",
+    "comment": (
+        "Pseudorange with the Hatch-filter smoothing correction removed: "
+        "PR_unsmoothed = Pseudorange + smoothing_corr_m. "
+        "Exposes the raw code measurement before the firmware's carrier-smoothing "
+        "filter is applied. NaN where MeasExtra was not logged or no measurement "
+        "available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field SmoothingCorr, p.265."
+    ),
+}
+
+_PSEUDORANGE_RAW_ATTRS: dict[str, object] = {
+    "long_name": "Pseudorange before Hatch-filter smoothing and multipath mitigation",
+    "units": "m",
+    "source": "SBF MeasEpoch + MeasExtra (Blocks 4027, 4000)",
+    "comment": (
+        "Pseudorange with both firmware corrections removed: "
+        "PR_raw = Pseudorange + smoothing_corr_m + mp_correction_m. "
+        "Exposes the code measurement before any firmware post-processing. "
+        "NaN where MeasExtra was not logged or no measurement available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "fields SmoothingCorr and MPCorrection, p.265."
+    ),
+}
+
+_PHASE_RAW_ATTRS: dict[str, object] = {
+    "long_name": "Carrier phase before carrier multipath correction",
+    "units": "cycles",
+    "source": "SBF MeasEpoch + MeasExtra (Blocks 4027, 4000)",
+    "comment": (
+        "Carrier phase with the firmware multipath correction removed: "
+        "Phase_raw = Phase + car_mp_corr_cycles. "
+        "NaN where MeasExtra was not logged or no measurement available."
+    ),
+    "references": (
+        "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
+        "MeasExtra block (Block 4000), MeasExtraChannelSub sub-block, "
+        "field CarMPCorr, p.265."
     ),
 }
 
 _PDOP_ATTRS: dict[str, object] = {
     "long_name": "Position Dilution of Precision",
     "units": "1",
-    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "source": "SBF DOP block (Block 4001, fallback: PVTGeodetic Block 4007) — reported by receiver firmware",
     "comment": (
         "PDOP = √(Qxx + Qyy + Qzz), where Q is the position covariance matrix "
         "in a local Cartesian frame. Smaller values indicate better satellite geometry. "
+        "Raw field: u2, scale 0.01/LSB, Do-Not-Use 0 (→ NaN). "
         "NaN indicates not available."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "DOP block, field PDOP."
+        "DOP block (Block 4001), field PDOP, p.349."
     ),
 }
 
 _HDOP_ATTRS: dict[str, object] = {
     "long_name": "Horizontal Dilution of Precision",
     "units": "1",
-    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "source": "SBF DOP block (Block 4001, fallback: PVTGeodetic Block 4007) — reported by receiver firmware",
     "comment": (
         "HDOP = √(Qλλ + Qϕϕ), where Qλλ and Qϕϕ are the longitude and latitude "
-        "components of the position covariance matrix. NaN indicates not available."
+        "components of the position covariance matrix. "
+        "Raw field: u2, scale 0.01/LSB, Do-Not-Use 0 (→ NaN). "
+        "NaN indicates not available."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "DOP block, field HDOP."
+        "DOP block (Block 4001), field HDOP, p.349."
     ),
 }
 
 _VDOP_ATTRS: dict[str, object] = {
     "long_name": "Vertical Dilution of Precision",
     "units": "1",
-    "source": "SBF DOP block (fallback: PVTGeodetic) — reported by receiver firmware",
+    "source": "SBF DOP block (Block 4001, fallback: PVTGeodetic Block 4007) — reported by receiver firmware",
     "comment": (
         "VDOP = √(Qhh), where Qhh is the height component of the position "
-        "covariance matrix. NaN indicates not available."
+        "covariance matrix. "
+        "Raw field: u2, scale 0.01/LSB, Do-Not-Use 0 (→ NaN). "
+        "NaN indicates not available."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "DOP block, field VDOP."
+        "DOP block (Block 4001), field VDOP, p.349."
     ),
 }
 
 _N_SV_ATTRS: dict[str, object] = {
     "long_name": "Number of satellites used in PVT computation",
     "units": "1",
-    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "source": "SBF PVTGeodetic block (Block 4007) — reported by receiver firmware",
     "comment": (
         "Total number of satellites used in the Position-Velocity-Time (PVT) "
-        "computation. Fill value -1 (int16) indicates not available."
+        "computation. Raw field: u1, Do-Not-Use 255 (→ stored as -1). "
+        "Fill value -1 (int16) indicates not available."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "PVTGeodetic block, field NrSV."
+        "PVTGeodetic block (Block 4007), field NrSV, p.338."
     ),
 }
 
 _H_ACCURACY_ATTRS: dict[str, object] = {
     "long_name": "Horizontal position accuracy (2DRMS, 95%)",
     "units": "m",
-    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "source": "SBF PVTGeodetic block (Block 4007) — reported by receiver firmware",
     "comment": (
         "Twice the root-mean-square of the horizontal distance error (2DRMS). "
         "The horizontal distance between the true and computed positions is expected "
         "to be below this value with ≥95% probability. "
-        "NaN indicates not available (raw DoNotUse value 65535)."
+        "Raw field: u2, scale 0.01 m/LSB, Do-Not-Use 65535 (→ NaN)."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "PVTGeodetic block, field HAccuracy."
+        "PVTGeodetic block (Block 4007), field HAccuracy, p.338."
     ),
 }
 
 _V_ACCURACY_ATTRS: dict[str, object] = {
     "long_name": "Vertical position accuracy (2-sigma, 95%)",
     "units": "m",
-    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "source": "SBF PVTGeodetic block (Block 4007) — reported by receiver firmware",
     "comment": (
         "Two-sigma vertical accuracy. "
         "The vertical distance between the true and computed positions is expected "
         "to be below this value with ≥95% probability. "
-        "NaN indicates not available (raw DoNotUse value 65535)."
+        "Raw field: u2, scale 0.01 m/LSB, Do-Not-Use 65535 (→ NaN)."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "PVTGeodetic block, field VAccuracy."
+        "PVTGeodetic block (Block 4007), field VAccuracy, p.338."
     ),
 }
 
@@ -390,9 +580,9 @@ _PVT_MODE_ATTRS: dict[str, object] = {
         "no_pvt stand_alone differential fixed_location "
         "rtk_fixed_ambiguities rtk_float_ambiguities sbas_aided ppp"
     ),
-    "source": "SBF PVTGeodetic block — reported by receiver firmware",
+    "source": "SBF PVTGeodetic block (Block 4007) — reported by receiver firmware",
     "comment": (
-        "Bits 0-3 of the Mode byte from PVTGeodetic. "
+        "Bits 0-3 of PVTGeodetic.Mode (u1). "
         "0 = No PVT; 1 = Stand-Alone; 2 = Differential (DGNSS); "
         "3 = Fixed location; 4 = RTK fixed ambiguities; "
         "5 = RTK float ambiguities; 6 = SBAS-aided; 10 = PPP. "
@@ -400,7 +590,7 @@ _PVT_MODE_ATTRS: dict[str, object] = {
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "PVTGeodetic block, field Mode."
+        "PVTGeodetic block (Block 4007), field Mode, p.337."
     ),
 }
 
@@ -415,7 +605,8 @@ _MEAN_CORR_AGE_ATTRS: dict[str, object] = {
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "PVTGeodetic block, field MeanCorrAge."
+        "PVTGeodetic block (Block 4007), field MeanCorrAge, p.339. "
+        "Raw field: u2, scale 0.01 s/LSB, Do-Not-Use 65535 (→ NaN)."
     ),
 }
 
@@ -432,7 +623,9 @@ _CPU_LOAD_ATTRS: dict[str, object] = {
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "ReceiverStatus block, field CPULoad."
+        "ReceiverStatus block (Block 4014), field CPULoad, p.396. "
+        "Raw field: u1, scale 1 %/LSB, Do-Not-Use 255 (→ stored as -1). "
+        "Sustained load > 80% risks data loss."
     ),
 }
 
@@ -442,14 +635,15 @@ _TEMPERATURE_ATTRS: dict[str, object] = {
     "source": "SBF ReceiverStatus block — reported by receiver firmware",
     "comment": (
         "Internal temperature of the receiver. "
-        "The raw SBF field (u1) has 1 °C resolution and an offset of 100 "
-        "(true_temp_C = raw_field - 100). "
-        "Stored value = sbf_parser Temperature * 0.1; "
-        "see SBF reference for precise transformation applied by the parser."
+        "The raw SBF field (u1) has 1 °C resolution and an offset of 100; "
+        "stored value = raw_field − 100 (e.g. raw 120 → 20 °C). "
+        "Do-Not-Use value 0 is stored as NaN."
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "ReceiverStatus block, field Temperature."
+        "ReceiverStatus block (Block 4014), field Temperature, p.399. "
+        "Raw field: u1, subtract 100 to obtain °C (e.g. raw 120 = 20°C). "
+        "Do-Not-Use 0 (→ NaN)."
     ),
 }
 
@@ -473,7 +667,7 @@ _RX_ERROR_ATTRS: dict[str, object] = {
     ),
     "references": (
         "Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide, "
-        "ReceiverStatus block, field RxError."
+        "ReceiverStatus block (Block 4014), field RxError, p.398."
     ),
 }
 
@@ -939,26 +1133,28 @@ class SbfReader(GNSSDataReader):
         coords: dict[str, Any] = {
             "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
             "sid": xr.DataArray(
-                sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+                np.array(sorted_sids, dtype=object),
+                dims=["sid"],
+                attrs=COORDS_METADATA["sid"],
             ),
             "sv": (
                 "sid",
-                [sid_props[s]["sv"] for s in sorted_sids],
+                np.array([sid_props[s]["sv"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["sv"],
             ),
             "system": (
                 "sid",
-                [sid_props[s]["system"] for s in sorted_sids],
+                np.array([sid_props[s]["system"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["system"],
             ),
             "band": (
                 "sid",
-                [sid_props[s]["band"] for s in sorted_sids],
+                np.array([sid_props[s]["band"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["band"],
             ),
             "code": (
                 "sid",
-                [sid_props[s]["code"] for s in sorted_sids],
+                np.array([sid_props[s]["code"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["code"],
             ),
             "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
@@ -1152,8 +1348,13 @@ class SbfReader(GNSSDataReader):
         phi_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
         rise_set_arr = np.full((n_epochs, n_sids), -1, dtype=np.int8)
         mp_corr_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        smoothing_corr_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
         code_var_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
         carr_var_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        lock_time_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        cum_loss_cont_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        car_mp_corr_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
+        cn0_highres_arr = np.full((n_epochs, n_sids), np.nan, dtype=np.float32)
 
         # (epoch,) scalar coordinate arrays
         pdop_arr = np.full(n_epochs, np.nan, dtype=np.float32)
@@ -1187,8 +1388,12 @@ class SbfReader(GNSSDataReader):
             if pvt is not None:
                 try:
                     n_sv_arr[t_idx] = int(pvt.get("NrSV", pvt.get("NrSVAnt", -1)))
-                    h_acc_arr[t_idx] = float(pvt["HAccuracy"]) * 0.001
-                    v_acc_arr[t_idx] = float(pvt["VAccuracy"]) * 0.001
+                    raw_hacc = int(pvt["HAccuracy"])
+                    if raw_hacc != 65535:
+                        h_acc_arr[t_idx] = raw_hacc * 0.01
+                    raw_vacc = int(pvt["VAccuracy"])
+                    if raw_vacc != 65535:
+                        v_acc_arr[t_idx] = raw_vacc * 0.01
                     pvt_mode_arr[t_idx] = int(pvt["Mode"])
                     mean_corr_arr[t_idx] = float(pvt["MeanCorrAge"]) * 0.01
                     # Also pick up DOP from PVTGeodetic if DOP block absent
@@ -1203,7 +1408,9 @@ class SbfReader(GNSSDataReader):
             if status is not None:
                 try:
                     cpu_load_arr[t_idx] = int(status["CPULoad"])
-                    temp_arr[t_idx] = float(status["Temperature"]) * 0.1
+                    raw_temp = int(status["Temperature"])
+                    if raw_temp != 0:  # 0 is DoNotUse (RefGuide p.397)
+                        temp_arr[t_idx] = float(raw_temp - 100)
                     rx_error_arr[t_idx] = int(status["RxError"])
                 except (KeyError, TypeError, ValueError):
                     pass
@@ -1245,12 +1452,42 @@ class SbfReader(GNSSDataReader):
                         continue
                     mp_raw = int(ch.get("MPCorrection ", ch.get("MPCorrection", 0)))
                     mp_corr_arr[t_idx, s_idx] = mp_raw * 0.001
+                    # SmoothingCorr: i2, scale 0.001 m/LSB
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    raw_sc = ch.get("SmoothingCorr")
+                    if raw_sc is not None:
+                        smoothing_corr_arr[t_idx, s_idx] = int(raw_sc) * 0.001
                     raw_cv = ch.get("CodeVar")
+                    # CodeVar: u2, scale 0.0001 m²/LSB, Do-Not-Use 65535
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_cv is not None and int(raw_cv) != 65535:
+                        code_var_arr[t_idx, s_idx] = int(raw_cv) * 1e-4
                     raw_rv = ch.get("CarrierVar")
-                    if raw_cv is not None:
-                        code_var_arr[t_idx, s_idx] = float(raw_cv)
-                    if raw_rv is not None:
+                    # CarrierVar: u2, scale 1 mcycle²/LSB, Do-Not-Use 65535
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_rv is not None and int(raw_rv) != 65535:
                         carr_var_arr[t_idx, s_idx] = float(raw_rv)
+                    raw_lt = ch.get("LockTime")
+                    # LockTime: u2, scale 1 s/LSB, Do-Not-Use 65535, clipped to 65534 s
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_lt is not None and int(raw_lt) != 65535:
+                        lock_time_arr[t_idx, s_idx] = float(raw_lt)
+                    raw_clc = ch.get("CumLossCont")
+                    # CumLossCont: u1, modulo-256 counter, no Do-Not-Use
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_clc is not None:
+                        cum_loss_cont_arr[t_idx, s_idx] = float(int(raw_clc))
+                    raw_cmc = ch.get("CarMPCorr")
+                    # CarMPCorr: i1, scale 1/512 cycles/LSB (1.953125 mcycles/LSB)
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_cmc is not None:
+                        car_mp_corr_arr[t_idx, s_idx] = int(raw_cmc) / 512.0
+                    raw_misc = ch.get("Misc")
+                    # Misc bits 0-2: CN0HighRes (u3, 0-7), scale 0.03125 dB-Hz/LSB
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_misc is not None:
+                        cn0_hr = int(raw_misc) & 0x07
+                        cn0_highres_arr[t_idx, s_idx] = cn0_hr * 0.03125
                 except (KeyError, TypeError, ValueError):
                     pass
 
@@ -1268,26 +1505,28 @@ class SbfReader(GNSSDataReader):
         coords: dict[str, Any] = {
             "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
             "sid": xr.DataArray(
-                sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+                np.array(sorted_sids, dtype=object),
+                dims=["sid"],
+                attrs=COORDS_METADATA["sid"],
             ),
             "sv": (
                 "sid",
-                [sid_props[s]["sv"] for s in sorted_sids],
+                np.array([sid_props[s]["sv"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["sv"],
             ),
             "system": (
                 "sid",
-                [sid_props[s]["system"] for s in sorted_sids],
+                np.array([sid_props[s]["system"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["system"],
             ),
             "band": (
                 "sid",
-                [sid_props[s]["band"] for s in sorted_sids],
+                np.array([sid_props[s]["band"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["band"],
             ),
             "code": (
                 "sid",
-                [sid_props[s]["code"] for s in sorted_sids],
+                np.array([sid_props[s]["code"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["code"],
             ),
             "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
@@ -1327,8 +1566,29 @@ class SbfReader(GNSSDataReader):
                     mp_corr_arr,
                     _MP_CORRECTION_ATTRS,
                 ),
+                "smoothing_corr_m": (
+                    ["epoch", "sid"],
+                    smoothing_corr_arr,
+                    _SMOOTHING_CORR_ATTRS,
+                ),
                 "code_var": (["epoch", "sid"], code_var_arr, _CODE_VAR_ATTRS),
                 "carrier_var": (["epoch", "sid"], carr_var_arr, _CARRIER_VAR_ATTRS),
+                "lock_time_s": (["epoch", "sid"], lock_time_arr, _LOCK_TIME_ATTRS),
+                "cum_loss_cont": (
+                    ["epoch", "sid"],
+                    cum_loss_cont_arr,
+                    _CUM_LOSS_CONT_ATTRS,
+                ),
+                "car_mp_corr_cycles": (
+                    ["epoch", "sid"],
+                    car_mp_corr_arr,
+                    _CAR_MP_CORR_ATTRS,
+                ),
+                "cn0_highres_correction": (
+                    ["epoch", "sid"],
+                    cn0_highres_arr,
+                    _CN0_HIGHRES_CORRECTION_ATTRS,
+                ),
             },
             coords=coords,
             attrs=attrs,
@@ -1350,6 +1610,7 @@ class SbfReader(GNSSDataReader):
         keep_data_vars: list[str] | None = None,
         pad_global_sid: bool = True,
         strip_fillval: bool = True,
+        store_raw_observables: bool = True,
         **kwargs: object,
     ) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
         """Single file scan producing both the obs dataset and the SBF metadata dataset.
@@ -1366,6 +1627,11 @@ class SbfReader(GNSSDataReader):
             Pad obs dataset to the global SID space.
         strip_fillval : bool, default True
             Strip fill values from the obs dataset.
+        store_raw_observables : bool, default True
+            Add pre-correction "raw" observable variables to the obs dataset:
+            ``SNR_raw``, ``Pseudorange_unsmoothed``, ``Pseudorange_raw``,
+            ``Phase_raw``.  Set to ``False`` to reduce dataset size when these
+            are not needed.
         **kwargs
             Forwarded to ``pad_to_global_sid`` (e.g. ``keep_sids``).
 
@@ -1548,26 +1814,30 @@ class SbfReader(GNSSDataReader):
         coords_obs: dict[str, Any] = {
             "epoch": ("epoch", timestamps_obs, COORDS_METADATA["epoch"]),
             "sid": xr.DataArray(
-                sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+                np.array(sorted_sids, dtype=object),
+                dims=["sid"],
+                attrs=COORDS_METADATA["sid"],
             ),
             "sv": (
                 "sid",
-                [sid_props_obs[s]["sv"] for s in sorted_sids],
+                np.array([sid_props_obs[s]["sv"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["sv"],
             ),
             "system": (
                 "sid",
-                [sid_props_obs[s]["system"] for s in sorted_sids],
+                np.array(
+                    [sid_props_obs[s]["system"] for s in sorted_sids], dtype=object
+                ),
                 COORDS_METADATA["system"],
             ),
             "band": (
                 "sid",
-                [sid_props_obs[s]["band"] for s in sorted_sids],
+                np.array([sid_props_obs[s]["band"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["band"],
             ),
             "code": (
                 "sid",
-                [sid_props_obs[s]["code"] for s in sorted_sids],
+                np.array([sid_props_obs[s]["code"] for s in sorted_sids], dtype=object),
                 COORDS_METADATA["code"],
             ),
             "freq_center": ("sid", freq_center, COORDS_METADATA["freq_center"]),
@@ -1641,8 +1911,21 @@ class SbfReader(GNSSDataReader):
         phi_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
         rise_set_arr = np.full((n_epochs_meta, n_sids_meta), -1, dtype=np.int8)
         mp_corr_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        smoothing_corr_arr = np.full(
+            (n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32
+        )
         code_var_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
         carr_var_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        lock_time_arr = np.full((n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32)
+        cum_loss_cont_arr = np.full(
+            (n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32
+        )
+        car_mp_corr_arr = np.full(
+            (n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32
+        )
+        cn0_highres_arr = np.full(
+            (n_epochs_meta, n_sids_meta), np.nan, dtype=np.float32
+        )
 
         pdop_arr = np.full(n_epochs_meta, np.nan, dtype=np.float32)
         hdop_arr = np.full(n_epochs_meta, np.nan, dtype=np.float32)
@@ -1672,8 +1955,12 @@ class SbfReader(GNSSDataReader):
             if pvt is not None:
                 try:
                     n_sv_arr[t_idx] = int(pvt.get("NrSV", pvt.get("NrSVAnt", -1)))
-                    h_acc_arr[t_idx] = float(pvt["HAccuracy"]) * 0.001
-                    v_acc_arr[t_idx] = float(pvt["VAccuracy"]) * 0.001
+                    raw_hacc = int(pvt["HAccuracy"])
+                    if raw_hacc != 65535:
+                        h_acc_arr[t_idx] = raw_hacc * 0.01
+                    raw_vacc = int(pvt["VAccuracy"])
+                    if raw_vacc != 65535:
+                        v_acc_arr[t_idx] = raw_vacc * 0.01
                     pvt_mode_arr[t_idx] = int(pvt["Mode"])
                     mean_corr_arr[t_idx] = float(pvt["MeanCorrAge"]) * 0.01
                     if np.isnan(pdop_arr[t_idx]):
@@ -1686,7 +1973,9 @@ class SbfReader(GNSSDataReader):
             if status is not None:
                 try:
                     cpu_load_arr[t_idx] = int(status["CPULoad"])
-                    temp_arr[t_idx] = float(status["Temperature"]) * 0.1
+                    raw_temp = int(status["Temperature"])
+                    if raw_temp != 0:  # 0 is DoNotUse (RefGuide p.397)
+                        temp_arr[t_idx] = float(raw_temp - 100)
                     rx_error_arr[t_idx] = int(status["RxError"])
                 except (KeyError, TypeError, ValueError):
                     pass
@@ -1726,12 +2015,42 @@ class SbfReader(GNSSDataReader):
                         continue
                     mp_raw = int(ch.get("MPCorrection ", ch.get("MPCorrection", 0)))
                     mp_corr_arr[t_idx, s_idx] = mp_raw * 0.001
+                    # SmoothingCorr: i2, scale 0.001 m/LSB
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    raw_sc = ch.get("SmoothingCorr")
+                    if raw_sc is not None:
+                        smoothing_corr_arr[t_idx, s_idx] = int(raw_sc) * 0.001
                     raw_cv = ch.get("CodeVar")
+                    # CodeVar: u2, scale 0.0001 m²/LSB, Do-Not-Use 65535
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_cv is not None and int(raw_cv) != 65535:
+                        code_var_arr[t_idx, s_idx] = int(raw_cv) * 1e-4
                     raw_rv = ch.get("CarrierVar")
-                    if raw_cv is not None:
-                        code_var_arr[t_idx, s_idx] = float(raw_cv)
-                    if raw_rv is not None:
+                    # CarrierVar: u2, scale 1 mcycle²/LSB, Do-Not-Use 65535
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_rv is not None and int(raw_rv) != 65535:
                         carr_var_arr[t_idx, s_idx] = float(raw_rv)
+                    raw_lt = ch.get("LockTime")
+                    # LockTime: u2, scale 1 s/LSB, Do-Not-Use 65535, clipped to 65534 s
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_lt is not None and int(raw_lt) != 65535:
+                        lock_time_arr[t_idx, s_idx] = float(raw_lt)
+                    raw_clc = ch.get("CumLossCont")
+                    # CumLossCont: u1, modulo-256 counter, no Do-Not-Use
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_clc is not None:
+                        cum_loss_cont_arr[t_idx, s_idx] = float(int(raw_clc))
+                    raw_cmc = ch.get("CarMPCorr")
+                    # CarMPCorr: i1, scale 1/512 cycles/LSB (1.953125 mcycles/LSB)
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_cmc is not None:
+                        car_mp_corr_arr[t_idx, s_idx] = int(raw_cmc) / 512.0
+                    raw_misc = ch.get("Misc")
+                    # Misc bits 0-2: CN0HighRes (u3, 0-7), scale 0.03125 dB-Hz/LSB
+                    # RefGuide-4.14.0, MeasExtra (Block 4000), MeasExtraChannelSub, p.265
+                    if raw_misc is not None:
+                        cn0_hr = int(raw_misc) & 0x07
+                        cn0_highres_arr[t_idx, s_idx] = cn0_hr * 0.03125
                 except (KeyError, TypeError, ValueError):
                     pass
 
@@ -1807,8 +2126,29 @@ class SbfReader(GNSSDataReader):
                     mp_corr_arr,
                     _MP_CORRECTION_ATTRS,
                 ),
+                "smoothing_corr_m": (
+                    ["epoch", "sid"],
+                    smoothing_corr_arr,
+                    _SMOOTHING_CORR_ATTRS,
+                ),
                 "code_var": (["epoch", "sid"], code_var_arr, _CODE_VAR_ATTRS),
                 "carrier_var": (["epoch", "sid"], carr_var_arr, _CARRIER_VAR_ATTRS),
+                "lock_time_s": (["epoch", "sid"], lock_time_arr, _LOCK_TIME_ATTRS),
+                "cum_loss_cont": (
+                    ["epoch", "sid"],
+                    cum_loss_cont_arr,
+                    _CUM_LOSS_CONT_ATTRS,
+                ),
+                "car_mp_corr_cycles": (
+                    ["epoch", "sid"],
+                    car_mp_corr_arr,
+                    _CAR_MP_CORR_ATTRS,
+                ),
+                "cn0_highres_correction": (
+                    ["epoch", "sid"],
+                    cn0_highres_arr,
+                    _CN0_HIGHRES_CORRECTION_ATTRS,
+                ),
             },
             coords=coords_meta,
             attrs=attrs_meta,
@@ -1821,6 +2161,82 @@ class SbfReader(GNSSDataReader):
         # rise_set is int8 with sentinel -1; NaN fill promotes to float — cast back.
         if meta_ds["rise_set"].dtype != np.int8:
             meta_ds["rise_set"] = meta_ds["rise_set"].fillna(-1).astype(np.int8)
+
+        # Apply CN0HighRes correction from MeasExtra (Block 4000) to SNR.
+        # CN0HighRes extends resolution from 0.25 to 0.03125 dB-Hz.
+        # RefGuide-4.14.0, MeasExtra MeasExtraChannelSub.Misc bits 0-2, p.265.
+        # Where MeasExtra was not logged the correction array is NaN → no-op.
+        corr = meta_ds["cn0_highres_correction"].values  # (epoch, sid), NaN if absent
+        snr_raw_values = obs_ds["SNR"].values.copy()  # preserve 0.25 dB-Hz original
+        snr_corrected = snr_raw_values.copy()
+        valid = ~np.isnan(snr_corrected) & ~np.isnan(corr)
+        snr_corrected[valid] += corr[valid]
+        snr_attrs = dict(obs_ds["SNR"].attrs)
+        snr_attrs["comment"] = (
+            snr_attrs.get("comment", "")
+            + " CN0HighRes correction from MeasExtra (Block 4000, p.265) applied where"
+            " available, improving resolution from 0.25 to 0.03125 dB-Hz."
+        ).lstrip()
+        obs_ds["SNR"] = xr.DataArray(
+            snr_corrected,
+            dims=["epoch", "sid"],
+            coords=obs_ds["SNR"].coords,
+            attrs=snr_attrs,
+        )
+
+        if store_raw_observables:
+            # ------------------------------------------------------------------
+            # Add "physically raw" observables: pre-correction versions of SNR,
+            # pseudorange, and carrier phase.  NaN where MeasExtra was absent.
+            # Gated by store_raw_observables (config: store_sbf_raw_observables).
+            # ------------------------------------------------------------------
+
+            # SNR_raw: 0.25 dB-Hz resolution, before CN0HighRes extension.
+            obs_ds["SNR_raw"] = xr.DataArray(
+                snr_raw_values,
+                dims=["epoch", "sid"],
+                coords=obs_ds["SNR"].coords,
+                attrs=_SNR_RAW_ATTRS,
+            )
+
+            # Pseudorange_unsmoothed: Hatch-filter correction removed.
+            smooth = meta_ds["smoothing_corr_m"].values
+            pr_vals = obs_ds["Pseudorange"].values
+            pr_unsmoothed = np.where(
+                ~np.isnan(smooth), pr_vals + smooth, np.nan
+            ).astype(np.float64)
+            obs_ds["Pseudorange_unsmoothed"] = xr.DataArray(
+                pr_unsmoothed,
+                dims=["epoch", "sid"],
+                coords=obs_ds["Pseudorange"].coords,
+                attrs=_PSEUDORANGE_UNSMOOTHED_ATTRS,
+            )
+
+            # Pseudorange_raw: both Hatch-filter and multipath corrections removed.
+            mp = meta_ds["mp_correction_m"].values
+            available = ~np.isnan(smooth) & ~np.isnan(mp)
+            pr_raw = np.where(available, pr_vals + smooth + mp, np.nan).astype(
+                np.float64
+            )
+            obs_ds["Pseudorange_raw"] = xr.DataArray(
+                pr_raw,
+                dims=["epoch", "sid"],
+                coords=obs_ds["Pseudorange"].coords,
+                attrs=_PSEUDORANGE_RAW_ATTRS,
+            )
+
+            # Phase_raw: carrier multipath correction removed.
+            car_mp = meta_ds["car_mp_corr_cycles"].values
+            ph_vals = obs_ds["Phase"].values
+            ph_raw = np.where(~np.isnan(car_mp), ph_vals + car_mp, np.nan).astype(
+                np.float64
+            )
+            obs_ds["Phase_raw"] = xr.DataArray(
+                ph_raw,
+                dims=["epoch", "sid"],
+                coords=obs_ds["Phase"].coords,
+                attrs=_PHASE_RAW_ATTRS,
+            )
 
         return obs_ds, {"sbf_obs": meta_ds}
 
