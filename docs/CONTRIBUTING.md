@@ -200,7 +200,7 @@ The CI runs the **same checks as the pre-commit hooks**, so fixing hook failures
     2. Include tests for all new functionality.
     3. New code must not reduce test coverage. Aim to increase it.
     4. Update the Zensical documentation in `docs/` if adding or changing public API, behaviour, or configuration.
-    5. Target Python 3.13+.
+    5. Target Python 3.14+.
     6. Add yourself to `CONTRIBUTORS.md` if this is your first contribution.
 ### Test coverage requirement
 

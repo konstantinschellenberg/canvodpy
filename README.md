@@ -7,7 +7,7 @@
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 <!-- Python & Platforms -->
-[![Python](https://img.shields.io/badge/python-3.13%20|%203.14-blue.svg)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/)
 [![Platforms](https://img.shields.io/badge/platform-Linux%20|%20macOS%20|%20Windows-lightgrey)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
 

@@ -102,7 +102,7 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
     ```toml
     [tool.ruff]
     line-length = 88
-    target-version = "py313"
+    target-version = "py314"
 
     [tool.ruff.lint]
     select = ["E", "F", "W", "I", "UP", "B", "RUF"]
@@ -123,7 +123,7 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
 
     ```toml
     [tool.ty]
-    python = "3.13"
+    python = "3.14"
     ```
 
 ---

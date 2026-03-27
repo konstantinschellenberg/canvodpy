@@ -8,13 +8,13 @@ authors = [
 maintainers = [
     {name = "Climate and Environmental Remote Sensing (CLIMERS)", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "xarray>=2024.1.0",

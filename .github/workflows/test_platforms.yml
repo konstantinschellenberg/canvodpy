@@ -1,4 +1,4 @@
-name: Platform Tests 🐍🐧🍎
+name: Platform Tests
 
 on: [push, pull_request]
 
@@ -11,23 +11,14 @@ jobs:
             matrix:
                 include:
                     - os: ubuntu-latest
-                      python-version: '3.13'
-                      name: '🐍 3.13 • 🐧 Ubuntu'
-                    - os: ubuntu-latest
                       python-version: '3.14'
-                      name: '🐍 3.14 • 🐧 Ubuntu'
-                    - os: windows-latest # Note: 'aux' package may have issues
-                      python-version: '3.13'
-                      name: "🐍 3.13 • 🪟 Windows"
+                      name: 'Python 3.14 - Ubuntu'
                     - os: windows-latest
                       python-version: '3.14'
-                      name: "🐍 3.14 • 🪟 Windows"
-                    - os: macos-latest
-                      python-version: '3.13'
-                      name: '🐍 3.13 • 🍎 macOS'
+                      name: 'Python 3.14 - Windows'
                     - os: macos-latest
                       python-version: '3.14'
-                      name: '🐍 3.14 • 🍎 macOS'
+                      name: 'Python 3.14 - macOS'
 
         defaults:
             run:

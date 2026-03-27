@@ -224,7 +224,7 @@ jobs:
           version: "0.9.27"
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.14
 
       - name: Build package
         run: uv build
@@ -380,7 +380,7 @@ jobs:
           version: "0.9.27"
 
       - name: Set up Python
-        run: uv python install 3.13
+        run: uv python install 3.14
 
       - name: Build package
         run: uv build
@@ -505,4 +505,3 @@ python -c "import canvodpy; print(canvodpy.__version__)"
 - [ ] Test with beta release on TestPyPI
 - [ ] First production release v0.1.0
 - [ ] Set up Zenodo for DOI ([Zenodo Setup](ZENODO_SETUP.md))
-
