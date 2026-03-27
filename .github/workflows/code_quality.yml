@@ -4,6 +4,7 @@ on: [push]
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+    JUST_VERSION: "1.40.0"
 
 jobs:
     lock_file:
@@ -13,8 +14,9 @@ jobs:
             - uses: ./.github/actions/setup
             - name: Install just
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y just
+                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+                  sudo install -m 755 just /usr/local/bin/just
+                  just --version
             - name: Check uv.lock is up to date
               run: just check-lock
 
@@ -26,8 +28,9 @@ jobs:
             - uses: ./.github/actions/setup
             - name: Install just
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y just
+                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+                  sudo install -m 755 just /usr/local/bin/just
+                  just --version
             - name: Lint with ruff
               run: just check-lint-only
 
@@ -39,8 +42,9 @@ jobs:
             - uses: ./.github/actions/setup
             - name: Install just
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y just
+                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+                  sudo install -m 755 just /usr/local/bin/just
+                  just --version
             - name: Check formatting
               run: just check-format-only
 
@@ -52,8 +56,9 @@ jobs:
             - uses: ./.github/actions/setup
             - name: Install just
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y just
+                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+                  sudo install -m 755 just /usr/local/bin/just
+                  just --version
             - run: uv sync --locked --dev
             - name: Type check with ty (informational)
               run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
@@ -73,8 +78,9 @@ jobs:
             - uses: ./.github/actions/setup
             - name: Install just
               run: |
-                  sudo apt-get update
-                  sudo apt-get install -y just
+                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
+                  sudo install -m 755 just /usr/local/bin/just
+                  just --version
             - run: uv sync --locked --dev
             - name: Enforce ty diagnostics budget
               env:
