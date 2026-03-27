@@ -61,7 +61,7 @@ class ComponentFactory[T: ABC]:
     ReaderFactory, GridFactory, VODFactory, AugmentationFactory.
     """
 
-    _registry: ClassVar[dict[str, type[T]]] = {}
+    _registry: ClassVar[dict[str, type[Any]]] = {}
     _abc_class: ClassVar[type[ABC] | None] = None
 
     @classmethod

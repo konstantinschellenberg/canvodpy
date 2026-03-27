@@ -213,6 +213,7 @@ def create_grid(
 def assign_grid_cells(
     ds: xr.Dataset,
     grid: Any,  # GridData
+    grid_name: str = "equal_area",
 ) -> xr.Dataset:
     """
     Assign grid cells to observations.
@@ -223,6 +224,8 @@ def assign_grid_cells(
         Dataset with phi, theta coordinates
     grid : GridData
         Grid structure from create_grid()
+    grid_name : str, default="equal_area"
+        Grid identifier for the output coordinate name.
 
     Returns
     -------
@@ -245,7 +248,7 @@ def assign_grid_cells(
 
     from canvod.grids import add_cell_ids_to_ds_fast
 
-    ds_with_cells = add_cell_ids_to_ds_fast(ds, grid)
+    ds_with_cells = add_cell_ids_to_ds_fast(ds, grid, grid_name)
 
     log.info(
         "assign_grid_cells_complete",
@@ -426,10 +429,11 @@ def create_grid_to_file(
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Use canvod.grids store_grid
-    from canvod.grids import store_grid
+    # Serialize grid to file (pickle for file-based Airflow tasks)
+    import pickle
 
-    store_grid(grid, output_path)
+    with open(output_path, "wb") as f:
+        pickle.dump(grid, f)
 
     log.info("create_grid_to_file_complete", path=str(output_path))
     return str(output_path)
@@ -483,10 +487,11 @@ def assign_grid_cells_to_file(
     # Load datasets
     ds = xr.open_dataset(data_path)
 
-    # Load grid
-    from canvod.grids import load_grid
+    # Load grid from file (pickle for file-based Airflow tasks)
+    import pickle
 
-    grid = load_grid(grid_path)
+    with open(grid_path, "rb") as f:
+        grid = pickle.load(f)
 
     # Assign cells
     ds_with_cells = assign_grid_cells(ds, grid)

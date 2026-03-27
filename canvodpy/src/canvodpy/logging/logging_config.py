@@ -9,8 +9,10 @@ This module configures structured logging with multiple outputs:
 
 import logging
 import sys
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -43,12 +45,12 @@ def _setup_log_directories(base_dir: Path) -> dict[str, Path]:
     return dirs
 
 
-def _create_human_renderer() -> callable:
+def _create_human_renderer() -> Callable[..., Any]:
     """Create human-readable formatter function.
 
     Returns
     -------
-    callable
+    Callable
         Processor function for human-readable logs.
     """
 
@@ -75,12 +77,12 @@ def _create_human_renderer() -> callable:
     return human_format
 
 
-def _create_error_renderer() -> callable:
+def _create_error_renderer() -> Callable[..., Any]:
     """Create detailed error formatter with stack traces.
 
     Returns
     -------
-    callable
+    Callable
         Processor function for error logs with full context.
     """
 
