@@ -33,17 +33,20 @@ class TestResolveDate:
     def test_yyyydoy_format(self):
         d = _resolve_date("2025001")
         assert d.year == 2025
-        assert d.doy == "001"
+        assert d.doy == 1
+        assert d.yydoy == "25001"
 
     def test_airflow_ds_format(self):
         d = _resolve_date("2025-01-01")
         assert d.year == 2025
-        assert d.doy == "001"
+        assert d.doy == 1
+        assert d.yydoy == "25001"
 
     def test_mid_year(self):
         d = _resolve_date("2025-07-01")
         assert d.year == 2025
-        assert d.doy == "182"
+        assert d.doy == 182
+        assert d.yydoy == "25182"
 
 
 class TestParseSamplingInterval:

@@ -22,7 +22,7 @@ FOUND="$(
         | tail -n 1
 )"
 if [[ -z "${FOUND}" ]]; then
-    if printf "%s\n" "$OUTPUT" | rg -q "^All checks passed!$"; then
+    if printf "%s\n" "$OUTPUT" | grep -q "^All checks passed!$"; then
         FOUND="0"
     else
         echo "Could not parse ty diagnostics count from output."
