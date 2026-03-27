@@ -11,7 +11,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/setup
-            - uses: extractions/setup-just@v3
+            - name: Install just
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y just
             - name: Check uv.lock is up to date
               run: just check-lock
 
@@ -21,7 +24,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/setup
-            - uses: extractions/setup-just@v3
+            - name: Install just
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y just
             - name: Lint with ruff
               run: just check-lint-only
 
@@ -31,7 +37,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/setup
-            - uses: extractions/setup-just@v3
+            - name: Install just
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y just
             - name: Check formatting
               run: just check-format-only
 
@@ -41,7 +50,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/setup
-            - uses: extractions/setup-just@v3
+            - name: Install just
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y just
             - run: uv sync --locked --dev
             - name: Type check with ty (informational)
               run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
@@ -59,7 +71,10 @@ jobs:
         steps:
             - uses: actions/checkout@v6
             - uses: ./.github/actions/setup
-            - uses: extractions/setup-just@v3
+            - name: Install just
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y just
             - run: uv sync --locked --dev
             - name: Enforce ty diagnostics budget
               env:

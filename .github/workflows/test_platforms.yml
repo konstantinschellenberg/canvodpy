@@ -37,7 +37,19 @@ jobs:
             - name: Set up Python
               run: uv python install
             - name: Install just
-              uses: extractions/setup-just@v3
+              run: |
+                  if [[ "${{ runner.os }}" == "Linux" ]]; then
+                    sudo apt-get update
+                    sudo apt-get install -y just
+                  elif [[ "${{ runner.os }}" == "macOS" ]]; then
+                    brew update
+                    brew install just
+                  elif [[ "${{ runner.os }}" == "Windows" ]]; then
+                    choco install just -y
+                  else
+                    echo "Unsupported OS for just install: ${{ runner.os }}"
+                    exit 1
+                  fi
             - name: Install the Project
               run: uv sync --locked --dev
             - name: Run Tests
