@@ -236,7 +236,7 @@ def pad_to_global_sid(
             if dropped_by_filter:
                 _accumulated_dropped_by_filter.update(dropped_by_filter)
 
-    ds_padded = ds.reindex({"sid": sids}, fill_value=np.nan)
+    ds_padded = ds.reindex({"sid": np.array(sids, dtype=object)}, fill_value=np.nan)
     return _fill_sid_coords_from_sid_strings(ds_padded, mapper)
 
 
@@ -324,9 +324,13 @@ def _fill_sid_coords_from_sid_strings(
         if name in ds.coords:
             old = ds.coords[name]
             arr = np.asarray(values)
-            # Preserve the original coordinate dtype (e.g. float32 for freq_*)
-            if old.dtype != arr.dtype and old.dtype.kind == "f":
-                arr = arr.astype(old.dtype)
+            # Preserve the original coordinate dtype
+            if old.dtype != arr.dtype:
+                if old.dtype.kind == "f":
+                    arr = arr.astype(old.dtype)
+                elif old.dtype.kind == "O" or str(old.dtype).startswith("StringDType"):
+                    # Keep string coords as object (stable Zarr V3 variable_length_utf8)
+                    arr = arr.astype(object)
             updates[name] = xr.DataArray(
                 arr,
                 dims=["sid"],

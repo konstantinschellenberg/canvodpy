@@ -97,8 +97,8 @@ class TestTier0:
         assert result.alignment.n_shared_sids == 5
         assert result.alignment.n_dropped_sids_a == 5
 
-    def test_float_reordering_noise_passes_numerical(self, canopy_ds):
-        """Simulated float operation reordering noise passes NUMERICAL."""
+    def test_float_reordering_noise_numerical_annotation(self, canopy_ds):
+        """Simulated float noise within NUMERICAL tolerance: passed=True, no failures."""
         rng = np.random.default_rng(11)
         ds_noisy = canopy_ds.copy(deep=True)
         for var in ds_noisy.data_vars:
@@ -107,7 +107,9 @@ class TestTier0:
         result = compare_datasets(
             canopy_ds, ds_noisy, tier=ToleranceTier.NUMERICAL, label="tier0-float"
         )
+        # Within NUMERICAL tolerance → passed
         assert result.passed
+        assert len(result.failures) == 0
 
     def test_float_reordering_noise_fails_exact(self, canopy_ds):
         """Same noise should fail EXACT."""
@@ -130,8 +132,8 @@ class TestTier0:
 class TestTier1:
     """Tier 1: internal consistency between data sources."""
 
-    def test_snr_quantization_passes_scientific(self, canopy_ds):
-        """SBF 0.25 dB quantization difference should pass SCIENTIFIC."""
+    def test_snr_quantization_scientific_annotation(self, canopy_ds):
+        """SBF 0.25 dB quantization: within SCIENTIFIC tolerance → passed=True, no failures."""
         ds_sbf = canopy_ds.copy(deep=True)
         # Simulate SBF quantization: round SNR to nearest 0.25 dB
         snr = ds_sbf["SNR"].values
@@ -144,7 +146,8 @@ class TestTier1:
             tier=ToleranceTier.SCIENTIFIC,
             label="tier1-snr-quant",
         )
-        assert result.passed
+        assert result.passed  # within SCIENTIFIC tolerance
+        assert len(result.failures) == 0
 
     def test_snr_quantization_fails_exact(self, canopy_ds):
         """SBF quantization should fail EXACT."""
@@ -161,8 +164,8 @@ class TestTier1:
         )
         assert not result.passed
 
-    def test_ephemeris_angular_diff_passes_scientific(self, canopy_ds):
-        """Broadcast vs agency angular differences (~0.002 rad) pass SCIENTIFIC."""
+    def test_ephemeris_angular_diff_scientific_annotation(self, canopy_ds):
+        """Broadcast vs agency angular diffs (~0.002 rad): within SCIENTIFIC tolerance → passed."""
         rng = np.random.default_rng(33)
         ds_broadcast = canopy_ds.copy(deep=True)
         # Simulate broadcast ephemeris angular error: ~0.002 rad (0.13°)
@@ -180,7 +183,8 @@ class TestTier1:
             tier=ToleranceTier.SCIENTIFIC,
             label="tier1-ephem-angular",
         )
-        assert result.passed
+        assert result.passed  # within SCIENTIFIC tolerance
+        assert len(result.failures) == 0
 
     def test_large_ephemeris_diff_fails_scientific(self, canopy_ds):
         """Large angular error (>0.05 rad / 3°) should fail SCIENTIFIC."""

@@ -4,17 +4,69 @@ gnssvod is the established community tool for GNSS vegetation optical
 depth, developed by Vincent Humphrey. It processes RINEX files into
 VOD using an independent codebase.
 
-Comparison strategy:
+Comparison philosophy
+---------------------
+This is the most important comparison in the audit suite.  canvodpy is
+being validated against a peer-reviewed, community-established baseline.
+Every difference must be *identified and explained* — not hidden in
+tolerances.
 
+There is no overall PASS/FAIL verdict.  Instead, each variable is
+reported with full statistics and annotated against a physically-grounded
+expected difference.  We flag anything that cannot be explained by the
+documented mechanisms below.
+
+Expected-difference inventory
+------------------------------
+
+SNR
+    Budget: 2e-6 dB-Hz (float32 truncation).
+    canvodpy stores SNR as float32 (deliberate — halves memory for large
+    (epoch, sid) arrays).  gnssvod uses float64.  Both read the same
+    trimmed RINEX.  float32 ULP for ~50 dB-Hz ≈ 6e-6 dB-Hz; the gate
+    is set to 2e-6 dB-Hz (half-ULP rounding).  RINEX SNR precision is
+    0.001 dB-Hz (F8.3), so float32 truncation is ~170× below measurement
+    resolution.  Any SNR difference > 2e-6 dB-Hz indicates a decoding
+    or formula bug.
+
+Azimuth / Elevation
+    Budget: None — systematic, reproducible, no fixed bound.
+    canvodpy uses ``scipy.interpolate.CubicHermiteSpline`` on SP3
+    positions and velocities.  gnssvod uses ``numpy.polyfit`` with a
+    degree-16 polynomial on 4-hour windows (positions only, velocities
+    by finite differencing).  Same SP3/CLK file, fundamentally different
+    algorithms → different satellite ECEF → different angles.  The
+    magnitude depends on satellite motion, window boundary effects, and
+    SP3 epoch spacing.  No fixed bound is defensible.
+
+VOD
+    Budget: None — fully explained by Δcos(θ) from the angle difference.
+    VOD = −ln(T) × cos(θ).  Both tools use the same RINEX (same T).
+    All VOD difference should be explained by Δcos(θ).  Use
+    ``vod_difference_decomposition()`` to quantify:
+    - actual ΔV (observed)
+    - predicted ΔV from Δcos(θ) alone
+    - residual = actual − predicted  →  should be ≈ 0
+    Expected max residual from float32 SNR noise: ≈ 9.2e-7 (negligible).
+    A residual > 10× that bound indicates a formula or implementation
+    difference beyond SP3 interpolation.
+
+TODO
+----
+A canvodpy↔gnssvod grid adapter — projecting canvodpy EqualArea cells
+into gnssvod's ``hemistats.Hemi`` — would enable cell-level VOD
+comparison.  Not implemented here (obs-level decomposition is
+sufficient and more diagnostic).
+
+Comparison strategy
+-------------------
 1. Start with a **trimmed RINEX file** (see ``canvod.audit.rinex_trimmer``)
-   that has exactly one observation code per band per system. This
+   that has exactly one observation code per band per system.  This
    eliminates signal selection ambiguity between the tools.
-
 2. Feed the same trimmed RINEX to both canvodpy and gnssvod.
-
 3. Use ``GnssvodAdapter`` to project canvodpy's (epoch, sid) dataset into
    gnssvod's variable space — same variable names, same units, same
-   conventions. Then compare two identically-shaped datasets.
+   conventions.  Then compare two identically-shaped datasets.
 
 Coordinate conventions
 ----------------------
@@ -39,82 +91,267 @@ Usage::
         gnssvod_file="/path/to/gnssvod_output.parquet",
         group="canopy_01",
     )
-
-    print(result.summary())
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import xarray as xr
 
-from canvod.audit.core import ComparisonResult, compare_datasets
+from canvod.audit.core import compare_datasets
 from canvod.audit.runners.common import AuditResult, load_group, open_store
+from canvod.audit.stats import (
+    VariableBudget,
+    compute_diff_report,
+    print_diff_report,
+)
 from canvod.audit.tolerances import Tolerance, ToleranceTier
 
 # ---------------------------------------------------------------------------
-# Tolerances — justified per-variable for cross-implementation comparison
+# Float32 noise floor
+# ---------------------------------------------------------------------------
+#
+# canvodpy stores SNR as float32.  Propagation through the VOD formula:
+#   VOD = -ln(T) × cos(θ),  T = 10^((SNR_canopy - SNR_ref) / 10)
+#   δ(-ln T) = ln(10)/10 × δ(SNR_canopy - SNR_ref)
+#   worst case: δSNR_diff ≈ 2 × 6e-6 dB-Hz (canopy + ref, both float32)
+#   δVOD_residual ≤ ln(10)/10 × 1.2e-5 × 1 ≈ 2.8e-6
+#
+# We use 4e-6 dB-Hz for the two-SNR worst case → expected residual ≈ 9.2e-7.
+
+_EXPECTED_FLOAT32_VOD_RESIDUAL: float = np.log(10) / 10 * 4e-6  # ≈ 9.2e-7
+
+# ---------------------------------------------------------------------------
+# Variable budgets
 # ---------------------------------------------------------------------------
 
-GNSSVOD_TOLERANCES = {
-    # Both tools read the same trimmed RINEX → SNR must agree.
-    # canvodpy stores SNR as float32 (~7 sig digits), gnssvod uses float64.
-    # RINEX SNR precision is ~0.001 dB (3 decimal places); float32
-    # truncation introduces max ~2e-6 dB error — 1000x below measurement
-    # resolution. Not a bug: float32 is deliberate (halves memory for
-    # large (epoch, sid) arrays).
-    "SNR": Tolerance(
-        atol=1e-5,
-        mae_atol=0.0,
-        nan_rate_atol=0.05,
-        description="SNR from same RINEX: differs only by float32 vs float64 "
-        "dtype truncation (~1e-6 dB). RINEX precision is ~0.001 dB, so "
-        "float32 error is 1000x below measurement resolution.",
+_FLOAT32_SNR_BUDGET = VariableBudget(
+    budget=2e-6,
+    unit="dB-Hz",
+    source=(
+        "float32 storage in canvodpy vs float64 in gnssvod; "
+        "both read the same RINEX file. "
+        "float32 ULP for 50 dB-Hz ≈ 6e-6 dB-Hz; gate at half-ULP = 2e-6."
     ),
-    # VOD = -ln(T) * cos(theta). Both tools use the same SNR (identical
-    # RINEX, same formula), so T is identical. VOD differs only because
-    # theta differs — canvodpy uses scipy CubicHermiteSpline (piecewise
-    # cubic, uses SP3 velocities), gnssvod uses numpy degree-16 polyfit
-    # on 4-hour windows (no SP3 velocities). Different interpolation
-    # methods → different satellite ECEF → different theta → different
-    # cos(theta) → systematic VOD difference.
-    "VOD": Tolerance(
-        atol=0.05,
-        mae_atol=0.01,
-        nan_rate_atol=0.10,
-        description="VOD differs because theta differs (different SP3 "
-        "interpolation methods, not different SP3 files). "
-        "0.05 is below typical measurement uncertainty "
-        "(~0.1 for forest canopies).",
+    note=(
+        "Deliberate canvodpy design choice: float32 halves memory for large "
+        "(epoch, sid) arrays.  RINEX SNR precision is 0.001 dB-Hz (F8.3), so "
+        "float32 truncation is ~170× below measurement resolution.  "
+        "Any SNR difference > 2e-6 dB-Hz indicates a decoding or formula bug."
     ),
-    # Azimuth/Elevation: systematic differences from fundamentally
-    # different SP3 interpolation algorithms (same SP3 file):
-    #   canvodpy: scipy CubicHermiteSpline (uses SP3 positions + velocities)
-    #   gnssvod:  numpy degree-16 polyfit on 4h windows (positions only)
-    # These are NOT floating-point noise — they are real, reproducible
-    # differences between two valid interpolation approaches.
-    # Wrap-around at 0°/360° handled by comparison adapter.
-    "Azimuth": Tolerance(
-        atol=0.5,
-        mae_atol=0.01,
-        nan_rate_atol=0.15,
-        description="Azimuth (degrees): systematic difference from different "
-        "SP3 interpolation methods (Hermite cubic vs degree-16 polyfit). "
-        "0.5° well within one hemigrid cell (2°). "
-        "NaN rate tolerance 15%: gnssvod drops elev <= -10°, "
-        "canvodpy retains as NaN.",
+    vod_relevant=True,
+)
+
+_SP3_INTERP_SOURCE = (
+    "Different SP3 interpolation algorithms (same SP3/CLK file): "
+    "canvodpy CubicHermiteSpline (positions + velocities); "
+    "gnssvod degree-16 polyfit on 4-hour windows (positions only, "
+    "velocities by finite differencing)."
+)
+
+_SP3_INTERP_NOTE = (
+    "Differences are systematic and reproducible — not numerical noise.  "
+    "No analytically fixed bound exists: magnitude depends on satellite "
+    "motion, SP3 epoch spacing, and polynomial window boundary effects."
+)
+
+_VOD_BUDGET_NOTE = (
+    "VOD = -ln(T) × cos(θ).  T is identical for both tools (same RINEX, "
+    "same formula).  All VOD difference should be explained by Δcos(θ) from "
+    "different SP3 interpolation methods.  See vod_difference_decomposition() "
+    "for per-observation decomposition.  Any residual > ~1e-6 indicates a "
+    "formula or implementation difference beyond SP3 interpolation."
+)
+
+#: Per-variable expected-difference budgets for canvodpy vs gnssvod.
+VARIABLE_BUDGETS_GNSSVOD: dict[str, VariableBudget] = {
+    "Azimuth": VariableBudget(
+        budget=None,
+        unit="deg",
+        source=_SP3_INTERP_SOURCE,
+        note=(
+            _SP3_INTERP_NOTE + "\n\n"
+            "Wrap-around near 0°/360° is corrected before comparison "
+            "via _wrap_aware_azimuth_diff()."
+        ),
+        vod_relevant=True,
     ),
-    "Elevation": Tolerance(
-        atol=0.5,
-        mae_atol=0.01,
-        nan_rate_atol=0.15,
-        description="Elevation (degrees): same root cause as Azimuth — "
-        "different SP3 interpolation methods. "
-        "NaN rate tolerance 15% for gnssvod elevation cutoff difference.",
+    "Elevation": VariableBudget(
+        budget=None,
+        unit="deg",
+        source=_SP3_INTERP_SOURCE,
+        note=(
+            _SP3_INTERP_NOTE + "  "
+            "Elevation feeds directly into VOD via cos(polar_angle); "
+            "see vod_difference_decomposition() for quantitative impact."
+        ),
+        vod_relevant=True,
     ),
 }
+
+# Formal SNR gate: used in compare_datasets for the float32 check only.
+# nan_rate_atol=0.15 to accommodate gnssvod's hard elevation cutoff
+# (drops rows with elevation ≤ -10°) vs canvodpy's NaN masking strategy.
+_SNR_FORMAL_TOLERANCE = Tolerance(
+    atol=2e-6,
+    mae_atol=0.0,
+    nan_rate_atol=0.15,
+    description=_FLOAT32_SNR_BUDGET.source,
+)
+
+
+# ---------------------------------------------------------------------------
+# VOD decomposition
+# ---------------------------------------------------------------------------
+
+
+def vod_difference_decomposition(
+    elevation_canvod_deg: np.ndarray,
+    elevation_gnssvod_deg: np.ndarray,
+    vod_canvod: np.ndarray,
+    vod_gnssvod: np.ndarray,
+    elevation_cutoff_deg: float = 5.0,
+) -> dict[str, Any]:
+    """Decompose VOD difference into theta-explained and residual components.
+
+    Both tools use the same RINEX → same T (transmittance).  All VOD
+    difference must come from Δcos(θ):
+
+    .. code-block:: text
+
+        VOD = -ln(T) × cos(θ)
+        −ln(T)        = VOD_canvodpy / cos(θ_canvod)
+        predicted_ΔV  = −ln(T) × (cos(θ_canvod) − cos(θ_gnssvod))
+        residual      = actual_ΔV − predicted_ΔV   →  should be ≈ 0
+
+    Expected max residual from float32 SNR noise propagation: ≈ 9.2e-7.
+    A residual > 10× that bound indicates a formula or implementation
+    difference beyond SP3 interpolation.
+
+    Parameters
+    ----------
+    elevation_canvod_deg, elevation_gnssvod_deg : array-like
+        Elevation in degrees (flat).  Must be pre-aligned on the same
+        (epoch, sid) pairs.
+    vod_canvod, vod_gnssvod : array-like
+        VOD values (flat), aligned with the elevation arrays.
+    elevation_cutoff_deg : float
+        Exclude obs below this elevation: cos(θ) → 0 near the horizon
+        makes the −ln(T) inversion numerically unstable.
+
+    Returns
+    -------
+    dict with keys:
+        n_valid, n_excluded_horizon,
+        actual_rmse, actual_max,
+        predicted_rmse, predicted_max,
+        residual_rmse, residual_max,
+        explained_fraction,
+        expected_max_residual,
+        residual_exceeds_float32_noise.
+    """
+    elev_c = np.asarray(elevation_canvod_deg, dtype=np.float64).ravel()
+    elev_g = np.asarray(elevation_gnssvod_deg, dtype=np.float64).ravel()
+    vod_c = np.asarray(vod_canvod, dtype=np.float64).ravel()
+    vod_g = np.asarray(vod_gnssvod, dtype=np.float64).ravel()
+
+    both_finite = np.isfinite(vod_c) & np.isfinite(vod_g)
+    both_elev = np.isfinite(elev_c) & np.isfinite(elev_g)
+    above_cutoff = (elev_c > elevation_cutoff_deg) & (elev_g > elevation_cutoff_deg)
+    valid = both_finite & both_elev & above_cutoff
+
+    n_both = int(np.sum(both_finite & both_elev))
+    n_excluded = n_both - int(valid.sum())
+
+    _nan = float("nan")
+    empty = {
+        "n_valid": 0,
+        "n_excluded_horizon": n_excluded,
+        "actual_rmse": _nan,
+        "actual_max": _nan,
+        "predicted_rmse": _nan,
+        "predicted_max": _nan,
+        "residual_rmse": _nan,
+        "residual_max": _nan,
+        "explained_fraction": _nan,
+        "expected_max_residual": _EXPECTED_FLOAT32_VOD_RESIDUAL,
+        "residual_exceeds_float32_noise": False,
+    }
+    if valid.sum() == 0:
+        return empty
+
+    theta_c = np.radians(90.0 - elev_c[valid])
+    theta_g = np.radians(90.0 - elev_g[valid])
+    cos_c = np.cos(theta_c)
+    cos_g = np.cos(theta_g)
+
+    # Recover −ln(T) from canvodpy; cos_c > 0 guaranteed by elevation cutoff
+    minus_ln_T = vod_c[valid] / cos_c
+
+    actual_delta = vod_c[valid] - vod_g[valid]
+    predicted_delta = minus_ln_T * (cos_c - cos_g)
+    residual = actual_delta - predicted_delta
+
+    var_actual = float(np.var(actual_delta))
+    var_residual = float(np.var(residual))
+    explained = 1.0 - var_residual / var_actual if var_actual > 0.0 else _nan
+
+    res_max = float(np.max(np.abs(residual)))
+    exceeds = res_max > _EXPECTED_FLOAT32_VOD_RESIDUAL * 10
+
+    return {
+        "n_valid": int(valid.sum()),
+        "n_excluded_horizon": n_excluded,
+        "actual_rmse": float(np.sqrt(np.mean(actual_delta**2))),
+        "actual_max": float(np.max(np.abs(actual_delta))),
+        "predicted_rmse": float(np.sqrt(np.mean(predicted_delta**2))),
+        "predicted_max": float(np.max(np.abs(predicted_delta))),
+        "residual_rmse": float(np.sqrt(np.mean(residual**2))),
+        "residual_max": res_max,
+        "explained_fraction": explained,
+        "expected_max_residual": _EXPECTED_FLOAT32_VOD_RESIDUAL,
+        "residual_exceeds_float32_noise": exceeds,
+    }
+
+
+def print_vod_decomposition(
+    decomp: dict[str, Any],
+    vod_col: str,
+    elevation_cutoff_deg: float = 5.0,
+) -> None:
+    """Print a structured VOD decomposition summary."""
+    print(f"\n  VOD decomposition: {vod_col}")
+    print(
+        f"  (elevation > {elevation_cutoff_deg}°, "
+        f"n_valid={decomp['n_valid']:,}, "
+        f"excluded near-horizon: {decomp['n_excluded_horizon']:,})"
+    )
+    if decomp["n_valid"] == 0:
+        print("    (no valid pairs above elevation cutoff)")
+        return
+
+    exp = decomp["expected_max_residual"]
+    print(
+        f"    actual    ΔV : RMSE={decomp['actual_rmse']:.4g}   max={decomp['actual_max']:.4g}"
+    )
+    print(
+        f"    predicted ΔV : RMSE={decomp['predicted_rmse']:.4g}   max={decomp['predicted_max']:.4g}  (from Δcos θ)"
+    )
+    print(
+        f"    residual  ΔV : RMSE={decomp['residual_rmse']:.4g}   max={decomp['residual_max']:.4g}"
+    )
+    print(f"    explained fraction   : {decomp['explained_fraction']:.1%}")
+    print(f"    expected float32 max : {exp:.2g}")
+    if decomp["residual_exceeds_float32_noise"]:
+        print(
+            f"    *** RESIDUAL EXCEEDS 10× FLOAT32 NOISE ({10 * exp:.2g}) — "
+            "investigate formula or implementation difference ***"
+        )
+    else:
+        print(f"    OK: residual within 10× float32 noise ({10 * exp:.2g})")
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +581,6 @@ def detect_band_map(
             continue
 
         # Match canvodpy code to the gnssvod SNR column's tracking code
-        # e.g. gnssvod has S1C → code "C", so pick canvodpy code "C"
         snr_col = None
         primary_code = None
         for mc in matching_snr:
@@ -473,7 +709,7 @@ def _wrap_aware_azimuth_diff(ds_a, ds_b, var="Azimuth"):
 
 
 # ---------------------------------------------------------------------------
-# Main audit function
+# Internal helpers
 # ---------------------------------------------------------------------------
 
 
@@ -526,22 +762,34 @@ def _load_gnssvod(gnssvod_dataframe, gnssvod_file, epoch_col, sid_col):
     )
 
 
+# ---------------------------------------------------------------------------
+# Per-band comparison
+# ---------------------------------------------------------------------------
+
+
 def _compare_band(
     ds_canvod_band: xr.Dataset,
     ds_gnssvod: xr.Dataset,
     band_suffix: str,
     snr_col: str,
     vod_col: str | None,
-) -> ComparisonResult | None:
-    """Compare one band. Returns ComparisonResult or None if skipped."""
+    elevation_cutoff_deg: float = 5.0,
+) -> dict[str, Any] | None:
+    """Compare one band.
+
+    Returns a dict with keys:
+    - ``"snr_comparison"`` : ComparisonResult or None (formal float32 gate)
+    - ``"vod_decomp"``     : decomposition dict or None
+
+    All statistics are printed; the caller decides what to store.
+    Returns None if there are no shared variables or coordinates.
+    """
     # Determine which variables to compare
-    compare_vars = []
-    if snr_col in ds_canvod_band.data_vars and snr_col in ds_gnssvod.data_vars:
-        compare_vars.append(snr_col)
-    if "Azimuth" in ds_canvod_band.data_vars and "Azimuth" in ds_gnssvod.data_vars:
-        compare_vars.append("Azimuth")
-    if "Elevation" in ds_canvod_band.data_vars and "Elevation" in ds_gnssvod.data_vars:
-        compare_vars.append("Elevation")
+    compare_vars = [
+        v
+        for v in ["Azimuth", "Elevation", snr_col]
+        if v in ds_canvod_band.data_vars and v in ds_gnssvod.data_vars
+    ]
     if (
         vod_col
         and vod_col in ds_canvod_band.data_vars
@@ -553,46 +801,95 @@ def _compare_band(
         print("  No shared variables to compare")
         return None
 
-    # Align on shared SIDs and epochs before comparison
+    # Align on shared (epoch, sid) pairs
     shared_sids = np.intersect1d(ds_canvod_band.sid.values, ds_gnssvod.sid.values)
     shared_epochs = np.intersect1d(ds_canvod_band.epoch.values, ds_gnssvod.epoch.values)
     if len(shared_sids) == 0 or len(shared_epochs) == 0:
         print(
-            f"  No shared sids/epochs (canvod: {len(ds_canvod_band.sid)}, gnssvod: {len(ds_gnssvod.sid)})"
+            f"  No shared coordinates "
+            f"(canvod sids={len(ds_canvod_band.sid)}, "
+            f"gnssvod sids={len(ds_gnssvod.sid)})"
         )
         return None
-    ds_canvod_band = ds_canvod_band.sel(sid=shared_sids, epoch=shared_epochs)
-    ds_gnssvod = ds_gnssvod.sel(sid=shared_sids, epoch=shared_epochs)
 
-    # Handle azimuth wrap-around
-    ds_canvod_band = _wrap_aware_azimuth_diff(ds_canvod_band, ds_gnssvod)
+    ds_a = ds_canvod_band.sel(sid=shared_sids, epoch=shared_epochs)
+    ds_b = ds_gnssvod.sel(sid=shared_sids, epoch=shared_epochs)
 
-    # Build tolerance overrides
-    tol_overrides = {}
-    if snr_col in compare_vars:
-        tol_overrides[snr_col] = GNSSVOD_TOLERANCES["SNR"]
-    if "Azimuth" in compare_vars:
-        tol_overrides["Azimuth"] = GNSSVOD_TOLERANCES["Azimuth"]
-    if "Elevation" in compare_vars:
-        tol_overrides["Elevation"] = GNSSVOD_TOLERANCES["Elevation"]
-    if vod_col and vod_col in compare_vars:
-        tol_overrides[vod_col] = GNSSVOD_TOLERANCES["VOD"]
+    # Correct azimuth wrap-around before computing differences
+    ds_a = _wrap_aware_azimuth_diff(ds_a, ds_b)
 
-    label = f"canvodpy vs gnssvod: {band_suffix} ({snr_col})"
-    return compare_datasets(
-        ds_canvod_band,
-        ds_gnssvod,
-        variables=compare_vars,
-        tier=ToleranceTier.SCIENTIFIC,
-        tolerance_overrides=tol_overrides,
-        label=label,
-        metadata={
-            "comparison_type": "external",
-            "band": band_suffix,
-            "snr_col": snr_col,
-            "vod_col": vod_col,
-        },
+    # Build budgets dict: SNR has a tight float32 budget; angles and VOD
+    # have budget=None (systematic SP3 interp difference, no fixed bound).
+    budgets: dict[str, VariableBudget] = dict(VARIABLE_BUDGETS_GNSSVOD)
+    budgets[snr_col] = _FLOAT32_SNR_BUDGET
+    if vod_col:
+        budgets[vod_col] = VariableBudget(
+            budget=None,
+            unit="",
+            source="Different SP3 interp → different cos(θ); see decomposition below.",
+            note=_VOD_BUDGET_NOTE,
+            vod_relevant=True,
+        )
+
+    # ── Full observable report for all variables ──────────────────────
+    diff_stats = compute_diff_report(
+        ds_a,
+        ds_b,
+        budgets,
+        vars_to_check=compare_vars,
+        label_a="canvodpy",
+        label_b="gnssvod",
     )
+    print_diff_report(
+        diff_stats,
+        f"canvodpy vs gnssvod: {band_suffix}",
+        label_a="canvodpy",
+        label_b="gnssvod",
+    )
+
+    # ── Formal SNR gate (float32 budget) ─────────────────────────────
+    snr_result = None
+    if snr_col in compare_vars:
+        snr_result = compare_datasets(
+            ds_a,
+            ds_b,
+            variables=[snr_col],
+            tier=ToleranceTier.SCIENTIFIC,
+            tolerance_overrides={snr_col: _SNR_FORMAL_TOLERANCE},
+            label=f"{band_suffix}: SNR float32 gate",
+        )
+        status = "PASS" if snr_result.passed else "*** FAIL ***"
+        print(f"\n  SNR float32 gate [{status}]")
+        if not snr_result.passed:
+            for var, reason in snr_result.failures.items():
+                print(f"    {var}: {reason}")
+
+    # ── VOD decomposition ────────────────────────────────────────────
+    vod_decomp = None
+    if (
+        vod_col
+        and vod_col in compare_vars
+        and "Elevation" in ds_a.data_vars
+        and "Elevation" in ds_b.data_vars
+    ):
+        vod_decomp = vod_difference_decomposition(
+            ds_a["Elevation"].values.ravel(),
+            ds_b["Elevation"].values.ravel(),
+            ds_a[vod_col].values.ravel(),
+            ds_b[vod_col].values.ravel(),
+            elevation_cutoff_deg=elevation_cutoff_deg,
+        )
+        print_vod_decomposition(vod_decomp, vod_col, elevation_cutoff_deg)
+
+    return {
+        "snr_comparison": snr_result,
+        "vod_decomp": vod_decomp,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Main audit function
+# ---------------------------------------------------------------------------
 
 
 def audit_vs_gnssvod(
@@ -606,53 +903,48 @@ def audit_vs_gnssvod(
     mode="trimmed",
     epoch_col="Epoch",
     sid_col="SV",
+    elevation_cutoff_deg: float = 5.0,
 ) -> AuditResult:
     """Compare canvodpy output against gnssvod output.
+
+    Produces a full diagnostic comparison: every variable reported with
+    actual statistics annotated against its physically-grounded expected
+    difference.  There is no overall binary PASS/FAIL verdict — the tools
+    are known to differ on Azimuth/Elevation/VOD due to different SP3
+    interpolation methods.  The SNR float32 gate is the only hard check.
 
     Two comparison modes:
 
     ``mode="trimmed"`` (default):
         Both tools ran on the same trimmed RINEX (one code per band).
         canvodpy SIDs map 1:1 to gnssvod PRNs via ``GnssvodAdapter``.
-        SNR should be bit-identical.
+        SNR should be within float32 precision.
 
     ``mode="merged"``:
         Both tools ran on the same untrimmed RINEX (multiple codes per
         band). canvodpy's per-SID values are merged using gnssvod's
         fillna logic (lexicographic priority via numpy.intersect1d) to
-        produce one merged value per PRN. **Important**: gnssvod
-        computes VOD per-code *before* merging (see ``vod_calc.py``),
-        so raw-variable merging is only equivalent for direct
-        observables (SNR). For VOD comparison in merged mode, compute
-        VOD per code first, then merge the VOD values.
-
-    Provide either ``canvodpy_store`` or ``canvodpy_ds`` for canvodpy data,
-    and either ``gnssvod_dataframe`` or ``gnssvod_file`` for gnssvod data.
+        produce one merged value per PRN.
 
     Parameters
     ----------
     canvodpy_store : str, Path, or MyIcechunkStore, optional
-        Path to the canvodpy store (Icechunk or plain Zarr).
     canvodpy_ds : xarray.Dataset, optional
-        Pre-loaded canvodpy dataset (alternative to store).
     gnssvod_dataframe : pandas.DataFrame, optional
-        gnssvod output as a DataFrame (MultiIndex or flat).
     gnssvod_file : str or Path, optional
-        Path to a saved gnssvod output (CSV or Parquet).
     group : str
-        Which store group to compare (ignored if canvodpy_ds given).
     band_map : list of tuples, optional
-        Override band mapping. Each tuple:
-        ``(canvodpy_band_suffix, gnssvod_snr_col, gnssvod_vod_col)``.
-        If None, auto-detected from the data.
     mode : str
-        ``"trimmed"`` (1:1 SID→PRN) or ``"merged"`` (replicate fillna).
     epoch_col, sid_col : str
-        Column/index names in the gnssvod DataFrame.
+    elevation_cutoff_deg : float
+        Elevation cutoff for VOD decomposition (default 5°).
 
     Returns
     -------
     AuditResult
+        ``result.results[f"snr_{band_suffix}"]`` contains the SNR
+        ``ComparisonResult`` (float32 gate).  Azimuth/Elevation/VOD
+        statistics are printed but not stored (no fixed pass/fail gate).
     """
     if mode not in ("trimmed", "merged"):
         raise ValueError(f"mode must be 'trimmed' or 'merged', got '{mode}'")
@@ -690,7 +982,6 @@ def audit_vs_gnssvod(
         print(f"Band: {band_suffix} → {snr_col} (mode={mode})")
 
         if mode == "trimmed":
-            # One code per band: direct SID→PRN mapping
             matching_sids = [
                 s for s in canvodpy_ds.sid.values if str(s).endswith(f"|{band_suffix}")
             ]
@@ -709,20 +1000,17 @@ def audit_vs_gnssvod(
             except ValueError as e:
                 print(f"  ERROR: {e}")
                 continue
-
             ds_adapted = adapter.to_gnssvod_dataset()
 
         else:
             # Merged mode: replicate gnssvod's fillna across codes
-            band_num = band_suffix.split("|")[0].replace("L", "")  # "L1|C" → "1"
+            band_num = band_suffix.split("|")[0].replace("L", "")
             try:
                 ds_merged = gnssvod_merge_codes(canvodpy_ds, band_num)
             except ValueError as e:
                 print(f"  Skipping: {e}")
                 continue
 
-            # Convert merged dataset to gnssvod variable space
-            # ds_merged already has PRN sids; rename variables
             data_vars = {}
             if "SNR" in ds_merged.data_vars:
                 data_vars[snr_col] = ds_merged["SNR"]
@@ -739,36 +1027,48 @@ def audit_vs_gnssvod(
             if vod_col and "VOD" in ds_merged.data_vars:
                 data_vars[vod_col] = ds_merged["VOD"]
 
-            ds_adapted = xr.Dataset(
-                data_vars,
-                coords=ds_merged.coords,
-            )
+            ds_adapted = xr.Dataset(data_vars, coords=ds_merged.coords)
 
         print(
             f"  Adapted: {dict(ds_adapted.sizes)}, vars={sorted(ds_adapted.data_vars)}"
         )
 
-        r = _compare_band(ds_adapted, ds_gnssvod, band_suffix, snr_col, vod_col)
-        if r is None:
+        band_result = _compare_band(
+            ds_adapted,
+            ds_gnssvod,
+            band_suffix,
+            snr_col,
+            vod_col,
+            elevation_cutoff_deg=elevation_cutoff_deg,
+        )
+        if band_result is None:
             continue
 
-        result.results[f"gnssvod_{band_suffix}"] = r
+        # Only store ComparisonResult objects in AuditResult (SNR gate)
+        if band_result["snr_comparison"] is not None:
+            result.results[f"snr_{band_suffix}"] = band_result["snr_comparison"]
 
-        # Print per-variable summary
-        for var, vs in r.variable_stats.items():
-            status = "PASS" if var not in r.failures else "FAIL"
-            print(
-                f"  [{status}] {var}: "
-                f"RMSE={vs.rmse:.6g}, MAE={vs.mae:.6g}, "
-                f"max={vs.max_abs_diff:.6g}, bias={vs.bias:.6g}, "
-                f"n={vs.n_compared:,}, "
-                f"NaN: {vs.pct_nan_a:.1%} vs {vs.pct_nan_b:.1%}"
-            )
-        if r.failures:
-            for var, reason in r.failures.items():
-                print(f"  !! {var}: {reason}")
-
-    # ── Summary ───────────────────────────────────────────────────────
+    # ── Diagnostic summary ────────────────────────────────────────────
     print(f"\n{'=' * 60}")
-    print(result.summary())
+    print("Tier 3 diagnostic summary")
+    print(f"{'=' * 60}")
+    print("SNR float32 gate results:")
+    if result.results:
+        for name, r in result.results.items():
+            status = "PASS" if r.passed else "FAIL ***"
+            print(f"  [{status}] {r.label}")
+            if r.failures:
+                for var, reason in r.failures.items():
+                    print(f"      {var}: {reason}")
+    else:
+        print("  (no SNR comparisons run)")
+    print()
+    print(
+        "Note: Azimuth/Elevation/VOD differences are reported above per band.\n"
+        "No pass/fail verdict for these variables — differences are systematic\n"
+        "and explained by different SP3 interpolation methods (CubicHermiteSpline\n"
+        "vs degree-16 polyfit). See vod_difference_decomposition() residuals\n"
+        "for the only scientifically gated VOD check."
+    )
+
     return result

@@ -155,10 +155,12 @@ class DatasetBuilder:
             np.datetime64(ts.replace(tzinfo=None) if ts.tzinfo else ts, "ns")
             for ts in self._epochs
         ]
-        sv_arr = np.array([self._signals[s].sv for s in sorted_sids])
-        system_arr = np.array([self._signals[s].system for s in sorted_sids])
-        band_arr = np.array([self._signals[s].band for s in sorted_sids])
-        code_arr = np.array([self._signals[s].code for s in sorted_sids])
+        sv_arr = np.array([self._signals[s].sv for s in sorted_sids], dtype=object)
+        system_arr = np.array(
+            [self._signals[s].system for s in sorted_sids], dtype=object
+        )
+        band_arr = np.array([self._signals[s].band for s in sorted_sids], dtype=object)
+        code_arr = np.array([self._signals[s].code for s in sorted_sids], dtype=object)
 
         # Frequency resolution via SignalIDMapper
         freq_center = np.array(
@@ -203,7 +205,9 @@ class DatasetBuilder:
         coords = {
             "epoch": ("epoch", epoch_arr, COORDS_METADATA["epoch"]),
             "sid": xr.DataArray(
-                sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+                np.array(sorted_sids, dtype=object),
+                dims=["sid"],
+                attrs=COORDS_METADATA["sid"],
             ),
             "sv": ("sid", sv_arr, COORDS_METADATA["sv"]),
             "system": ("sid", system_arr, COORDS_METADATA["system"]),

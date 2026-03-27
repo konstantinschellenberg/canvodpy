@@ -509,6 +509,7 @@ class MyIcechunkStore:
         group_name: str,
         branch: str = "main",
         time_slice: slice | None = None,
+        date: str | None = None,
         chunks: dict[str, Any] | None = None,
     ) -> xr.Dataset:
         """
@@ -521,7 +522,10 @@ class MyIcechunkStore:
         branch : str, default "main"
             Repository branch.
         time_slice : slice | None, optional
-            Optional time slice for filtering.
+            Optional label-based time slice for filtering (passed to ``ds.sel``).
+        date : str | None, optional
+            YYYYDOY string (e.g. ``"2025001"``) selecting a single calendar day.
+            Converted to a ``time_slice``; mutually exclusive with ``time_slice``.
         chunks : dict[str, Any] | None, optional
             Chunking specification (uses config defaults if None).
 
@@ -531,6 +535,12 @@ class MyIcechunkStore:
             Dataset from the group.
         """
         self._logger.info(f"Reading group '{group_name}' from branch '{branch}'")
+
+        if date is not None:
+            from canvod.utils.tools.date_utils import YYYYDOY
+
+            _d = YYYYDOY.from_str(date).date
+            time_slice = slice(str(_d), str(_d + timedelta(days=1)))
 
         with self.readonly_session(branch) as session:
             # Use default chunking strategy if none provided
@@ -545,7 +555,7 @@ class MyIcechunkStore:
             )
 
             if time_slice is not None:
-                ds = ds.isel(epoch=time_slice)
+                ds = ds.sel(epoch=time_slice)
                 self._logger.debug(f"Applied time slice: {time_slice}")
 
             self._logger.info(
@@ -592,7 +602,9 @@ class MyIcechunkStore:
         self._logger.info(f"Reading group '{group_name}' with deduplication")
 
         # First, read the raw data
-        ds = self.read_group(group_name, branch, time_slice, chunks)
+        ds = self.read_group(
+            group_name, branch=branch, time_slice=time_slice, chunks=chunks
+        )
 
         # Then deduplicate using metadata table intelligence
         with self.readonly_session(branch) as session:

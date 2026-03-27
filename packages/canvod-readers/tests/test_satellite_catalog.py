@@ -428,7 +428,7 @@ class TestEnrichDataset:
 # Integration test with real IGS file
 # ---------------------------------------------------------------------------
 
-IGS_SNX_PATH = Path("/tmp/igs_satellite_metadata.snx")
+IGS_SNX_PATH = Path.home() / ".cache/canvod/igs_satellite_metadata.snx"
 
 
 @pytest.mark.skipif(not IGS_SNX_PATH.exists(), reason="IGS SNX file not available")

@@ -481,9 +481,22 @@ class Pipeline:
         log.info("vod_calculation_started")
 
         try:
+            # Convert YYYYDOY string to a one-day time_slice for read_group
+            import datetime
+
+            from canvod.utils.tools.date_utils import YYYYDOY
+
+            _d = YYYYDOY.from_str(date).date
+            _time_slice = slice(str(_d), str(_d + datetime.timedelta(days=1)))
             # Load processed data from stores
-            canopy_data = self.site.rinex_store.read_group(canopy, date=date)
-            ref_data = self.site.rinex_store.read_group(reference, date=date)
+            # canopy_data = self.site.rinex_store.read_group(canopy, date=date)
+            # ref_data = self.site.rinex_store.read_group(reference, date=date)
+            canopy_data = self.site.rinex_store.read_group(
+                canopy, time_slice=_time_slice
+            )
+            ref_data = self.site.rinex_store.read_group(
+                reference, time_slice=_time_slice
+            )
 
             # Lazy import to avoid circular dependency
             from canvod.vod import VODCalculator

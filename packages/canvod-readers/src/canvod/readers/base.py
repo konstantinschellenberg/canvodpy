@@ -87,10 +87,16 @@ def validate_dataset(ds: xr.Dataset, required_vars: list[str] | None = None) -> 
 
         actual_dtype = str(ds[coord].dtype)
         if expected_dtype == "object":
-            if actual_dtype != "object" and not actual_dtype.startswith("<U"):
+            # Accept object (VariableLengthUTF8, stable Zarr V3) and numpy 2.0
+            # StringDType (same stable type, different numpy representation).
+            # Reject <U* (FixedLengthUTF32) — no stable Zarr V3 spec.
+            is_valid_string = actual_dtype == "object" or actual_dtype.startswith(
+                "StringDType"
+            )
+            if not is_valid_string:
                 errors.append(
                     f"Coordinate {coord} has wrong dtype: "
-                    f"expected string, got {actual_dtype}"
+                    f"expected string (object/StringDType), got {actual_dtype}"
                 )
         elif expected_dtype not in actual_dtype:
             errors.append(
@@ -165,9 +171,10 @@ class DatasetStructureValidator(BaseModel):
                 raise ValueError(f"Missing required coordinate: {coord}")
             actual = str(self.dataset[coord].dtype)
             if expected_dtype == "object":
-                if actual != "object" and not actual.startswith("<U"):
+                is_valid_string = actual == "object" or actual.startswith("StringDType")
+                if not is_valid_string:
                     raise ValueError(
-                        f"Coordinate {coord}: expected string, got {actual}"
+                        f"Coordinate {coord}: expected string (object/StringDType), got {actual}"
                     )
             elif expected_dtype not in actual:
                 raise ValueError(

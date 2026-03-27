@@ -216,17 +216,17 @@ class TestContractConstants:
 
         from canvod.readers.base import validate_dataset
 
-        sids = ["G01|L1|C"]
+        sids = np.array(["G01|L1|C"], dtype=object)
         epochs = [np.datetime64("2024-01-01T00:00:00", "ns")]
         ds = xr.Dataset(
             data_vars={"SNR": (("epoch", "sid"), np.array([[42.0]], dtype="float32"))},
             coords={
                 "epoch": ("epoch", epochs),
                 "sid": ("sid", sids),
-                "sv": ("sid", ["G01"]),
-                "system": ("sid", ["G"]),
-                "band": ("sid", ["L1"]),
-                "code": ("sid", ["C"]),
+                "sv": ("sid", np.array(["G01"], dtype=object)),
+                "system": ("sid", np.array(["G"], dtype=object)),
+                "band": ("sid", np.array(["L1"], dtype=object)),
+                "code": ("sid", np.array(["C"], dtype=object)),
                 "freq_center": ("sid", np.array([1575.42], dtype="float32")),
                 "freq_min": ("sid", np.array([1560.0], dtype="float32")),
                 "freq_max": ("sid", np.array([1590.0], dtype="float32")),

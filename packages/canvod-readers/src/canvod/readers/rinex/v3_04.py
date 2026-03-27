@@ -1637,16 +1637,26 @@ class Rnxv3Obs(GNSSDataReader):
             ssi = ssi[valid_mask]
 
         # Build coordinate arrays from pre-computed properties
-        sv_list = [sid_properties[sid]["sv"] for sid in sorted_sids]
-        constellation_list = [sid_properties[sid]["system"] for sid in sorted_sids]
-        band_list = [sid_properties[sid]["band"] for sid in sorted_sids]
-        code_list = [sid_properties[sid]["code"] for sid in sorted_sids]
+        sv_list = np.array(
+            [sid_properties[sid]["sv"] for sid in sorted_sids], dtype=object
+        )
+        constellation_list = np.array(
+            [sid_properties[sid]["system"] for sid in sorted_sids], dtype=object
+        )
+        band_list = np.array(
+            [sid_properties[sid]["band"] for sid in sorted_sids], dtype=object
+        )
+        code_list = np.array(
+            [sid_properties[sid]["code"] for sid in sorted_sids], dtype=object
+        )
         freq_center_list = [sid_properties[sid]["freq_center"] for sid in sorted_sids]
         freq_min_list = [sid_properties[sid]["freq_min"] for sid in sorted_sids]
         freq_max_list = [sid_properties[sid]["freq_max"] for sid in sorted_sids]
 
         signal_id_coord = xr.DataArray(
-            sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+            np.array(sorted_sids, dtype=object),
+            dims=["sid"],
+            attrs=COORDS_METADATA["sid"],
         )
         coords = {
             "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),

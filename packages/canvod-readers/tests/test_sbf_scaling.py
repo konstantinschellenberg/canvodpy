@@ -75,7 +75,7 @@ class TestDecodeSignalNum:
 # cn0_dbhz — RefGuide-4.14.0, p.261
 # C/N0 [dB-Hz] = raw * 0.25 + 10  (normal)
 # C/N0 [dB-Hz] = raw * 0.25       (signals 1 and 2 only)
-# DNU: raw == 0
+# DNU: raw == 255
 # ===================================================================
 
 
@@ -83,19 +83,20 @@ class TestCn0Dbhz:
     """CN0 byte → C/N0 in dB-Hz."""
 
     def test_dnu_returns_none(self):
-        """Do-Not-Use sentinel: raw == 0."""
-        assert cn0_dbhz(0, 0) is None
-        assert cn0_dbhz(0, 17) is None
+        """Do-Not-Use sentinel: raw == 255 (u1 max, field not available)."""
+        assert cn0_dbhz(255, 0) is None
+        assert cn0_dbhz(255, 17) is None
 
     @pytest.mark.parametrize(
         "raw,sig_num,expected_dbhz",
         [
             # Normal signals: raw * 0.25 + 10
+            (0, 0, 0.0 + 10.0),  # GPS L1CA, raw == 0 is valid (not DNU)
             (1, 0, 0.25 + 10.0),  # GPS L1CA, min non-DNU
             (100, 0, 25.0 + 10.0),  # GPS L1CA
             (200, 17, 50.0 + 10.0),  # Galileo E1
             (160, 20, 40.0 + 10.0),  # Galileo E5a, typical strong signal
-            (255, 0, 63.75 + 10.0),  # Max raw for GPS L1CA
+            (254, 0, 63.5 + 10.0),  # Max valid raw for GPS L1CA (255 is DNU)
             # Signals 1 and 2: raw * 0.25 (no +10 offset)
             (100, 1, 25.0),  # GPS L1P
             (100, 2, 25.0),  # GPS L2P

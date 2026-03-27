@@ -7,6 +7,13 @@ Expected results
 ----------------
 - EXACT tier: bit-identical outputs (same algorithm, same data)
 - If a deliberate algorithm change was made, re-freeze after manual review.
+
+Stores compared
+---------------
+tier0_rinex     : ``tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store``
+tier0_vod       : ``tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_VOD_store``
+tier1_sbf_agency: ``tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_store``
+tier1_sbf_broadcast: ``tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store``
 """
 
 from __future__ import annotations
@@ -22,10 +29,14 @@ AUDIT_ROOT = Path("/Volumes/ExtremePro/canvod_audit_output")
 CHECKPOINT_DIR = AUDIT_ROOT / "tier2_checkpoints"
 
 STORES = {
-    "tier0_rinex": (AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_RINEX_store",),
-    "tier0_vod": (AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_VOD_store",),
+    "tier0_rinex": (
+        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_RINEX_store",
+    ),
+    "tier0_vod": (
+        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_VOD_store",
+    ),
     "tier1_sbf_agency": (
-        AUDIT_ROOT / "tier1_sbf_vs_rinex" / "Rosalia" / "canvodpy_SBF_allvars_store",
+        AUDIT_ROOT / "tier1_sbf_vs_rinex" / "Rosalia" / "canvodpy_SBF_store",
     ),
     "tier1_sbf_broadcast": (
         AUDIT_ROOT
@@ -43,6 +54,7 @@ def main() -> None:
         return
 
     all_passed = True
+    n_run = 0
 
     for label, (store_path,) in STORES.items():
         cp_dir = CHECKPOINT_DIR / label
@@ -63,14 +75,22 @@ def main() -> None:
             tier=ToleranceTier.EXACT,
         )
 
+        n_run += 1
         if not result.passed:
             all_passed = False
             print(f"\n*** REGRESSION DETECTED in {label} ***\n")
 
         print()
 
-    if all_passed:
-        print("ALL TIER 2 REGRESSION CHECKS PASSED")
+    if n_run == 0:
+        print(
+            "NO COMPARISONS RUN — no checkpoints or stores found; nothing to validate."
+        )
+        print("Run run_tier2_freeze.py first to create a baseline.")
+    elif all_passed:
+        print(
+            f"ALL TIER 2 REGRESSION CHECKS PASSED ({n_run}/{len(STORES)} stores checked)"
+        )
     else:
         print("SOME REGRESSIONS DETECTED — review above output")
 
