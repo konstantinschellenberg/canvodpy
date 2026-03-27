@@ -4,6 +4,7 @@
 
 [tool.uv.workspace]
 members = ["packages/*", "canvodpy"]
+exclude = ["packages/canvod-streamstats"]
 
 # ============================================================================
 # Development Dependencies (Workspace-wide)

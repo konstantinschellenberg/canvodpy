@@ -199,6 +199,76 @@ just test-coverage    # generates HTML report
 
 ---
 
+## Private or Local Add-on Packages
+
+You may want to develop an add-on package alongside canVODpy that is not part
+of the public repository — for example, a private algorithm, a site-specific
+extension, or an experimental module you are not yet ready to publish.
+
+The recommended pattern keeps the public workspace and lock file clean while
+letting you use the package locally without friction.
+
+### The pattern
+
+**1. Place the package inside `packages/`**
+
+```
+packages/
+  canvod-myprivatepackage/
+    pyproject.toml
+    src/
+      canvod/myprivatepackage/
+```
+
+**2. Add it to `.gitignore`** (so it is never accidentally committed)
+
+```
+packages/canvod-myprivatepackage
+```
+
+**3. Exclude it from the uv workspace** in the root `pyproject.toml`
+
+```toml
+[tool.uv.workspace]
+members  = ["packages/*", "canvodpy"]
+exclude  = ["packages/canvod-myprivatepackage"]
+```
+
+This keeps `uv.lock` identical for everyone else.
+CI will never see the directory, so it resolves the same 240 packages with or
+without your local copy.
+
+**4. Install locally with `uv pip install`**
+
+```bash
+uv pip install -e packages/canvod-myprivatepackage/
+```
+
+`uv pip install` is a direct venv install — it does **not** modify
+`pyproject.toml` or `uv.lock`.
+After a fresh `uv sync`, re-run the command to restore your local install.
+
+### Upgrade path
+
+When the package is ready to become public:
+
+1. Remove it from `.gitignore` and from the `exclude` list.
+2. Commit the package directory.
+3. Run `uv lock` and commit the updated `uv.lock`.
+
+It becomes a first-class workspace member and appears in the lock for everyone.
+
+### Why not git submodules?
+
+You could also host the private package in its own repository and add it as a
+git submodule.  `actions/checkout@v4` does not initialise submodules by
+default, so CI would still see an empty directory.  The trade-off is that the
+`uv.lock` would diverge between users who have initialised the submodule and
+those who have not, requiring everyone to keep the `exclude` in place anyway.
+For a single-developer private add-on the simpler approach above is preferred.
+
+---
+
 ## All Just Commands
 
 ```bash
@@ -231,3 +301,20 @@ just deps-graph          # mermaid dependency graph
     ```bash
     uv sync --all-extras
     ```
+
+??? failure "`uv.lock` needs to be updated — CI fails but local works"
+    An untracked directory inside `packages/` is being picked up by the
+    `packages/*` workspace glob and included in the lock.  CI does not have
+    the directory and therefore resolves fewer packages, causing a mismatch.
+
+    Identify the culprit:
+
+    ```bash
+    git ls-tree HEAD packages/   # shows only committed packages
+    ls packages/                 # shows all local packages (including untracked)
+    ```
+
+    Any directory present locally but absent from the `git ls-tree` output is
+    the source of the divergence.  Follow the
+    [Private or Local Add-on Packages](#private-or-local-add-on-packages)
+    pattern to exclude it and regenerate the lock.
