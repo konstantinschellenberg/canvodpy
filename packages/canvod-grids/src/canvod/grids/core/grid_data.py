@@ -85,7 +85,7 @@ class GridData:
         # HEALPix
         if self.grid_type == "healpix" and "healpix_nside" in self.grid.columns:
             try:
-                import healpy as hp
+                import healpy as hp  # type: ignore[unresolved-import]
 
                 nside = int(self.grid["healpix_nside"][0])
                 return np.full(
@@ -238,7 +238,7 @@ class GridData:
         # Add HEALPix-specific info
         if self.grid_type == "healpix" and "healpix_nside" in self.grid.columns:
             try:
-                import healpy as hp
+                import healpy as hp  # type: ignore[unresolved-import]
 
                 nside = int(self.grid["healpix_nside"][0])
                 stats["healpix_nside"] = nside

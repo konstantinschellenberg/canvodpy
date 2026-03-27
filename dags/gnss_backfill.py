@@ -24,8 +24,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from airflow.decorators import dag, task
-from airflow.models.param import Param
+from airflow.decorators import dag, task  # type: ignore[unresolved-import]
+from airflow.models.param import Param  # type: ignore[unresolved-import]
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +98,8 @@ def canvod_backfill():
         dates: list[str] = []
         current = start.date
         end_date = end.date
+        assert current is not None, f"Invalid start date: {params['start_date']}"
+        assert end_date is not None, f"Invalid end date: {params['end_date']}"
         while current <= end_date:
             doy = (current - dt.date(current.year, 1, 1)).days + 1
             dates.append(f"{current.year}{doy:03d}")

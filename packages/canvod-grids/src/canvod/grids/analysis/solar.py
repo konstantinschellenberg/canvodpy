@@ -88,7 +88,7 @@ class SolarPositionCalculator:
 
         if use_pvlib:
             try:
-                import pvlib
+                import pvlib  # type: ignore[unresolved-import]
 
                 self.pvlib = pvlib
                 logger.info("Using pvlib for solar position calculations")

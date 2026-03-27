@@ -39,8 +39,11 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 try:
-    from opentelemetry import metrics, trace
-    from opentelemetry.trace import Status, StatusCode
+    from opentelemetry import metrics, trace  # type: ignore[unresolved-import]
+    from opentelemetry.trace import (  # type: ignore[unresolved-import]
+        Status,
+        StatusCode,
+    )
 
     OTEL_AVAILABLE = True
 except ImportError:

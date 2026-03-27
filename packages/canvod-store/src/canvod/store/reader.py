@@ -681,7 +681,9 @@ class IcechunkDataReader:
         receiver_type: str,
     ) -> None:
         """Append dataset to the appropriate Icechunk store."""
-        from gnssvodpy.utils.tools import get_version_from_pyproject
+        from gnssvodpy.utils.tools import (
+            get_version_from_pyproject,  # type: ignore[unresolved-import]
+        )
 
         try:
             version = get_version_from_pyproject()

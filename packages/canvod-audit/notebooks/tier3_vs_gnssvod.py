@@ -211,7 +211,7 @@ def _(
     from canvod.audit.core import compare_datasets
     from canvod.audit.runners.common import AuditResult
     from canvod.audit.runners.vs_gnssvod import (
-        GNSSVOD_TOLERANCES,
+        GNSSVOD_TOLERANCES,  # type: ignore[unresolved-import]
         audit_vs_gnssvod,
         gnssvod_df_to_xarray,
     )

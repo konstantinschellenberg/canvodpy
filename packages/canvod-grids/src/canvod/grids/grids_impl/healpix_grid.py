@@ -128,7 +128,7 @@ class HEALPixBuilder(BaseGridBuilder):
 
         # Import healpy
         try:
-            import healpy as hp
+            import healpy as hp  # type: ignore[unresolved-import]
 
             self.hp = hp
         except ImportError as e:

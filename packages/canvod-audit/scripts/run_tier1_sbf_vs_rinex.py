@@ -309,7 +309,7 @@ from canvod.audit.runners.common import load_group, open_store
 from canvod.audit.runners.sbf_vs_rinex import (
     FORMAL_VARS,
     SBF_RINEX_TOLERANCES,
-    compute_diff_stats,
+    compute_diff_stats,  # type: ignore[unresolved-import]
     print_diff_report,
 )
 from canvod.audit.tolerances import ToleranceTier

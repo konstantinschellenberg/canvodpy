@@ -129,7 +129,9 @@ def _push_airflow_metrics(metrics: TaskMetrics) -> None:
     """Push metrics to Airflow XCom and StatsD if available."""
     if os.environ.get("AIRFLOW_CTX_DAG_ID"):
         try:
-            from airflow.operators.python import get_current_context
+            from airflow.operators.python import (
+                get_current_context,  # type: ignore[unresolved-import]
+            )
 
             context = get_current_context()
             ti = context["ti"]
@@ -138,7 +140,7 @@ def _push_airflow_metrics(metrics: TaskMetrics) -> None:
             pass
 
     try:
-        from airflow.stats import Stats
+        from airflow.stats import Stats  # type: ignore[unresolved-import]
 
         Stats.timing(f"canvod.{metrics.operation}.duration_s", metrics.duration_s)
         Stats.gauge(

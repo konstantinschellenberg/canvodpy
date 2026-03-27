@@ -23,8 +23,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta
 
-from airflow.decorators import dag, task
-from airflow.utils.trigger_rule import TriggerRule
+from airflow.decorators import dag, task  # type: ignore[unresolved-import]
+from airflow.utils.trigger_rule import TriggerRule  # type: ignore[unresolved-import]
 
 logger = logging.getLogger(__name__)
 
@@ -234,7 +234,9 @@ def create_rinex_dag(site_name: str):
             ds: str = "{{ ds }}",
         ):
             """Wait for RINEX files to appear (up to 21 days)."""
-            from airflow.sensors.base import PokeReturnValue
+            from airflow.sensors.base import (
+                PokeReturnValue,  # type: ignore[unresolved-import]
+            )
             from canvodpy.workflows.tasks import check_rinex
 
             _ = valid_info
@@ -261,8 +263,12 @@ def create_rinex_dag(site_name: str):
             """
             import datetime as dt
 
-            from airflow.exceptions import AirflowSkipException
-            from airflow.sensors.base import PokeReturnValue
+            from airflow.exceptions import (
+                AirflowSkipException,  # type: ignore[unresolved-import]
+            )
+            from airflow.sensors.base import (
+                PokeReturnValue,  # type: ignore[unresolved-import]
+            )
 
             _ = rinex_info
             yyyydoy = _ds_to_yyyydoy(ds)
@@ -278,8 +284,8 @@ def create_rinex_dag(site_name: str):
             try:
                 from canvod.auxiliary.pipeline import AuxDataPipeline
 
-                pipeline = AuxDataPipeline.create_standard()
-                available = pipeline.check_availability(yyyydoy)
+                pipeline = AuxDataPipeline.create_standard()  # type: ignore[missing-argument]
+                available = pipeline.check_availability(yyyydoy)  # type: ignore[unresolved-attribute]
                 return PokeReturnValue(
                     is_done=available,
                     xcom_value={"sp3_ready": available},

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import xarray as xr
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree  # type: ignore[unresolved-import]
 
 from canvod.grids._internal import get_logger
 
@@ -443,7 +443,7 @@ def _extract_healpix_vertices(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Extract vertices from HEALPix grid via healpy boundaries."""
     try:
-        import healpy as hp
+        import healpy as hp  # type: ignore[unresolved-import]
     except ImportError as e:
         raise ImportError("healpy required for HEALPix vertex extraction") from e
 

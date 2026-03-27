@@ -14,7 +14,7 @@ from typing import Any
 
 from canvod.audit.core import ComparisonResult, compare_datasets
 from canvod.audit.runners.vs_gnssvod import (
-    GNSSVOD_TOLERANCES,
+    GNSSVOD_TOLERANCES,  # type: ignore[unresolved-import]
     GnssvodAdapter,
     _wrap_aware_azimuth_diff,
     gnssvod_df_to_xarray,

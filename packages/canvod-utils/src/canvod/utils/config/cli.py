@@ -733,7 +733,9 @@ def stats_show(
     try:
         import zarr
 
-        from canvod.ops.statistics.store import StatisticsStore
+        from canvod.ops.statistics.store import (
+            StatisticsStore,  # type: ignore[unresolved-import]
+        )
 
         root = zarr.open_group(str(store_path), mode="r")
         store = StatisticsStore(root)

@@ -16,13 +16,15 @@ if TYPE_CHECKING:
 
     from canvod.store.store import MyIcechunkStore
 try:
-    from gnssvodpy.hemigrid.storage.grid_storage import (
+    from gnssvodpy.hemigrid.storage.grid_storage import (  # type: ignore[unresolved-import]
         GridMetadata,
         LoadedGrid,
         load_grid_from_icechunk,
         write_grid_to_icechunk,
     )
-    from gnssvodpy.utils.tools import get_version_from_pyproject
+    from gnssvodpy.utils.tools import (
+        get_version_from_pyproject,  # type: ignore[unresolved-import]
+    )
 except ImportError:  # pragma: no cover
     # gnssvodpy not installed; HemiGridStorageAdapter is not yet fully ported.
     # store_grid / store_vod_with_grids (below) do not depend on these.
@@ -760,7 +762,9 @@ def store_grid_to_vod_store(
     ...     grid_name='htm_10deg'
     ... )
     """
-    from gnssvodpy.icechunk_manager.store import create_vod_store
+    from gnssvodpy.icechunk_manager.store import (
+        create_vod_store,  # type: ignore[unresolved-import]
+    )
 
     store = create_vod_store(store_path)
 
@@ -821,7 +825,9 @@ def load_grid_from_vod_store(
     ... )
     >>> cell_id = grid.query_point(phi=1.5, theta=0.3)
     """
-    from gnssvodpy.icechunk_manager.store import create_vod_store
+    from gnssvodpy.icechunk_manager.store import (
+        create_vod_store,  # type: ignore[unresolved-import]
+    )
 
     store = create_vod_store(store_path)
 
@@ -862,7 +868,9 @@ def list_available_grids(store_path: Path, branch: str = "main") -> list[str]:
     >>> print(grids)
     ['htm_10deg', 'equal_area_10deg', 'htm_5deg']
     """
-    from gnssvodpy.icechunk_manager.store import create_vod_store
+    from gnssvodpy.icechunk_manager.store import (
+        create_vod_store,  # type: ignore[unresolved-import]
+    )
 
     store = create_vod_store(store_path)
 
@@ -973,7 +981,9 @@ def store_vod_with_grids(
 if __name__ == "__main__":
     from pathlib import Path
 
-    from gnssvodpy.hemigrid.core.hemigrid import create_hemigrid
+    from gnssvodpy.hemigrid.core.hemigrid import (
+        create_hemigrid,  # type: ignore[unresolved-import]
+    )
 
     # Create a grid
     print("Creating HTM grid...")

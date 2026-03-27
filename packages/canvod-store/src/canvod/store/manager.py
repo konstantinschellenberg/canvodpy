@@ -610,7 +610,9 @@ class GnssResearchSite:
         str
             Snapshot ID
         """
-        from gnssvodpy.utils.tools import get_version_from_pyproject
+        from gnssvodpy.utils.tools import (
+            get_version_from_pyproject,  # type: ignore[unresolved-import]
+        )
         from icechunk.xarray import to_icechunk
 
         canopy_hash = vod_ds.attrs.get("canopy_hash", "unknown")
@@ -753,7 +755,7 @@ class GnssResearchSite:
         if receiver_types is None:
             receiver_types = ["canopy", "reference"]
 
-        from gnssvodpy.utils.date_time import YYYYDOY
+        from gnssvodpy.utils.date_time import YYYYDOY  # type: ignore[unresolved-import]
 
         yyyydoy_obj = YYYYDOY.from_str(yyyydoy)
 
