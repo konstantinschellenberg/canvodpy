@@ -2,6 +2,9 @@ name: Platform Tests
 
 on: [push, pull_request]
 
+env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
     build:
         name: Tests • ${{ matrix.name }}
@@ -25,16 +28,16 @@ jobs:
                 shell: bash
 
         steps:
-            - uses: actions/checkout@v4
+            - uses: actions/checkout@v6
             - name: Install uv and set the python version
-              uses: astral-sh/setup-uv@v6
+              uses: astral-sh/setup-uv@v7
               with:
                   python-version: ${{ matrix.python-version }}
                   enable-cache: true
             - name: Set up Python
               run: uv python install
             - name: Install just
-              uses: extractions/setup-just@v2
+              uses: extractions/setup-just@v3
             - name: Install the Project
               run: uv sync --locked --dev
             - name: Run Tests
