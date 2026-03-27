@@ -123,7 +123,10 @@ def _test_zarr_round_trip(s, groups, variables, result, output_dir):
         ds_original = load_group(s, group)
 
         # Write to fresh store
-        roundtrip_store.write_initial_group(group, ds_original)
+        roundtrip_store.write_initial_group(
+            dataset=ds_original,
+            group_name=group,
+        )
 
         # Read back
         ds_back = load_group(roundtrip_store, group)

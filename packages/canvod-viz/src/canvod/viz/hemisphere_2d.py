@@ -7,7 +7,7 @@ rendering methods.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -19,6 +19,7 @@ from canvod.viz.styles import PolarPlotStyle
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
+    from matplotlib.projections.polar import PolarAxes
 
     from canvod.grids import HemiGrid
 
@@ -114,7 +115,8 @@ class HemisphereVisualizer2D:
                 figsize=style.figsize, dpi=style.dpi, subplot_kw={"projection": "polar"}
             )
         else:
-            fig = ax.figure
+            fig = cast("Figure", ax.figure)
+        ax_polar = cast("PolarAxes", ax)
 
         # Get patches for grid
         patches, cell_indices = self._extract_grid_patches()
@@ -141,7 +143,7 @@ class HemisphereVisualizer2D:
         ax.add_collection(pc)
 
         # Style polar axes
-        self._apply_polar_styling(ax, style)
+        self._apply_polar_styling(ax_polar, style)
 
         # Add colorbar
         cbar = fig.colorbar(
@@ -284,7 +286,7 @@ class HemisphereVisualizer2D:
                 patches.append(Polygon(vertices_2d, closed=True))
                 cell_indices.append(idx)
 
-            except (KeyError, TypeError):
+            except KeyError, TypeError:
                 # Skip cells that don't have proper HTM vertex data
                 continue
 
@@ -329,7 +331,7 @@ class HemisphereVisualizer2D:
                 patches.append(Polygon(vertices_2d, closed=True))
                 cell_indices.append(idx)
 
-            except (IndexError, KeyError, TypeError, ValueError):
+            except IndexError, KeyError, TypeError, ValueError:
                 continue
 
         return patches, np.array(cell_indices)
@@ -412,7 +414,7 @@ class HemisphereVisualizer2D:
                 patches.append(Polygon(vertices_2d, closed=True))
                 cell_indices.append(idx)
 
-            except (IndexError, KeyError, TypeError, ValueError):
+            except IndexError, KeyError, TypeError, ValueError:
                 continue
 
         return patches, np.array(cell_indices)
@@ -444,7 +446,7 @@ class HemisphereVisualizer2D:
 
     def _apply_polar_styling(
         self,
-        ax: Axes,
+        ax: PolarAxes,
         style: PolarPlotStyle,
     ) -> None:
         """Apply styling to polar axes.

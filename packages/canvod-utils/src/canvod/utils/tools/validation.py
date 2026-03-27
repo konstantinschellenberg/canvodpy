@@ -29,5 +29,5 @@ def isfloat(value: Any) -> bool:
     try:
         float(value)
         return True
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False

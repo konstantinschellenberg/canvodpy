@@ -7,7 +7,7 @@ dimension to signal ID (sid) dimension required for matching with RINEX data.
 Matches gnssvodpy.icechunk_manager.preprocessing.IcechunkPreprocessor exactly.
 """
 
-from typing import Any
+from typing import Any, overload
 
 import numpy as np
 import structlog
@@ -149,11 +149,15 @@ def map_aux_sv_to_sid(
                     elif sv_dim == 1:
                         expanded[..., sid_idx] = arr.values[..., sv_idx]
                     else:
-                        slices_new = [slice(None)] * len(new_shape)
-                        slices_old = [slice(None)] * len(arr.shape)
-                        slices_new[sv_dim] = sid_idx
-                        slices_old[sv_dim] = sv_idx
-                        expanded[tuple(slices_new)] = arr.values[tuple(slices_old)]
+                        idx_new = tuple(
+                            sid_idx if i == sv_dim else slice(None)
+                            for i in range(len(new_shape))
+                        )
+                        idx_old = tuple(
+                            sv_idx if i == sv_dim else slice(None)
+                            for i in range(len(arr.shape))
+                        )
+                        expanded[idx_new] = arr.values[idx_old]
 
             new_dims = list(arr.dims)
             new_dims[sv_dim] = "sid"
@@ -340,7 +344,15 @@ def _fill_sid_coords_from_sid_strings(
     return ds.assign_coords(updates)
 
 
-def normalize_sid_dtype(ds: xr.Dataset) -> xr.Dataset:
+@overload
+def normalize_sid_dtype(ds: xr.Dataset) -> xr.Dataset: ...
+
+
+@overload
+def normalize_sid_dtype(ds: None) -> None: ...
+
+
+def normalize_sid_dtype(ds: xr.Dataset | None) -> xr.Dataset | None:
     """Ensure sid coordinate uses object dtype.
 
     Parameters
@@ -362,7 +374,15 @@ def normalize_sid_dtype(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
-def strip_fillvalue(ds: xr.Dataset) -> xr.Dataset:
+@overload
+def strip_fillvalue(ds: xr.Dataset) -> xr.Dataset: ...
+
+
+@overload
+def strip_fillvalue(ds: None) -> None: ...
+
+
+def strip_fillvalue(ds: xr.Dataset | None) -> xr.Dataset | None:
     """Remove _FillValue attrs/encodings.
 
     Parameters

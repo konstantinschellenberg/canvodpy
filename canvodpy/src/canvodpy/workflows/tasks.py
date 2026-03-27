@@ -19,6 +19,7 @@ import datetime
 import logging
 import shutil
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -149,7 +150,7 @@ def _discover_files_for_date(
                 warnings.append(
                     f"{receiver_name}: {len(overlaps)} temporal overlaps detected"
                 )
-                overlap_paths = {vf.physical_path for vf in overlaps}
+                overlap_paths = {vf.physical_path for pair in overlaps for vf in pair}
                 vfs = [vf for vf in vfs if vf.physical_path not in overlap_paths]
             return [vf.physical_path for vf in vfs], warnings
         except Exception:
@@ -640,8 +641,12 @@ def fetch_aux_data(
 
     # 2. Detect sampling interval from RINEX filename
     if sampling_interval_s is None:
+        yydoy = date_obj.yydoy
+        if yydoy is None:
+            msg = f"Missing YYDOY for date {date_obj.to_str()}"
+            raise ValueError(msg)
         for _name, rcfg in site_cfg.receivers.items():
-            recv_dir = base / rcfg.directory / date_obj.yydoy
+            recv_dir = base / rcfg.directory / yydoy
             rnx_files = _get_rinex_files(recv_dir)
             if rnx_files:
                 sampling_interval_s = parse_sampling_interval_from_filename(
@@ -750,7 +755,11 @@ def process_rinex(
     # Iterate over configured receivers
     for recv_name, rcfg in site_cfg.receivers.items():
         recv_type = rcfg.type
-        recv_dir = base / rcfg.directory / date_obj.yydoy
+        yydoy = date_obj.yydoy
+        if yydoy is None:
+            msg = f"Missing YYDOY for date {date_obj.to_str()}"
+            raise ValueError(msg)
+        recv_dir = base / rcfg.directory / yydoy
 
         # Determine store groups for this receiver
         if recv_type == "canopy":
@@ -987,7 +996,8 @@ def process_sbf(
     if sbf_obs_parts:
         try:
             combined_obs = xr.concat(sbf_obs_parts, dim="epoch")
-            research_site.rinex_store.write_sbf_metadata(combined_obs)
+            rinex_store_any = cast(Any, research_site.rinex_store)
+            rinex_store_any.write_sbf_metadata(combined_obs)
             sbf_obs_written = True
             logger.info(
                 "process_sbf: wrote sbf_obs metadata (%d parts)", len(sbf_obs_parts)
@@ -1051,7 +1061,8 @@ def validate_ingest(site: str, yyyydoy: str) -> dict:
         recv_checks: dict[str, str] = {}
 
         try:
-            ds = research_site.load_rinex_data(
+            research_site_any = cast(Any, research_site)
+            ds = research_site_any.load_rinex_data(
                 receiver_name=recv_name,
                 time_range=time_range,
             )
@@ -1167,6 +1178,9 @@ def calculate_vod(site: str, yyyydoy: str) -> dict:
 
     # Build time range for this day
     day_date = date_obj.date
+    if day_date is None:
+        msg = f"Missing calendar date for {date_obj.to_str()}"
+        raise ValueError(msg)
     start_time = datetime.datetime.combine(day_date, datetime.time.min)
     end_time = datetime.datetime.combine(day_date, datetime.time.max)
     time_range = (start_time, end_time)

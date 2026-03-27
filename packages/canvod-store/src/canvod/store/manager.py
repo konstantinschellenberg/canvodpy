@@ -579,8 +579,8 @@ class GnssResearchSite:
         # Add metadata
         analysis_config = self.vod_analyses[analysis_name]
         vod_ds.attrs["analysis_name"] = analysis_name
-        vod_ds.attrs["canopy_receiver"] = analysis_config["canopy_receiver"]
-        vod_ds.attrs["reference_receiver"] = analysis_config["reference_receiver"]
+        vod_ds.attrs["canopy_receiver"] = analysis_config.canopy_receiver
+        vod_ds.attrs["reference_receiver"] = analysis_config.reference_receiver
         vod_ds.attrs["calculator"] = calculator_class.__name__
         vod_ds.attrs["canopy_hash"] = canopy_ds.attrs.get("File Hash", "unknown")
         vod_ds.attrs["reference_hash"] = reference_ds.attrs.get("File Hash", "unknown")
@@ -659,7 +659,7 @@ class GnssResearchSite:
         rinex_groups = self.get_receiver_groups()
         vod_groups = self.get_vod_analysis_groups()
 
-        summary = {
+        summary: dict[str, Any] = {
             "site_name": self.site_name,
             "site_config": {
                 "total_receivers": len(self.receivers),
@@ -705,9 +705,9 @@ class GnssResearchSite:
         for analysis_name, analysis_config in self.active_vod_analyses.items():
             has_results = analysis_name in vod_groups
             summary["vod_analyses"][analysis_name] = {
-                "canopy_receiver": analysis_config["canopy_receiver"],
-                "reference_receiver": analysis_config["reference_receiver"],
-                "description": analysis_config["description"],
+                "canopy_receiver": analysis_config.canopy_receiver,
+                "reference_receiver": analysis_config.reference_receiver,
+                "description": analysis_config.description,
                 "has_results": has_results,
             }
 

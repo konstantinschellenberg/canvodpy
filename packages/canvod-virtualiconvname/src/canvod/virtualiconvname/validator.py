@@ -100,7 +100,7 @@ class DataDirectoryValidator:
         for path in all_physical:
             try:
                 vf = mapper.map_single_file(path)
-            except (ValueError, KeyError):
+            except ValueError, KeyError:
                 report.unmatched.append(path)
                 continue
 

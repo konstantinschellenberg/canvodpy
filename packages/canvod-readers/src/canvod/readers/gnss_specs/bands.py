@@ -198,7 +198,7 @@ class Bands(BaseModel):
         for sys_band in recorded_combinations:
             system, band = sys_band.split("_")
             if band in self.BAND_PROPERTIES:
-                freq = self.BAND_PROPERTIES[band]["freq"]
+                freq = float(self.BAND_PROPERTIES[band]["freq"])
                 band_frequencies.append((freq, sys_band))
 
         # Sort by frequency (lowest first)
@@ -214,7 +214,7 @@ class Bands(BaseModel):
 
         for sys_band in sorted_combinations:
             system, band = sys_band.split("_")
-            freq = self.BAND_PROPERTIES[band]["freq"]
+            freq = float(self.BAND_PROPERTIES[band]["freq"])
             if freq < break_freq:
                 low_freq_combos.append(sys_band)
             else:
@@ -268,7 +268,8 @@ class Bands(BaseModel):
             for sys_band in combinations:
                 system, band = sys_band.split("_")
                 props = self.BAND_PROPERTIES[band]
-                freq, bw = props["freq"], props["bandwidth"]
+                freq = float(props["freq"])
+                bw = float(props["bandwidth"])
 
                 freqs_in_panel.append(freq)
                 bws_in_panel.append(bw)

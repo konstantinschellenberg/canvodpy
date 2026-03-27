@@ -347,7 +347,7 @@ class FluentWorkflow:
             for name, ds in self._datasets.items():
                 try:
                     rx_pos = ECEFPosition.from_ds_metadata(ds)
-                except (KeyError, ValueError):
+                except KeyError, ValueError:
                     log.warning(
                         "no_receiver_position",
                         receiver=name,

@@ -428,23 +428,26 @@ class GLONASS(ConstellationBase):
         if self.aggregate_fdma:
             # Aggregate mode: G1 and G2 are single bands.
             # Instance attributes intentionally shadow the ClassVars for per-instance config.
-            self.BANDS = {**self.BANDS, **self.AGGR_BANDS}  # type: ignore[misc]
-            self.BAND_CODES = {**self.BAND_CODES, **self.AGGR_BAND_CODES}  # type: ignore[misc]
-            self.BAND_PROPERTIES = {  # type: ignore[misc]
+            self.__dict__["BANDS"] = {**self.BANDS, **self.AGGR_BANDS}
+            self.__dict__["BAND_CODES"] = {
+                **self.BAND_CODES,
+                **self.AGGR_BAND_CODES,
+            }
+            self.__dict__["BAND_PROPERTIES"] = {
                 **self.BAND_PROPERTIES,
                 **self.AGGR_G1_G2_BAND_PROPERTIES,
             }
         else:
             # Non-aggregate mode: Map 1/2 to FDMA bands
             # Note: Frequencies will be computed per-SV in freqs_lut
-            self.BANDS = {**self.BANDS, "1": "G1_FDMA", "2": "G2_FDMA"}  # type: ignore[misc]
-            self.BAND_CODES = {  # type: ignore[misc]
+            self.__dict__["BANDS"] = {**self.BANDS, "1": "G1_FDMA", "2": "G2_FDMA"}
+            self.__dict__["BAND_CODES"] = {
                 **self.BAND_CODES,
                 "G1_FDMA": ["C", "P"],
                 "G2_FDMA": ["C", "P"],
             }
             # Add placeholder properties (actual freqs are SV-dependent)
-            self.BAND_PROPERTIES = {  # type: ignore[misc]
+            self.__dict__["BAND_PROPERTIES"] = {
                 **self.BAND_PROPERTIES,
                 "G1_FDMA": {
                     "freq": 1602.0 * UREG.MHz,  # Nominal center

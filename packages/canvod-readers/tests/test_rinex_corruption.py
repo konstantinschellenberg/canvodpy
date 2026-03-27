@@ -107,7 +107,7 @@ class TestFileLevelCorruption:
         try:
             header = Rnxv3Header.from_file(fpath)
             assert header is not None
-        except (ValueError, RinexError):
+        except ValueError, RinexError:
             pass  # Also acceptable
 
     def test_header_only_no_data(self):
@@ -152,7 +152,7 @@ class TestHeaderCorruption:
         try:
             obs = Rnxv3Obs(fpath=fpath, completeness_mode="off")
             _ = list(obs.iter_epochs())
-        except (ValueError, RinexError):
+        except ValueError, RinexError:
             pass  # Expected
 
     def test_missing_sys_obs_types(self):
@@ -161,7 +161,7 @@ class TestHeaderCorruption:
         try:
             obs = Rnxv3Obs(fpath=fpath, completeness_mode="off")
             _ = list(obs.iter_epochs())
-        except (ValueError, RinexError, KeyError):
+        except ValueError, RinexError, KeyError:
             pass  # Expected
 
     def test_zero_position(self):
@@ -424,7 +424,7 @@ class TestEncodingCorruption:
             epochs = list(obs.iter_epochs())
             # If it parses, at least the clean epoch should survive
             assert len(epochs) >= 1
-        except (ValueError, RinexError, UnicodeDecodeError):
+        except ValueError, RinexError, UnicodeDecodeError:
             pass  # Also acceptable
 
     def test_crlf_line_endings(self):
@@ -436,7 +436,7 @@ class TestEncodingCorruption:
             epochs = list(obs.iter_epochs())
             # CRLF should either parse correctly or fail gracefully
             assert len(epochs) >= 0
-        except (ValueError, RinexError):
+        except ValueError, RinexError:
             pass  # Acceptable if reader rejects CRLF
 
     def test_non_ascii_header_comments(self):
@@ -447,7 +447,7 @@ class TestEncodingCorruption:
         try:
             epochs = list(obs.iter_epochs())
             assert len(epochs) >= 1
-        except (ValueError, RinexError, UnicodeDecodeError):
+        except ValueError, RinexError, UnicodeDecodeError:
             pass  # Also acceptable
 
 
@@ -467,7 +467,7 @@ class TestHeaderEdgeCases:
             obs = Rnxv3Obs(fpath=fpath, completeness_mode="off")
             epochs = list(obs.iter_epochs())
             assert len(epochs) >= 0
-        except (ValueError, RinexError, KeyError):
+        except ValueError, RinexError, KeyError:
             pass  # Acceptable
 
     def test_obs_type_count_mismatch(self):
@@ -478,7 +478,7 @@ class TestHeaderEdgeCases:
             obs = Rnxv3Obs(fpath=fpath, completeness_mode="off")
             epochs = list(obs.iter_epochs())
             assert len(epochs) >= 0
-        except (ValueError, RinexError, KeyError):
+        except ValueError, RinexError, KeyError:
             pass  # Acceptable
 
     def test_multiple_end_of_header(self):
@@ -489,7 +489,7 @@ class TestHeaderEdgeCases:
             obs = Rnxv3Obs(fpath=fpath, completeness_mode="off")
             epochs = list(obs.iter_epochs())
             assert len(epochs) >= 0
-        except (ValueError, RinexError):
+        except ValueError, RinexError:
             pass  # Acceptable
 
 

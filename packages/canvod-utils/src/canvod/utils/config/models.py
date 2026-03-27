@@ -247,7 +247,7 @@ class ProcessingParams(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_resource_mode(self) -> "ProcessingParams":
+    def validate_resource_mode(self) -> ProcessingParams:
         """Validate resource_mode constraints.
 
         In 'manual' mode, ``n_max_threads`` must be set.
@@ -726,7 +726,7 @@ class ReceiverConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_scs_from(self) -> "ReceiverConfig":
+    def validate_scs_from(self) -> ReceiverConfig:
         """Validate scs_from is required for reference, forbidden for canopy."""
         if self.type == "reference" and self.scs_from is None:
             msg = "scs_from is required for reference receivers"
@@ -767,7 +767,7 @@ class SiteConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_scs_from_targets(self) -> "SiteConfig":
+    def validate_scs_from_targets(self) -> SiteConfig:
         """Validate that scs_from entries reference existing canopy receivers."""
         canopy_names = self.get_canopy_receiver_names()
         for name, cfg in self.receivers.items():
@@ -828,6 +828,9 @@ class SiteConfig(BaseModel):
         if isinstance(cfg.scs_from, list):
             return cfg.scs_from
         # Single canopy name as string
+        if cfg.scs_from is None:
+            msg = f"Receiver '{receiver_name}' has no scs_from configured"
+            raise ValueError(msg)
         return [cfg.scs_from]
 
     def get_reference_canopy_pairs(self) -> list[tuple[str, str]]:
@@ -856,8 +859,8 @@ class SitesConfig(BaseModel):
     @classmethod
     def validate_at_least_one_site(
         cls,
-        v: dict[str, "SiteConfig"],
-    ) -> dict[str, "SiteConfig"]:
+        v: dict[str, SiteConfig],
+    ) -> dict[str, SiteConfig]:
         """Warn if no sites are defined.
 
         Parameters

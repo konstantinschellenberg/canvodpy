@@ -399,7 +399,8 @@ class GeodesicBuilder(BaseGridBuilder):
                 Index of the midpoint vertex.
 
             """
-            edge = tuple(sorted([v1, v2]))
+            a, b = sorted((v1, v2))
+            edge = (a, b)
             if edge not in edge_midpoints:
                 edge_midpoints[edge] = len(vertices) + len(edge_midpoints)
             return edge_midpoints[edge]

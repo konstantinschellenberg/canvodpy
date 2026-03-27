@@ -488,7 +488,7 @@ def compare_datasets(
         try:
             a_vals = ds_a[var].values.astype(np.float64)
             b_vals = ds_b[var].values.astype(np.float64)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             failures[var] = "non-numeric dtype, skipped"
             continue
 

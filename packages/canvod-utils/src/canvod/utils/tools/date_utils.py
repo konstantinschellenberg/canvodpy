@@ -109,9 +109,10 @@ class YYYYDOY:
         -------
         None
         """
+        doy_int = int(self.doy)
+        self._validate_doy(doy_int)
         self.date = self._calculate_date()
-        self.doy = f"{self.doy:03}"
-        self.yydoy = f"{str(self.year)[-2:]}{self.doy}"
+        self.yydoy = f"{str(self.year)[-2:]}{doy_int:03}"
 
     def __repr__(self) -> str:
         """Return the developer-focused representation.
@@ -169,6 +170,8 @@ class YYYYDOY:
         """
         if not isinstance(other, YYYYDOY):
             return NotImplemented
+        if self.date is None or other.date is None:
+            return self.to_str() < other.to_str()
         return self.date < other.date
 
     def __hash__(self) -> int:
@@ -210,7 +213,7 @@ class YYYYDOY:
             raise ValueError(f"Day of year (DOY) must be in range [1, 366], got {doy}")
 
     @classmethod
-    def from_date(cls, date: datetime.date) -> "YYYYDOY":
+    def from_date(cls, date: datetime.date) -> YYYYDOY:
         """Create from datetime.date object.
 
         Parameters
@@ -230,7 +233,7 @@ class YYYYDOY:
         return cls(year=year, doy=doy)
 
     @classmethod
-    def from_str(cls, yyyydoy: str | int) -> "YYYYDOY":
+    def from_str(cls, yyyydoy: str | int) -> YYYYDOY:
         """Create from YYYYDDD string.
 
         Parameters
@@ -254,7 +257,7 @@ class YYYYDOY:
         return cls.from_date(final_date.date())
 
     @classmethod
-    def from_int(cls, yyyydoy: int) -> "YYYYDOY":
+    def from_int(cls, yyyydoy: int) -> YYYYDOY:
         """Create from YYYYDDD integer.
 
         Parameters
@@ -269,7 +272,7 @@ class YYYYDOY:
         return cls.from_str(str(yyyydoy))
 
     @classmethod
-    def from_yydoy_str(cls, yydoy: str) -> "YYYYDOY":
+    def from_yydoy_str(cls, yydoy: str) -> YYYYDOY:
         """Create from YYDDD short string.
 
         Assumes current millennium (20XX).
@@ -295,7 +298,7 @@ class YYYYDOY:
             Date in YYYYDDD format (e.g., "2025001").
 
         """
-        return f"{self.year}{self.doy}"
+        return f"{self.year}{int(self.doy):03}"
 
     @staticmethod
     def gpsweekday(
@@ -327,8 +330,10 @@ class YYYYDOY:
         elif isinstance(input_date, datetime.datetime):
             input_date = input_date.date()
 
-        # Calculate weeks and days since GPS epoch
-        return divmod((input_date - gps_start_date).days, 7)
+        if isinstance(input_date, datetime.date):
+            # Calculate weeks and days since GPS epoch
+            return divmod((input_date - gps_start_date).days, 7)
+        raise TypeError(f"Unsupported input_date type: {type(input_date)!r}")
 
     @property
     def gps_week(self) -> int:
@@ -339,6 +344,8 @@ class YYYYDOY:
         int
             GPS week number since GPS epoch (1980-01-06).
         """
+        if self.date is None:
+            raise ValueError("Date is not initialized")
         return self.gpsweekday(self.date)[0]
 
     @property
@@ -350,6 +357,8 @@ class YYYYDOY:
         int
             Day of week where 0=Sunday, 6=Saturday.
         """
+        if self.date is None:
+            raise ValueError("Date is not initialized")
         return self.gpsweekday(self.date)[1]
 
 
@@ -366,7 +375,7 @@ class YYDOY:
     """
 
     @classmethod
-    def from_str(cls, yydoy: str) -> "YYYYDOY":
+    def from_str(cls, yydoy: str) -> YYYYDOY:
         """
         Convert two-digit year DOY string to four-digit YYYYDOY.
 

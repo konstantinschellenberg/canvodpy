@@ -370,6 +370,7 @@ class AdaptedVODWorkflow:
 
         # --- filter ---
         t0 = time.time()
+        resolved_agg_method = agg_method or "mean"
         vod_ds_filtered = aggr_hampel_cell_sid_parallelized(
             vod_ds_complete,
             threshold=threshold,
@@ -377,7 +378,7 @@ class AdaptedVODWorkflow:
             spatial_batch_size=spatial_batch_size,
             n_workers=n_workers,
             temporal_agg=temporal_agg,
-            agg_method=agg_method,
+            agg_method=resolved_agg_method,
         )
         logger.info("Parallel filtering completed in %.1f s", time.time() - t0)
 
@@ -645,6 +646,7 @@ def _create_processed_data_fast_hampel(
 
         grid = create_hemigrid(grid_type="equal_area", angular_resolution=2)
         store_grid_to_vod_store(
+            grid=grid,
             store_path=workflow_instance.vod_store_path,
             grid_name="equal_area_2deg",
         )

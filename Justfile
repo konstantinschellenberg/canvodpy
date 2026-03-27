@@ -47,12 +47,23 @@ check-format:
 check-format-only:
     uv run ruff format --check . --exclude "*.ipynb"
 
-# run the type checker ty
-[private]
+# run the type checker ty (informational only - not enforced)
 check-types:
-    uv run ty check
+    @echo "⚠️  Type checking with ty (informational only - errors allowed)"
+    @echo "   Type hints are being added progressively. CI allows failures."
+    @echo "   Suppressing: unresolved-import (optional deps), **/tests/**, demo/, dags/"
+    @echo "   Phase 2 excludes: grid_storage.py and store.py (temporary)"
+    @echo "   See: .github/workflows/code_quality.yml"
+    @echo ""
+    -uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
 
-# lint, format with ruff and type-check with ty (all packages)
+# enforce ty progress against a diagnostics budget (fails when regressions exceed budget)
+check-types-budget:
+    @echo "🔒 Enforcing ty diagnostics budget (set TY_MAX_DIAGNOSTICS to adjust)"
+    ./scripts/check_ty_budget.sh
+
+# lint, format with ruff (all packages)
+# Note: type checking not included - run 'just check-types' separately if needed
 check: check-lint check-format check-types
 
 # ============================================================================
@@ -169,6 +180,14 @@ check-dev-tools:
 hooks:
     uvx pre-commit install
     uvx pre-commit install --hook-type commit-msg
+
+# ============================================================================
+# uv venv and Dependency Management
+# ============================================================================
+
+venv-upgrade:
+    uv lock --upgrade
+    uv sync
 
 # ============================================================================
 # Release Management

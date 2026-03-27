@@ -9,7 +9,6 @@ Migrated from gnssvodpy.processor.interpolator
 
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
 from typing import Any
 
 import numpy as np
@@ -24,7 +23,7 @@ class InterpolatorConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary for attrs storage."""
-        return asdict(self)
+        return dict(vars(self))
 
 
 @dataclass
@@ -250,7 +249,10 @@ class Sp3InterpolationStrategy(Interpolator):
         self, ds: xr.Dataset, target_epochs: np.ndarray
     ) -> xr.Dataset:
         """Fallback: simple linear interpolation for positions only."""
-        return ds.interp(epoch=target_epochs, method=self.config.fallback_method)
+        return ds.interp(
+            epoch=target_epochs,
+            method=self.config.fallback_method,  # ty: ignore[invalid-argument-type]
+        )
 
 
 @dataclass(config=ConfigDict(arbitrary_types_allowed=True))
@@ -299,7 +301,8 @@ class ClockInterpolationStrategy(Interpolator):
         clock_vars = [
             var
             for var in ds.data_vars
-            if any(c in var for c in ["clock", "clk", "Clock", "CLK", "clock_offset"])
+            if isinstance(var, str)
+            and any(c in var for c in ["clock", "clk", "Clock", "CLK", "clock_offset"])
         ]
 
         if not clock_vars:

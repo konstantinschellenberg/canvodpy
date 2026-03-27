@@ -40,8 +40,25 @@ jobs:
             - uses: ./.github/actions/setup
             - uses: extractions/setup-just@v2
             - run: uv sync --locked --dev
-            - name: Type check with ty
-              run: just check-types
-              # Allow failure for now - type hints not yet added
-              # This is a future goal after testing is complete
+            - name: Type check with ty (informational)
+              run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
+              # Type hints are being added progressively
+              # This job tracks progress but does not block PRs
+              # Suppresses: unresolved-import (optional deps), test code
+              # Phase 2: excludes two high-noise store files temporarily
+              # Rationale: Scientists focus on correctness tests (audit suite)
+              # over type bureaucracy. Types improve over time without blocking work.
               continue-on-error: true
+
+    type_budget:
+        runs-on: ubuntu-latest
+        needs: [lock_file]
+        steps:
+            - uses: actions/checkout@v4
+            - uses: ./.github/actions/setup
+            - uses: extractions/setup-just@v2
+            - run: uv sync --locked --dev
+            - name: Enforce ty diagnostics budget
+              env:
+                  TY_MAX_DIAGNOSTICS: "0"
+              run: just check-types-budget

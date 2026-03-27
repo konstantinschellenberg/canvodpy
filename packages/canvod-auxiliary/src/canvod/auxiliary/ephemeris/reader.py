@@ -73,7 +73,7 @@ class Sp3File(AuxFile):
     def get_interpolation_strategy(self) -> Interpolator:
         """Get appropriate interpolation strategy for SP3 files."""
         config = Sp3Config(
-            use_velocities=self.add_velocities,
+            use_velocities=bool(self.add_velocities),
             fallback_method="linear",
         )
         return Sp3InterpolationStrategy(config=config)
@@ -85,6 +85,10 @@ class Sp3File(AuxFile):
 
         Example: COD0MGXFIN_20240150000_01D_05M_ORB.SP3
         """
+        assert self.product_spec is not None, (
+            "product_spec must be set via \
+            __post_init__"
+        )
         prefix = self.product_spec.prefix
         duration = self.product_spec.duration
         sampling = self.product_spec.sampling_rate
@@ -105,6 +109,10 @@ class Sp3File(AuxFile):
         ValueError
             If GPS week calculation fails.
         """
+        assert self.product_spec is not None, (
+            "product_spec must be set via \
+            __post_init__"
+        )
         orbit_file = self.generate_filename_based_on_type()
         gps_week = get_gps_week_from_filename(orbit_file)
 
@@ -139,7 +147,8 @@ class Sp3File(AuxFile):
             If validation fails.
         """
         # Use dedicated parser
-        parser = Sp3Parser(self.fpath, dimensionless=self.dimensionless)
+        assert self.fpath is not None, "fpath must be set before calling read_file"
+        parser = Sp3Parser(self.fpath, dimensionless=bool(self.dimensionless))
         dataset = parser.parse()
 
         # Validate format
@@ -160,6 +169,11 @@ class Sp3File(AuxFile):
 
     def _add_metadata(self, ds: xr.Dataset) -> xr.Dataset:
         """Add file-level metadata to dataset."""
+        assert self.fpath is not None, "fpath must be set before calling _add_metadata"
+        assert self.product_spec is not None, (
+            "product_spec must be set before \
+            calling _add_metadata"
+        )
         ds.attrs = {
             "file": str(self.fpath.name),
             "agency": self.agency,

@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import xarray as xr
@@ -843,9 +843,10 @@ class AnalysisStorage:
         with self.store.writable_session() as session:
             import zarr
 
-            store = zarr.open(session.store, mode="r+")
+            store: Any = zarr.open(session.store, mode="r+")
             if group_path in store:
-                del store[group_path]
+                store_map = cast(Any, store)
+                del store_map[group_path]
                 snapshot_id = session.commit(f"Deleted {label}")
                 logger.info("%s deleted (snapshot: %s)", label, snapshot_id[:8])
                 return snapshot_id
@@ -924,8 +925,10 @@ class AnalysisStorage:
 
         # Ensure branch exists
         try:
+            main_head = next(iter(self.store.repo.ancestry(branch="main"))).id
             self.store.repo.create_branch(
-                branch, self.store.repo.ancestry(branch="main")[0]
+                branch,
+                main_head,
             )
         except Exception:
             pass  # Branch already exists
@@ -1072,9 +1075,10 @@ class AnalysisStorage:
         with self.store.writable_session() as session:
             import zarr
 
-            group = zarr.open(session.store, path=group_path, mode="r+")
+            group: Any = zarr.open(session.store, path=group_path, mode="r+")
             if weight_name in group:
-                del group[weight_name]
+                group_map = cast(Any, group)
+                del group_map[weight_name]
                 snapshot_id = session.commit(
                     f"Deleted weight '{weight_name}' for {dataset_name}/{grid_name}"
                 )
@@ -1113,9 +1117,10 @@ class AnalysisStorage:
         with self.store.writable_session() as session:
             import zarr
 
-            group = zarr.open(session.store, path=group_path, mode="r+")
+            group: Any = zarr.open(session.store, path=group_path, mode="r+")
             if mask_var in group:
-                del group[mask_var]
+                group_map = cast(Any, group)
+                del group_map[mask_var]
                 commit_msg = (
                     f"Deleted filter mask '{filter_type}' for "
                     f"{dataset_name}/{grid_name}"

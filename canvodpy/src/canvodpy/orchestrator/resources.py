@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 import os
 import platform
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import psutil
 
@@ -104,12 +104,16 @@ class ResourceInitPlugin:
 
         if self.cpu_affinity is not None:
             if platform.system() == "Linux":
-                os.sched_setaffinity(0, self.cpu_affinity)
-                log.info(
-                    "CPU affinity set to %s on worker %s",
-                    self.cpu_affinity,
-                    getattr(worker, "name", "unknown"),
-                )
+                sched_setaffinity = getattr(os, "sched_setaffinity", None)
+                if callable(sched_setaffinity):
+                    sched_setaffinity(0, self.cpu_affinity)
+                    log.info(
+                        "CPU affinity set to %s on worker %s",
+                        self.cpu_affinity,
+                        getattr(worker, "name", "unknown"),
+                    )
+                else:
+                    log.warning("sched_setaffinity unavailable on this platform build")
             else:
                 log.warning(
                     "cpu_affinity is only supported on Linux, skipping on %s",
@@ -135,11 +139,13 @@ class ResourceInitPlugin:
 if _HAS_DISTRIBUTED:
     # Register as a proper WorkerPlugin subclass at runtime so that the
     # class still loads when distributed is not installed.
-    ResourceInitPlugin = type(
+    _ResourceInitPluginClass = type(
         "ResourceInitPlugin",
         (WorkerPlugin, ResourceInitPlugin),
         dict(ResourceInitPlugin.__dict__),
     )
+else:
+    _ResourceInitPluginClass = ResourceInitPlugin
 
 
 class DaskClusterManager:
@@ -191,7 +197,8 @@ class DaskClusterManager:
 
         # Only register resource init plugin if affinity or nice is set
         if cpu_affinity is not None or nice_priority > 0:
-            plugin = ResourceInitPlugin(
+            plugin_cls = cast(Any, _ResourceInitPluginClass)
+            plugin = plugin_cls(
                 cpu_affinity=cpu_affinity,
                 nice_value=nice_priority,
             )

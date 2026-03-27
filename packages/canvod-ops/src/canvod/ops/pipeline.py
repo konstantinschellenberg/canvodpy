@@ -33,7 +33,7 @@ class Pipeline:
     def __init__(self, ops: list[Op] | None = None) -> None:
         self._ops: list[Op] = list(ops) if ops else []
 
-    def add(self, op: Op) -> "Pipeline":
+    def add(self, op: Op) -> Pipeline:
         """Append an operation and return self for chaining."""
         self._ops.append(op)
         return self

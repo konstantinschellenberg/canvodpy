@@ -338,6 +338,9 @@ class PairDataDirMatcher:
 
         # Convert YYYYDDD to YYDDD format for directory name
         yyddd_str = yyyydoy.yydoy
+        if yyddd_str is None:
+            msg = f"Missing YYDDD representation for date {yyyydoy}"
+            raise ValueError(msg)
 
         return self.base_dir / receiver_dir / yyddd_str
 

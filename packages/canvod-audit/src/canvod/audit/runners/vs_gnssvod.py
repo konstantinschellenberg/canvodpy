@@ -566,12 +566,13 @@ def detect_band_map(
             canvod_bands.setdefault(band_num, set()).add(code)
 
     # Match against gnssvod SNR columns (S1C, S2W, etc.)
+    gnssvod_var_names = [str(c) for c in ds_gnssvod.data_vars]
     gnssvod_snr_cols = [
-        c for c in ds_gnssvod.data_vars if c.startswith("S") and len(c) == 3
+        c for c in gnssvod_var_names if c.startswith("S") and len(c) == 3
     ]
 
     # VOD column mapping: band 1 → VOD1, band 2 → VOD2, etc.
-    gnssvod_vod_cols = {c[-1]: c for c in ds_gnssvod.data_vars if c.startswith("VOD")}
+    gnssvod_vod_cols = {c[-1]: c for c in gnssvod_var_names if c.startswith("VOD")}
 
     band_map = []
     for band_num, codes in sorted(canvod_bands.items()):

@@ -26,7 +26,7 @@ Notes
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -83,7 +83,9 @@ class VODSpatialAnalyzer:
         self.cell_id_var = f"cell_id_{grid_name}"
 
         if self.cell_id_var not in vod_data:
-            available = [v for v in vod_data.data_vars if v.startswith("cell_id_")]
+            available = [
+                str(v) for v in vod_data.data_vars if str(v).startswith("cell_id_")
+            ]
             raise ValueError(
                 f"Cell ID variable '{self.cell_id_var}' not found. "
                 f"Available: {available}"
@@ -265,4 +267,4 @@ class VODSpatialAnalyzer:
         axes[1].set_ylabel("Frequency")
 
         fig.tight_layout()
-        return fig, axes
+        return cast(plt.Figure, fig), np.asarray(axes)

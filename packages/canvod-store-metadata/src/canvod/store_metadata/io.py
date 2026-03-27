@@ -7,6 +7,7 @@ from typing import Any
 
 import icechunk
 import zarr
+from zarr import errors as zarr_errors
 
 from .schema import _METADATA_KEY, StoreMetadata
 
@@ -34,7 +35,7 @@ def write_metadata(
     store = session.store
     try:
         root = zarr.open_group(store, mode="r+")
-    except zarr.errors.GroupNotFoundError:
+    except zarr_errors.GroupNotFoundError:
         root = zarr.open_group(store, mode="w")
 
     root.attrs.update(metadata.to_root_attrs())
@@ -91,7 +92,7 @@ def update_metadata(
     store = session.store
     try:
         root = zarr.open_group(store, mode="r+")
-    except zarr.errors.GroupNotFoundError:
+    except zarr_errors.GroupNotFoundError:
         root = zarr.open_group(store, mode="w")
 
     root.attrs.update(updated.to_root_attrs())

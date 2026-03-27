@@ -63,6 +63,10 @@ class FileDownloader(ABC):
         """
         pass
 
+    def _is_network_error(self, exception: Exception) -> bool:
+        """Whether an exception is network-connectivity related."""
+        return False
+
 
 class FtpDownloader(FileDownloader):
     """FTP downloader with progress bar and fallback servers.
@@ -300,7 +304,7 @@ class FtpDownloader(FileDownloader):
                     size = ftps.size(filename)
                     if size:
                         total = size
-                except (OSError, error_perm):
+                except OSError, error_perm:
                     pass
 
                 task = progress.add_task(filename, total=total)

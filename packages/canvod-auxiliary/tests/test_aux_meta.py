@@ -15,7 +15,7 @@ def _can_import_pipeline():
         from canvod.auxiliary import AuxDataPipeline  # noqa: F401
 
         return True
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         return False
 
 
@@ -25,7 +25,7 @@ def _can_import_augmentation():
         from canvod.auxiliary import AuxDataAugmenter  # noqa: F401
 
         return True
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         return False
 
 

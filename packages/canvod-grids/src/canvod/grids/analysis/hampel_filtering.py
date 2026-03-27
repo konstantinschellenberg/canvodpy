@@ -26,6 +26,7 @@ from __future__ import annotations
 import logging
 import time
 from multiprocessing import Pool, cpu_count
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -488,7 +489,10 @@ def aggr_hampel_cell_sid_parallelized(
         ) from e
     grid_type = "_".join(parts[:-1])
 
-    grid = create_hemigrid(angular_resolution=resolution, grid_type=grid_type)
+    grid = create_hemigrid(
+        angular_resolution=resolution,
+        grid_type=cast(Any, grid_type),
+    )
 
     cell_id_var = f"cell_id_{grid_name}"
     if cell_id_var not in vod_ds:

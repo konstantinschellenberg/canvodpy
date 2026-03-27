@@ -15,7 +15,7 @@ import hashlib
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from functools import cached_property
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pint
@@ -154,7 +154,7 @@ def _get_bandwidth_mhz(system: str, band: str) -> float:
     try:
         bw = const.BAND_PROPERTIES[band]["bandwidth"]
         return float(bw.to(UREG.MHz).magnitude)
-    except (KeyError, AttributeError):
+    except KeyError, AttributeError:
         return float("nan")
 
 
@@ -1162,7 +1162,7 @@ class SbfReader(GNSSDataReader):
             "freq_max": ("sid", freq_max, COORDS_METADATA["freq_max"]),
         }
 
-        attrs = self._build_attrs()
+        attrs = cast(dict[str, Any], self._build_attrs())
 
         # Add ECEF position from ReceiverSetup header for pipeline compatibility.
         # ECEFPosition.from_ds_metadata() reads "APPROX POSITION X/Y/Z".
@@ -1177,7 +1177,7 @@ class SbfReader(GNSSDataReader):
             attrs["APPROX POSITION X"] = float(x)
             attrs["APPROX POSITION Y"] = float(y)
             attrs["APPROX POSITION Z"] = float(z)
-        except (LookupError, AttributeError):
+        except LookupError, AttributeError:
             pass  # SBF file without a ReceiverSetup block
 
         ds = xr.Dataset(
@@ -1205,7 +1205,10 @@ class SbfReader(GNSSDataReader):
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
 
-            ds = pad_to_global_sid(ds, keep_sids=kwargs.get("keep_sids"))
+            ds = pad_to_global_sid(
+                ds,
+                keep_sids=cast(list[str] | None, kwargs.get("keep_sids")),
+            )
 
         if strip_fillval:
             from canvod.auxiliary.preprocessing import strip_fillvalue
@@ -1381,7 +1384,7 @@ class SbfReader(GNSSDataReader):
                     pdop_arr[t_idx] = float(dop["PDOP"]) * 0.01
                     hdop_arr[t_idx] = float(dop["HDOP"]) * 0.01
                     vdop_arr[t_idx] = float(dop["VDOP"]) * 0.01
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             # PVTGeodetic → n_sv, accuracy, mode, correction age
@@ -1401,7 +1404,7 @@ class SbfReader(GNSSDataReader):
                         pdop_arr[t_idx] = float(pvt["PDOP"]) * 0.01
                         hdop_arr[t_idx] = float(pvt["HDOP"]) * 0.01
                         vdop_arr[t_idx] = float(pvt["VDOP"]) * 0.01
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             # ReceiverStatus → cpu_load, temperature, rx_error
@@ -1412,7 +1415,7 @@ class SbfReader(GNSSDataReader):
                     if raw_temp != 0:  # 0 is DoNotUse (RefGuide p.397)
                         temp_arr[t_idx] = float(raw_temp - 100)
                     rx_error_arr[t_idx] = int(status["RxError"])
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             # SatVisibility → broadcast theta/phi to all sids for that sv
@@ -1428,7 +1431,7 @@ class SbfReader(GNSSDataReader):
                         theta_arr[t_idx, s_idx] = theta_deg
                         phi_arr[t_idx, s_idx] = phi_deg
                         rise_set_arr[t_idx, s_idx] = rs
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             # MeasExtra → per-(epoch, sid) signal quality
@@ -1488,7 +1491,7 @@ class SbfReader(GNSSDataReader):
                     if raw_misc is not None:
                         cn0_hr = int(raw_misc) & 0x07
                         cn0_highres_arr[t_idx, s_idx] = cn0_hr * 0.03125
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
         # Build Dataset
@@ -1597,7 +1600,10 @@ class SbfReader(GNSSDataReader):
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
 
-            ds = pad_to_global_sid(ds, keep_sids=kwargs.get("keep_sids"))
+            ds = pad_to_global_sid(
+                ds,
+                keep_sids=cast(list[str] | None, kwargs.get("keep_sids")),
+            )
 
         return ds
 
@@ -1845,7 +1851,7 @@ class SbfReader(GNSSDataReader):
             "freq_max": ("sid", freq_max, COORDS_METADATA["freq_max"]),
         }
 
-        attrs = self._build_attrs()
+        attrs = cast(dict[str, Any], self._build_attrs())
 
         try:
             import pymap3d as pm
@@ -1858,7 +1864,7 @@ class SbfReader(GNSSDataReader):
             attrs["APPROX POSITION X"] = float(x)
             attrs["APPROX POSITION Y"] = float(y)
             attrs["APPROX POSITION Z"] = float(z)
-        except (LookupError, AttributeError):
+        except LookupError, AttributeError:
             pass
 
         obs_ds = xr.Dataset(
@@ -1885,7 +1891,10 @@ class SbfReader(GNSSDataReader):
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
 
-            obs_ds = pad_to_global_sid(obs_ds, keep_sids=kwargs.get("keep_sids"))
+            obs_ds = pad_to_global_sid(
+                obs_ds,
+                keep_sids=cast(list[str] | None, kwargs.get("keep_sids")),
+            )
 
         if strip_fillval:
             from canvod.auxiliary.preprocessing import strip_fillvalue
@@ -1949,7 +1958,7 @@ class SbfReader(GNSSDataReader):
                     pdop_arr[t_idx] = float(dop["PDOP"]) * 0.01
                     hdop_arr[t_idx] = float(dop["HDOP"]) * 0.01
                     vdop_arr[t_idx] = float(dop["VDOP"]) * 0.01
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             if pvt is not None:
@@ -1967,7 +1976,7 @@ class SbfReader(GNSSDataReader):
                         pdop_arr[t_idx] = float(pvt["PDOP"]) * 0.01
                         hdop_arr[t_idx] = float(pvt["HDOP"]) * 0.01
                         vdop_arr[t_idx] = float(pvt["VDOP"]) * 0.01
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             if status is not None:
@@ -1977,7 +1986,7 @@ class SbfReader(GNSSDataReader):
                     if raw_temp != 0:  # 0 is DoNotUse (RefGuide p.397)
                         temp_arr[t_idx] = float(raw_temp - 100)
                     rx_error_arr[t_idx] = int(status["RxError"])
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             for sat_info in satvis:
@@ -1992,7 +2001,7 @@ class SbfReader(GNSSDataReader):
                         theta_arr[t_idx, s_idx] = theta_deg
                         phi_arr[t_idx, s_idx] = phi_deg
                         rise_set_arr[t_idx, s_idx] = rs
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
             for ch in extra:
@@ -2051,7 +2060,7 @@ class SbfReader(GNSSDataReader):
                     if raw_misc is not None:
                         cn0_hr = int(raw_misc) & 0x07
                         cn0_highres_arr[t_idx, s_idx] = cn0_hr * 0.03125
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     pass
 
         freq_center_meta = np.asarray(

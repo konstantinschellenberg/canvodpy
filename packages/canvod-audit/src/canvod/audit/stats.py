@@ -119,7 +119,9 @@ def compute_diff_report(
     b = ds_b.sel(sid=shared_sid)
 
     if vars_to_check is None:
-        vars_to_check = [v for v in a.data_vars if v in b.data_vars]
+        vars_to_check = [str(v) for v in a.data_vars if v in b.data_vars]
+    else:
+        vars_to_check = [str(v) for v in vars_to_check]
 
     results = []
     for var in vars_to_check:

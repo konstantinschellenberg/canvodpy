@@ -17,9 +17,9 @@ from canvod.auxiliary.position.position import ECEFPosition
 
 
 def compute_spherical_coordinates(
-    sat_x: np.ndarray,
-    sat_y: np.ndarray,
-    sat_z: np.ndarray,
+    sat_x: np.ndarray | float,
+    sat_y: np.ndarray | float,
+    sat_z: np.ndarray | float,
     rx_pos: ECEFPosition,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute spherical coordinates (r, theta, phi) in navigation convention.

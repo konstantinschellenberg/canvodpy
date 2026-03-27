@@ -15,8 +15,8 @@ try:
     _HAS_DISTRIBUTED = True
 except ImportError:
     _HAS_DISTRIBUTED = False
-    Client = None  # type: ignore[assignment,misc]
-    dask_as_completed = None  # type: ignore[assignment]
+    Client = None  # ty: ignore[invalid-assignment]
+    dask_as_completed = None  # ty: ignore[invalid-assignment]
 from datetime import UTC, datetime
 from datetime import time as dt_time
 from pathlib import Path
@@ -26,6 +26,7 @@ import polars as pl
 import pydantic_core
 import xarray as xr
 import zarr
+import zarr.errors
 from icechunk.session import ForkSession
 from icechunk.xarray import to_icechunk
 from natsort import natsorted
@@ -844,6 +845,7 @@ class RinexDataProcessor:
         # 4. Get auxiliary datasets from pipeline
         t2 = time.perf_counter()
         self._logger.debug("fetching_auxiliary_datasets")
+        assert self.aux_pipeline is not None, "aux_pipeline must be initialized"
         ephem_ds = self.aux_pipeline.get("ephemerides")
         clock_ds = self.aux_pipeline.get("clock")
         t3 = time.perf_counter()
@@ -1292,6 +1294,9 @@ class RinexDataProcessor:
         """Process RINEX files via the Dask distributed client."""
         start_time = time.time()
         client = self._dask_client
+        assert client is not None, (
+            "_dask_client must be set before calling _parallel_process_rinex_dask"
+        )
 
         self._logger.info(
             "parallel_processing_started",
@@ -1539,7 +1544,7 @@ class RinexDataProcessor:
                 session.store, group=receiver_name, consolidated=False
             )
             store_vars = set(ds_store.data_vars)
-        except (KeyError, zarr.errors.GroupNotFoundError):
+        except KeyError, zarr.errors.GroupNotFoundError:
             return  # New group, nothing to check
 
         if not augmented_datasets:
@@ -1592,7 +1597,7 @@ class RinexDataProcessor:
             ).compute(
                 scheduler="synchronous"
             )  # synchronous avoids Dask serialization error
-        except (KeyError, zarr.errors.GroupNotFoundError):
+        except KeyError, zarr.errors.GroupNotFoundError:
             return  # New group, nothing to prepare
 
         # 2. Collect epoch ranges to remove (files that exist and will be overwritten)
@@ -1969,7 +1974,7 @@ class RinexDataProcessor:
                                     rel_path,
                                 )
 
-                    except (OSError, RuntimeError, ValueError):
+                    except OSError, RuntimeError, ValueError:
                         log.exception("Failed to process %s", fname.name)
 
                 t6 = time.time()
@@ -1993,7 +1998,7 @@ class RinexDataProcessor:
                         rows=metadata_records,
                         session=session,
                     )
-                except (OSError, RuntimeError, ValueError):
+                except OSError, RuntimeError, ValueError:
                     log.warning("Metadata write failed, committing data only")
                 t10 = time.time()
                 log.info("Metadata write complete in %.2fs", t10 - t9)
@@ -2048,7 +2053,7 @@ class RinexDataProcessor:
                     receiver_name,
                 )
 
-            except (OSError, RuntimeError, ValueError):
+            except OSError, RuntimeError, ValueError:
                 log.exception("Batch append failed")
                 raise
 
@@ -2347,6 +2352,7 @@ class RinexDataProcessor:
             # 3e. Yield final daily dataset
             # Read back from store to get complete daily dataset
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -2590,11 +2596,11 @@ class RinexDataProcessor:
         normalized_configs: list[tuple[str, str, Path, Path | None, str]] = []
         for cfg in receiver_configs:
             if len(cfg) == 3:
-                normalized_configs.append((*cfg, None, self._reader_name))
+                normalized_configs.append((*cfg, None, self._reader_name))  # ty: ignore[invalid-argument-type]
             elif len(cfg) == 4:
-                normalized_configs.append((*cfg, self._reader_name))
+                normalized_configs.append((*cfg, self._reader_name))  # ty: ignore[invalid-argument-type]
             else:
-                normalized_configs.append(cfg)
+                normalized_configs.append(cfg)  # ty: ignore[invalid-argument-type]
 
         if keep_vars is None:
             keep_vars = load_config().processing.processing.keep_rnx_vars
@@ -2717,7 +2723,7 @@ class RinexDataProcessor:
                     self._parallel_process_rinex(
                         rinex_files=rinex_files,
                         keep_vars=keep_vars,
-                        aux_zarr_path=aux_zarr_path,
+                        aux_zarr_path=aux_zarr_path,  # ty: ignore[invalid-argument-type]
                         receiver_position=receiver_position,
                         receiver_type=receiver_name,
                         reader_format=reader_format,
@@ -2784,6 +2790,7 @@ class RinexDataProcessor:
             # Yield final daily dataset
             t_read_start = time.perf_counter()
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -2841,11 +2848,11 @@ class RinexDataProcessor:
         canopy_data_dirs: dict[str, Path] = {}
         base_path = site_config.get_base_path()
 
+        _yydoy = self.matched_data_dirs.yyyydoy.yydoy
+        assert _yydoy is not None, "yyyydoy.yydoy must not be None"
         for name, cfg in site_config.receivers.items():
             if cfg.type == "canopy":
-                canopy_data_dirs[name] = (
-                    base_path / cfg.directory / self.matched_data_dirs.yyyydoy.yydoy
-                )
+                canopy_data_dirs[name] = base_path / cfg.directory / _yydoy
 
         # Add all canopy receivers (each uses own position)
         for name, cfg in site_config.receivers.items():
@@ -2856,9 +2863,7 @@ class RinexDataProcessor:
         for name, cfg in site_config.receivers.items():
             if cfg.type != "reference":
                 continue
-            ref_data_dir = (
-                base_path / cfg.directory / self.matched_data_dirs.yyyydoy.yydoy
-            )
+            ref_data_dir = base_path / cfg.directory / _yydoy
             canopy_names = site_config.resolve_scs_from(name)
             for canopy_name in canopy_names:
                 store_group = f"{name}_{canopy_name}"
@@ -2897,6 +2902,7 @@ class RinexDataProcessor:
 
         # Get datetime objects from YYYYDOY.date
         yyyydoy_date = self.matched_data_dirs.yyyydoy.date
+        assert yyyydoy_date is not None, "yyyydoy.date must not be None"
         day_start = np.datetime64(
             datetime.combine(yyyydoy_date, dt_time.min),
             "ns",
@@ -2929,7 +2935,7 @@ class RinexDataProcessor:
                     zmeta = zarr.open_group(session.store, mode="r")[
                         f"{receiver_name}/metadata/table"
                     ]
-                    data = {col: zmeta[col][:] for col in zmeta.array_keys()}
+                    data = {col: zmeta[col][:] for col in zmeta.array_keys()}  # ty: ignore[invalid-argument-type, not-subscriptable, unresolved-attribute]
                     df = pl.DataFrame(data)
 
                 # Cast datetime columns
@@ -2942,7 +2948,7 @@ class RinexDataProcessor:
 
                 # Filter to this day
                 day_rows = df.filter(
-                    (pl.col("start") >= day_start) & (pl.col("end") <= day_end)
+                    (pl.col("start") >= day_start) & (pl.col("end") <= day_end)  # ty: ignore[invalid-argument-type]
                 )
 
                 if day_rows.is_empty():
@@ -3161,7 +3167,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             f"[v{version}] Cooperative write for {receiver_name}"
         )
 
-        return [f.name for f in rinex_files_sorted]
+        return [f.name for f in rinex_files_sorted]  # ty: ignore[invalid-return-type]
 
     def parsed_rinex_data_gen_parallel(
         self,
@@ -3307,6 +3313,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             # 3e. Yield final daily dataset
             # Read back from store to get complete daily dataset
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -3329,8 +3336,9 @@ if __name__ == "__main__":
     print(f"stared main block at {datetime.now(UTC)}")
 
     matcher = DataDirMatcher(
-        sky_dir_pattern=Path("01_reference/01_GNSS/01_raw"),
-        canopy_dir_pattern=Path("02_canopy/01_GNSS/01_raw"),
+        root=Path("."),
+        reference_pattern=Path("01_reference/01_GNSS/01_raw"),
+        canopy_pattern=Path("02_canopy/01_GNSS/01_raw"),
     )
 
     site = GnssResearchSite(site_name="Rosalia")

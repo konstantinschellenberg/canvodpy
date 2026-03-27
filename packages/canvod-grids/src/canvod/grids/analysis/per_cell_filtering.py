@@ -114,7 +114,9 @@ class PerCellFilter(ABC):
 
         # Auto-detect cell_id variable
         if cell_id_var is None:
-            cell_id_vars = [v for v in ds.data_vars if v.startswith("cell_id_")]
+            cell_id_vars = [
+                str(v) for v in ds.data_vars if str(v).startswith("cell_id_")
+            ]
             if not cell_id_vars:
                 raise ValueError("No cell_id variable found in dataset")
             cell_id_var = cell_id_vars[0]
@@ -241,7 +243,10 @@ class PerCellIQRFilter(PerCellFilter):
         super().__init__("iqr")
 
     def compute_cell_mask(
-        self, cell_data: np.ndarray, factor: float = 1.5
+        self,
+        cell_data: np.ndarray,
+        factor: float = 1.5,
+        **kwargs: Any,
     ) -> np.ndarray:
         """IQR mask for a single cell.
 
@@ -286,7 +291,10 @@ class PerCellZScoreFilter(PerCellFilter):
         super().__init__("zscore")
 
     def compute_cell_mask(
-        self, cell_data: np.ndarray, threshold: float = 3.0
+        self,
+        cell_data: np.ndarray,
+        threshold: float = 3.0,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Z-score mask for a single cell.
 
@@ -331,6 +339,7 @@ class PerCellRangeFilter(PerCellFilter):
         cell_data: np.ndarray,
         min_value: float | None = None,
         max_value: float | None = None,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Range mask for a single cell.
 
@@ -368,7 +377,11 @@ class PerCellPercentileFilter(PerCellFilter):
         super().__init__("percentile")
 
     def compute_cell_mask(
-        self, cell_data: np.ndarray, lower: float = 5.0, upper: float = 95.0
+        self,
+        cell_data: np.ndarray,
+        lower: float = 5.0,
+        upper: float = 95.0,
+        **kwargs: Any,
     ) -> np.ndarray:
         """Percentile mask for a single cell.
 

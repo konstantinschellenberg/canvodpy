@@ -5,7 +5,7 @@ Storage integration helpers for working with `HemiGrid` via composition.
 import warnings
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 import polars as pl
@@ -127,7 +127,11 @@ class HemiGridStorageAdapter:
         # Prepare grid-specific metadata
         specific_metadata = self._prepare_specific_metadata()
 
-        grid_hash = write_grid_to_icechunk(
+        if write_grid_to_icechunk is None:
+            raise ImportError("gnssvodpy grid storage backend is not available")
+        write_fn = cast(Any, write_grid_to_icechunk)
+
+        grid_hash = write_fn(
             session=session,
             grid_name=grid_name,
             df_cells=df_cells,
@@ -146,7 +150,7 @@ class HemiGridStorageAdapter:
         grid_name: str,
         load_vertices: bool = True,
         load_neighbors: bool = True,
-    ) -> "StoredHemiGrid":
+    ) -> StoredHemiGrid:
         """Load a persisted grid and return a lightweight wrapper.
 
         Parameters
@@ -165,7 +169,11 @@ class HemiGridStorageAdapter:
         StoredHemiGrid
             Loaded grid wrapper.
         """
-        loaded = load_grid_from_icechunk(
+        if load_grid_from_icechunk is None:
+            raise ImportError("gnssvodpy grid storage backend is not available")
+        load_fn = cast(Any, load_grid_from_icechunk)
+
+        loaded = load_fn(
             session=session,
             grid_name=grid_name,
             load_vertices=load_vertices,
@@ -215,7 +223,7 @@ class HemiGridStorageAdapter:
     def from_zarr(  # pragma: no cover - legacy path
         *args: Any,
         **kwargs: Any,
-    ) -> "StoredHemiGrid":
+    ) -> StoredHemiGrid:
         """Load a grid using the legacy zarr path.
 
         Parameters
@@ -475,7 +483,11 @@ class HemiGridStorageAdapter:
             "cutoff_theta": cutoff_rad,
             "ncells": int(self._grid.ncells),
             "creation_timestamp": datetime.now(UTC).isoformat(),
-            "creation_software": f"gnssvodpy=={get_version_from_pyproject()}",
+            "creation_software": (
+                f"gnssvodpy=={cast(Any, get_version_from_pyproject)()}"
+                if get_version_from_pyproject is not None
+                else "gnssvodpy==unknown"
+            ),
             "immutable": True,
         }
 
@@ -539,7 +551,7 @@ class StoredHemiGrid:
         Loaded grid data to wrap.
     """
 
-    def __init__(self, loaded_grid: LoadedGrid) -> None:
+    def __init__(self, loaded_grid: Any) -> None:
         """Initialize the wrapper.
 
         Parameters
@@ -550,7 +562,7 @@ class StoredHemiGrid:
         self._loaded = loaded_grid
 
     @property
-    def metadata(self) -> GridMetadata:
+    def metadata(self) -> Any:
         """Return grid metadata.
 
         Returns
@@ -767,7 +779,7 @@ def store_grid_to_vod_store(
         )
 
         commit_msg = f"Added grid: {grid_name} (hash: {grid_hash[:8]})"
-        snapshot_id = session.commit(commit_msg)
+        snapshot_id = cast(str, session.commit(commit_msg))
 
     print(f"✓ Grid stored: {grid_name}")
     print(f"  Snapshot: {snapshot_id[:8]}")
@@ -855,7 +867,7 @@ def list_available_grids(store_path: Path, branch: str = "main") -> list[str]:
     store = create_vod_store(store_path)
 
     with store.readonly_session(branch) as session:
-        zroot = zarr.open_group(session.store, mode="r")
+        zroot = cast(Any, zarr.open_group(session.store, mode="r"))
 
         if "grids" not in zroot:
             return []
@@ -876,7 +888,7 @@ def list_available_grids(store_path: Path, branch: str = "main") -> list[str]:
 
 def store_grid(
     grid: Any,
-    store: "MyIcechunkStore",
+    store: MyIcechunkStore,
     grid_name: str,
 ) -> str:
     """Store grid in unified xarray format to icechunk.
@@ -919,7 +931,7 @@ def store_grid(
 
 
 def store_vod_with_grids(
-    vod_ds: "xr.Dataset", store: "MyIcechunkStore", group_name: str
+    vod_ds: xr.Dataset, store: MyIcechunkStore, group_name: str
 ) -> str:
     """Store VOD dataset (with cell-ID mappings) to icechunk.
 

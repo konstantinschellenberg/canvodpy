@@ -105,7 +105,7 @@ __all__ = [
 ]
 
 
-def AnalysisStorage(store_path: Path | str) -> "AnalysisStorageType":
+def AnalysisStorage(store_path: Path | str) -> AnalysisStorageType:
     """Lazy accessor for AnalysisStorage.
 
     See :class:`~canvod.grids.analysis.analysis_storage.AnalysisStorage`.

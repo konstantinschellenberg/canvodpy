@@ -132,7 +132,12 @@ class ZScoreFilter(Filter):
         """Initialize the filter."""
         super().__init__("zscore")
 
-    def compute_mask(self, data: xr.DataArray, threshold: float = 3.0) -> xr.DataArray:
+    def compute_mask(
+        self,
+        data: xr.DataArray,
+        threshold: float = 3.0,
+        **kwargs: Any,
+    ) -> xr.DataArray:
         """Compute z-score mask.
 
         Parameters
@@ -158,7 +163,11 @@ class ZScoreFilter(Filter):
             mean = data.mean(skipna=True)
             std = data.std(skipna=True)
             z_scores = np.abs((data - mean) / std)
-            mask = z_scores <= threshold
+            mask = xr.DataArray(
+                z_scores <= threshold,
+                dims=data.dims,
+                coords=data.coords,
+            )
 
         return mask
 
@@ -170,7 +179,12 @@ class IQRFilter(Filter):
         """Initialize the filter."""
         super().__init__("iqr")
 
-    def compute_mask(self, data: xr.DataArray, factor: float = 1.5) -> xr.DataArray:
+    def compute_mask(
+        self,
+        data: xr.DataArray,
+        factor: float = 1.5,
+        **kwargs: Any,
+    ) -> xr.DataArray:
         """Compute IQR mask.
 
         Parameters
@@ -222,6 +236,7 @@ class RangeFilter(Filter):
         data: xr.DataArray,
         min_value: float | None = None,
         max_value: float | None = None,
+        **kwargs: Any,
     ) -> xr.DataArray:
         """Compute range mask.
 
@@ -258,7 +273,11 @@ class PercentileFilter(Filter):
         super().__init__("percentile")
 
     def compute_mask(
-        self, data: xr.DataArray, lower: float = 5.0, upper: float = 95.0
+        self,
+        data: xr.DataArray,
+        lower: float = 5.0,
+        upper: float = 95.0,
+        **kwargs: Any,
     ) -> xr.DataArray:
         """Compute percentile mask.
 

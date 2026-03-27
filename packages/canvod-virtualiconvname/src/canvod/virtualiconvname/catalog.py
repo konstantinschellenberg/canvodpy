@@ -272,6 +272,8 @@ class FilenameCatalog:
     def count(self) -> int:
         """Return total number of cataloged files."""
         row = self._conn.execute("SELECT COUNT(*) FROM file_mapping").fetchone()
+        if row is None:
+            return 0
         return row[0]
 
     def to_polars(self):

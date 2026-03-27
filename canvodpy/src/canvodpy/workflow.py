@@ -30,7 +30,7 @@ Debug logging:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import xarray as xr
 
@@ -282,8 +282,9 @@ class VODWorkflow:
 
         # Load or retrieve datasets
         if use_cached and hasattr(self, "_dataset_cache"):
-            canopy_ds = self._dataset_cache.get(canopy_receiver)
-            sky_ds = self._dataset_cache.get(sky_receiver)
+            dataset_cache = cast(dict[str, xr.Dataset], self._dataset_cache)
+            canopy_ds = dataset_cache.get(canopy_receiver)
+            sky_ds = dataset_cache.get(sky_receiver)
         else:
             canopy_ds = None
             sky_ds = None
@@ -459,7 +460,8 @@ class VODWorkflow:
             raise ValueError(msg)
 
         # Use internal site object to get path
-        return self.site._site.get_rinex_path(receiver, date)
+        site_impl = cast(Any, self.site._site)
+        return cast(Path, site_impl.get_rinex_path(receiver, date))
 
     def __repr__(self) -> str:
         """String representation."""

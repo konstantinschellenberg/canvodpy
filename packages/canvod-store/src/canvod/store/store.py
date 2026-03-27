@@ -6,7 +6,7 @@ import warnings
 from collections.abc import Generator, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import icechunk
 import numpy as np
@@ -209,7 +209,7 @@ class MyIcechunkStore:
     def readonly_session(
         self,
         branch: str = "main",
-    ) -> Generator["icechunk.ReadonlySession"]:
+    ) -> Generator[icechunk.ReadonlySession]:
         """Context manager for readonly sessions.
 
         Parameters
@@ -233,7 +233,7 @@ class MyIcechunkStore:
     def writable_session(
         self,
         branch: str = "main",
-    ) -> Generator["icechunk.WritableSession"]:
+    ) -> Generator[icechunk.WritableSession]:
         """Context manager for writable sessions.
 
         Parameters
@@ -1505,7 +1505,7 @@ class MyIcechunkStore:
         self,
         group_name: str,
         rows: list[dict[str, Any]],
-        session: Optional["icechunk.WritableSession"] = None,
+        session: icechunk.WritableSession | None = None,
     ) -> None:
         """
         Append multiple metadata rows in one commit.
@@ -1537,7 +1537,7 @@ class MyIcechunkStore:
         # Prepare the Polars DataFrame
         df = pl.DataFrame(rows)
 
-        def _do_append(session_obj: "icechunk.WritableSession") -> None:
+        def _do_append(session_obj: icechunk.WritableSession) -> None:
             """Append metadata rows to a writable session.
 
             Parameters
@@ -1771,7 +1771,7 @@ class MyIcechunkStore:
                 existing = df.filter(pl.col("rinex_hash").is_in(file_hashes))
                 return set(existing["rinex_hash"].to_list())
 
-        except (KeyError, zarr.errors.GroupNotFoundError, Exception):
+        except KeyError, zarr.errors.GroupNotFoundError, Exception:
             # Branch/group/metadata doesn't exist yet (fresh store)
             return set()
 
@@ -1805,7 +1805,7 @@ class MyIcechunkStore:
         try:
             with self.readonly_session(branch) as session:
                 df = self.load_metadata(session.store, group_name)
-        except (KeyError, zarr.errors.GroupNotFoundError, Exception):
+        except KeyError, zarr.errors.GroupNotFoundError, Exception:
             return set()
 
         if df.is_empty():
@@ -2221,7 +2221,7 @@ class MyIcechunkStore:
         try:
             ds_original = ds_original.unify_chunks()
             print("      ✓ Unified inconsistent chunks")
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             pass  # Chunks are already consistent
 
         print(f"      ✓ Data shape: {dict(ds_original.sizes)}")
@@ -2351,7 +2351,7 @@ class MyIcechunkStore:
         self.repo.delete_tag(tag_name)
         self._logger.warning(f"Deleted tag '{tag_name}'")
 
-    def plot_commit_graph(self, max_commits: int = 100) -> "Figure":
+    def plot_commit_graph(self, max_commits: int = 100) -> Figure:
         """
         Visualize commit history as an interactive git-like graph.
 

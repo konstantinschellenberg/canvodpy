@@ -255,7 +255,7 @@ class SignalID(BaseModel):
         return NotImplemented
 
     @classmethod
-    def from_string(cls, sid_str: str) -> "SignalID":
+    def from_string(cls, sid_str: str) -> SignalID:
         """Parse a signal ID string ('SV|band|code') into a SignalID.
 
         Parameters
@@ -389,7 +389,7 @@ class GNSSDataReader(BaseModel, ABC):
         self,
         keep_data_vars: list[str] | None = None,
         **kwargs: object,
-    ) -> "tuple[xr.Dataset, dict[str, xr.Dataset]]":
+    ) -> tuple[xr.Dataset, dict[str, xr.Dataset]]:
         """Produce the obs dataset and any auxiliary datasets in a single call.
 
         Default: calls ``to_ds(**kwargs)`` and returns an empty auxiliary dict.

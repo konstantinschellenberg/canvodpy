@@ -683,7 +683,7 @@ try:  # Polars dtype helpers (0.20+)
         is_boolean_dtype,
         is_numeric_dtype,
     )
-except (ImportError, AttributeError):  # pragma: no cover - legacy Polars
+except ImportError, AttributeError:  # pragma: no cover - legacy Polars
 
     def is_numeric_dtype(dtype: Any) -> bool:
         """Return True if the dtype is numeric.
@@ -1879,7 +1879,7 @@ def load_grid_from_icechunk(
                     )
             vertex_count = 0 if df_vertices is None else df_vertices.height
             logger.debug(f"  ✓ Loaded {vertex_count} vertices")
-        except (KeyError, FileNotFoundError):
+        except KeyError, FileNotFoundError:
             df_vertices = None
 
     df_neighbors = None
@@ -1897,7 +1897,7 @@ def load_grid_from_icechunk(
                 df_neighbors = pl.DataFrame(neighbor_data)
             neighbor_count = 0 if df_neighbors is None else df_neighbors.height
             logger.debug(f"  ✓ Loaded {neighbor_count} neighbor relationships")
-        except (KeyError, FileNotFoundError):
+        except KeyError, FileNotFoundError:
             df_neighbors = None
 
     # Reconstruct grid-type specific columns that rely on nested data

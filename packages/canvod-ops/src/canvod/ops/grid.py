@@ -1,7 +1,7 @@
 """Grid cell assignment operation."""
 
 import time
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import structlog
@@ -41,7 +41,7 @@ class GridAssignment(Op):
             from canvod.grids import create_hemigrid
 
             self._grid = create_hemigrid(
-                self._grid_type,
+                cast(Any, self._grid_type),
                 angular_resolution=self._angular_resolution,
             )
         return self._grid
@@ -52,7 +52,7 @@ class GridAssignment(Op):
             "grid_type": self._grid_type,
             "angular_resolution": self._angular_resolution,
         }
-        input_shape = dict(ds.sizes)
+        input_shape = {str(k): int(v) for k, v in dict(ds.sizes).items()}
 
         # Prerequisite check
         has_phi = "phi" in ds.coords and set(ds.coords["phi"].dims) == {"epoch", "sid"}
@@ -112,7 +112,7 @@ class GridAssignment(Op):
             duration_s=round(duration, 2),
         )
 
-        output_shape = dict(ds.sizes)
+        output_shape = {str(k): int(v) for k, v in dict(ds.sizes).items()}
         result = OpResult(
             op_name=self.name,
             parameters=params,

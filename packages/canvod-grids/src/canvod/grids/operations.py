@@ -738,7 +738,7 @@ def store_dataset_with_cell_ids(
     >>> snapshot_id = store_dataset_with_cell_ids(ds, store, "receiver_01")
 
     """
-    cell_id_vars = [v for v in ds.data_vars if str(v).startswith("cell_id_")]
+    cell_id_vars = [str(v) for v in ds.data_vars if str(v).startswith("cell_id_")]
     grid_refs = ds.attrs.get("grid_references", [])
 
     print(f"\nStoring dataset to '{group_name}'...")

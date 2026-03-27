@@ -19,7 +19,7 @@ class InterpolatorConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary for attrs storage."""
-        return asdict(self)
+        return asdict(self)  # ty: ignore[invalid-argument-type]
 
 
 @dataclass
@@ -120,7 +120,9 @@ class ClockInterpolationStrategy(Interpolator):
         clock_vars = [
             var
             for var in ds.data_vars
-            if any(c in var for c in ["clock", "clk", "Clock", "CLK", "clock_offset"])
+            if any(
+                c in str(var) for c in ["clock", "clk", "Clock", "CLK", "clock_offset"]
+            )
         ]
 
         if not clock_vars:
@@ -347,7 +349,7 @@ class Sp3InterpolationStrategy(Interpolator):
         """Perform simple linear interpolation for positions only."""
         return ds.interp(
             epoch=target_epochs,
-            method=self.config.fallback_method,
+            method=self.config.fallback_method,  # ty: ignore[invalid-argument-type]
         )
 
 

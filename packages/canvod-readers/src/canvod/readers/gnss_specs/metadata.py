@@ -39,7 +39,7 @@ from canvod.readers.gnss_specs.constants import FREQ_UNIT
 # -------------------
 # Observable metadata
 # -------------------
-OBSERVABLES_METADATA: Final[dict[str, dict[str, str | float | int]]] = {
+OBSERVABLES_METADATA: Final[dict[str, dict[str, Any]]] = {
     "Pseudorange": {
         "standard_name": "pseudorange",
         "long_name": "GNSS Pseudorange",

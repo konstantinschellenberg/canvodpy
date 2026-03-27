@@ -139,7 +139,8 @@ RINEX/SBF files → Reader → xarray.Dataset(epoch, sid)
 ```bash
 # Quality & testing
 uv sync                                  # Install all workspace deps
-just check                               # Lint + format + type-check (all packages)
+just check                               # Lint + format (all packages) — fast, always passes
+just check-types                         # Type check with ty (informational, allowed to fail)
 just test                                # Run all tests
 just test-audit                          # Run audit suite (unit + integration)
 just test-all-packages                   # Run tests per package (avoids namespace collisions)
@@ -172,6 +173,31 @@ just deps-cross                          # Cross-package dependency graph
 - Commits: conventional commits enforced by commitizen (`feat:`, `fix:`, `chore:`, etc.)
 - Generated files: do NOT commit `*.png`, `*.svg` (except `docs/assets/logo.svg`),
   `*.lcov`, `*.db`, `node_modules/`, `package.json`, `package-lock.json`
+
+## Code quality philosophy
+
+**Goal:** Catch bugs without annoying scientists.
+
+### What's enforced (blocks commits & PRs)
+- **Linting** (ruff) — undefined names, unused imports, actual bugs
+- **Formatting** (ruff) — auto-fixes, no cognitive load
+- **Security** — no private keys, no large files in Git
+- **Commit messages** — conventional commits for automated changelog
+
+### What's informational (tracks progress, doesn't block)
+- **Type checking** (ty) — runs in CI with `continue-on-error: true`
+- Type hints are being added progressively
+- Run `just check-types` to track full diagnostics manually
+- Focus on correctness tests (audit suite) over type bureaucracy
+
+### ty rollout phases (active)
+- **Phase 2 (noise reduction):** file-level ignore on the two worst files while refactors are pending
+- **Phase 3 (enforcement):** `just check-types-budget` is enforced in CI via `TY_MAX_DIAGNOSTICS`
+- Ratchet policy: lower the budget by ~10 diagnostics per PR until target is reached, then remove file ignores
+
+### Test code exemptions
+Tests can use `assert`, magic numbers, and intentionally weird patterns
+to test edge cases (see `pyproject.toml:90` for ruff exemptions).
 
 ## Guardrails — what NOT to change without understanding
 

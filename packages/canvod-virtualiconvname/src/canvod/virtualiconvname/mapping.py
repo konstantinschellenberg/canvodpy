@@ -142,7 +142,7 @@ class FilenameMapper:
             try:
                 vf = self.map_single_file(path)
                 results.append(vf)
-            except (ValueError, KeyError):
+            except ValueError, KeyError:
                 continue
         return results
 
@@ -175,7 +175,7 @@ class FilenameMapper:
             try:
                 vf = self.map_single_file(path, year=year, doy=doy)
                 results.append(vf)
-            except (ValueError, KeyError):
+            except ValueError, KeyError:
                 continue
         return results
 

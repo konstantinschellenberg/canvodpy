@@ -16,7 +16,7 @@ Convenience functions
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
 
@@ -340,7 +340,8 @@ class SpatialMask:
 
         """
         if callable(mask):
-            mask_array = mask(self.grid)
+            mask_fn = cast(Callable[[Any], np.ndarray], mask)
+            mask_array = mask_fn(self.grid)
         else:
             mask_array = mask
 

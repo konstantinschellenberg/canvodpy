@@ -41,7 +41,7 @@ RINEX_VERSION_MAX = 4
 @dataclass(
     kw_only=True,
     frozen=True,
-    config=ConfigDict(arbitrary_types_allowed=True, slots=True),
+    config=ConfigDict(arbitrary_types_allowed=True, slots=True),  # ty: ignore[invalid-key]
 )
 class Observation:
     """Represents a single GNSS observation.
@@ -119,7 +119,7 @@ class Observation:
         return v
 
 
-@dataclass(kw_only=True, frozen=True, config=ConfigDict(slots=True))
+@dataclass(kw_only=True, frozen=True, config=ConfigDict(slots=True))  # ty: ignore[invalid-key]
 class Satellite:
     """Represents a GNSS satellite with its observations.
 
@@ -185,7 +185,7 @@ class Satellite:
         self.observations.append(observation)
 
 
-@dataclass(kw_only=True, frozen=True, config=ConfigDict(slots=True))
+@dataclass(kw_only=True, frozen=True, config=ConfigDict(slots=True))  # ty: ignore[invalid-key]
 class Epoch:
     """Represents a GNSS epoch with its timestamp and satellites.
 
@@ -430,14 +430,14 @@ class Rnxv3ObsEpochRecordCompletenessModel(BaseModel):
 
         """
         if not isinstance(value, pint.Quantity):
-            value = UREG.Quantity(value).to(UREG.minutes)
+            value = UREG.Quantity(value).to(UREG.minutes)  # ty: ignore[invalid-assignment]
         if value not in IGS_RNX_DUMP_INTERVALS:
             warnings.warn(
                 f"Unexpected dump interval: {value}. "
                 f"Expected one of: {[str(v) for v in IGS_RNX_DUMP_INTERVALS]}",
                 stacklevel=2,
             )
-        return value
+        return value  # ty: ignore[invalid-return-type]
 
     @field_validator("sampling_interval")
     @classmethod
@@ -464,15 +464,15 @@ class Rnxv3ObsEpochRecordCompletenessModel(BaseModel):
 
         """
         if not isinstance(value, pint.Quantity):
-            value = UREG.Quantity(value).to(UREG.seconds)
+            value = UREG.Quantity(value).to(UREG.seconds)  # ty: ignore[invalid-assignment]
         if value not in SEPTENTRIO_SAMPLING_INTERVALS:
             msg = (
-                f"sampling_interval={value.magnitude} {value.units}, "
+                f"sampling_interval={value.magnitude} {value.units}, "  # ty: ignore[unresolved-attribute]
                 "but must be one of: "
                 f"{[str(v) for v in SEPTENTRIO_SAMPLING_INTERVALS]}"
             )
             _raise_value_error(msg)
-        return value
+        return value  # ty: ignore[invalid-return-type]
 
     @model_validator(mode="after")
     def check_intervals(self) -> Self:
@@ -499,10 +499,10 @@ class Rnxv3ObsEpochRecordCompletenessModel(BaseModel):
         sampling_interval = self.sampling_interval
 
         if epoch_records_indeces and rnx_file_dump_interval and sampling_interval:
-            total_sampling_time = len(epoch_records_indeces) * sampling_interval.to(
+            total_sampling_time = len(epoch_records_indeces) * sampling_interval.to(  # ty: ignore[unresolved-attribute]
                 UREG.seconds
             )
-            rnx_file_dump_interval_in_seconds = rnx_file_dump_interval.to(UREG.seconds)
+            rnx_file_dump_interval_in_seconds = rnx_file_dump_interval.to(UREG.seconds)  # ty: ignore[unresolved-attribute]
             if total_sampling_time != rnx_file_dump_interval_in_seconds:
                 warnings.warn(
                     "Mismatch in expected dump interval: "
@@ -820,7 +820,7 @@ class RINEX304ComplianceValidator(BaseModel):
                 band_spec = system_bands[band]
                 valid_codes = band_spec.get("codes", set())
 
-                if attribute not in valid_codes:
+                if attribute not in valid_codes:  # ty: ignore[unsupported-operator]
                     issues.append(
                         f"Invalid attribute '{attribute}' for {system} band {band}: "
                         f"{code} (valid: {valid_codes})"
