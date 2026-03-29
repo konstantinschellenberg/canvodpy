@@ -1,6 +1,10 @@
 name: Platform Tests
 
-on: [push, pull_request]
+on:
+    push:
+    pull_request:
+    schedule:
+        - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
