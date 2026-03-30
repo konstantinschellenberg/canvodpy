@@ -117,6 +117,13 @@ nav = [
     { "Release Internals" = "guides/HOW_RELEASE_WORKS.md" },
   ]},
 
+  { "Quality & Compliance" = [
+    { "FOSS Principles" = "FOSS_PRINCIPLES.md" },
+    { "FAIR Software Compliance" = "FAIR_IMPLEMENTATION_SUMMARY.md" },
+    { "OpenSSF Best Practices" = "OPENSSF_BADGE_GUIDE.md" },
+    { "Security Policy" = "../SECURITY.md" },
+  ]},
+
   { "Legal" = [
     { "Impressum & AI Disclosure" = "impressum.md" },
   ]},
