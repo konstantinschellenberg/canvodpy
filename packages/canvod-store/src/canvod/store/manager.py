@@ -806,7 +806,11 @@ class GnssResearchSite:
 
             try:
                 # Try to read data for this day
-                time_range = (yyyydoy_obj.start_datetime(), yyyydoy_obj.end_datetime())
+                import datetime as _dt
+
+                assert yyyydoy_obj.date is not None
+                _day_start = datetime.combine(yyyydoy_obj.date, _dt.time.min)
+                time_range = (_day_start, _day_start + _dt.timedelta(days=1))
 
                 ds = self.read_receiver_data(
                     receiver_name=receiver_name, time_range=time_range

@@ -1003,7 +1003,7 @@ def process_sbf(
     use_broadcast = aux_zarr_path is None
     # preprocess_with_hermite_aux always requires an aux path argument;
     # when using broadcast geometry the path is unused internally.
-    effective_aux_path = Path("/dev/null") if use_broadcast else Path(aux_zarr_path)
+    effective_aux_path = Path("/dev/null") if use_broadcast else Path(aux_zarr_path)  # ty: ignore[invalid-argument-type]
 
     research_site = GnssResearchSite(site)
     receivers_processed: list[str] = []
@@ -1182,8 +1182,11 @@ def validate_ingest(site: str, yyyydoy: str) -> dict:
     checks: dict[str, dict] = {}
     all_valid = True
 
-    day_start = np.datetime64(date_obj.date, "D")
-    day_end = day_start + np.timedelta64(1, "D")
+    import datetime as _dt
+
+    assert date_obj.date is not None
+    day_start = _dt.datetime.combine(date_obj.date, _dt.time.min)
+    day_end = day_start + _dt.timedelta(days=1)
     time_range = (day_start, day_end)
 
     for recv_name, rcfg in site_cfg.receivers.items():
