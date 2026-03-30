@@ -1,0 +1,20 @@
+name: FAIR Software Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: "Check FAIR software compliance"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: fair-software/howfairis-github-action@main
+        name: Measure compliance with fair-software.eu recommendations
+        env:
+          PYCHARM_HOSTED: "Trick colorama into displaying colored output"
+        with:
+          MY_REPO_URL: "https://github.com/${{ github.repository }}"
