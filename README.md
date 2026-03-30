@@ -4,10 +4,11 @@
 [![Platform Tests](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![Code Coverage](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml)
 [![Audit](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml)
+[![FAIR Software Check](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
-<!-- Security & FAIR -->
-[![FAIR Software](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml)
+<!-- Security -->
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12329/badge)](https://www.bestpractices.dev/projects/12329)
 [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nfb2021/canvodpy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nfb2021/canvodpy)
 
 <!-- Python & Platforms -->
@@ -20,10 +21,10 @@
 [![Icechunk](https://img.shields.io/badge/Icechunk-Storage-00A3E0)](https://icechunk.io/)
 [![Dask](https://img.shields.io/badge/Dask-Parallel-FDA061?logo=dask&logoColor=white)](https://www.dask.org/)
 
-<!-- Standards & Metadata -->
+<!-- Standards & Compliance -->
 [![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
-[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
+[![FAIR Software](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
 [![DataCite 4.5](https://img.shields.io/badge/DataCite-4.5-3F51B5)](https://schema.datacite.org/)
 [![ACDD 1.3](https://img.shields.io/badge/ACDD-1.3-4CAF50)](https://wiki.esipfed.org/Attribute_Convention_for_Data_Discovery_1-3)
 [![STAC 1.1](https://img.shields.io/badge/STAC-1.1-FF9800)](https://stacspec.org/)

@@ -75,7 +75,7 @@ Added new "Security & FAIR" section with:
 
 ## Current FAIR Compliance Status
 
-### ✅ All 5 FAIR Recommendations Met
+### ✅ All 5 FAIR Recommendations Met + OpenSSF Badge!
 
 | # | Recommendation | Status | Evidence |
 |---|----------------|--------|----------|
@@ -83,9 +83,9 @@ Added new "Security & FAIR" section with:
 | 2 | **License** | ✅ Pass | Apache 2.0 in LICENSE file |
 | 3 | **Registry** | ⏳ Pending | TestPyPI workflows ready, PyPI planned for v1.0 |
 | 4 | **Citation** | ✅ Pass | CITATION.cff + Zenodo DOI (10.5281/zenodo.18636775) |
-| 5 | **Checklist** | 🔄 In Progress | Scorecard workflow active, badge guide created |
+| 5 | **Checklist** | ✅ Pass | **OpenSSF Best Practices badge obtained!** ([Project 12329](https://www.bestpractices.dev/projects/12329)) |
 
-**Overall:** 🟢 3/5 solid, 2/5 in progress
+**Overall:** 🟢 **4/5 complete**, 1/5 pending (PyPI for v1.0)
 
 ## File Changes Summary
 

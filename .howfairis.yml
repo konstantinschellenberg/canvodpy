@@ -4,15 +4,17 @@
 # Temporarily skip registry checks until first PyPI release
 skip_registry_checks_reason: "Not published to PyPI yet; planned for v1.0.0. TestPyPI workflows are in place."
 
-# Skip checklist checks until OpenSSF Best Practices badge is obtained
-# Application process: https://bestpractices.coreinfrastructure.org/
-skip_checklist_checks_reason: "OpenSSF Best Practices badge application in progress. Scorecard workflow now active."
+# Checklist requirement now met with OpenSSF Best Practices badge!
+# Badge: https://www.bestpractices.dev/projects/12329
+# skip_checklist_checks_reason: "OpenSSF Best Practices badge obtained (project 12329)."
 
 # Ignore badges that are commented out in documentation
 ignore_commented_badges: true
 
-# Note: Repository, license, and citation checks should all pass
+# Current compliance status:
 # - ✓ Public GitHub repository
 # - ✓ Apache 2.0 license in LICENSE file
 # - ✓ CITATION.cff with Zenodo DOI (10.5281/zenodo.18636775)
 # - ✓ codemeta.json for machine-readable metadata
+# - ⏳ PyPI registry (pending v1.0.0 release)
+# - ✓ OpenSSF Best Practices badge (project 12329)

@@ -79,16 +79,19 @@ Based on canvodpy's current state:
 - ✅ Individual commit messages
 
 **Quality:**
-- ✅ Coding standards (ruff)
-- ✅ Test suite (pytest)
+- ✅ Coding standards (ruff with 50+ rule sets, PEP 8 compliant)
+- ✅ Type checking (ty with type budget enforcement)
+- ✅ Test suite (pytest with 8 test workflows)
 - ✅ Test coverage (test_coverage.yml)
-- ✅ CI/CD (8 workflows)
-- ✅ Reproducible builds (uv.lock)
+- ✅ CI/CD (8 workflows: tests, coverage, code quality, audit, FAIR, releases)
+- ✅ Reproducible builds (uv.lock with pinned dependencies)
+- ✅ Pre-commit hooks (ruff, ty, conventional commits)
 
 **Security:**
 - ✅ Vulnerability disclosure (SECURITY.md) ✨ New!
-- ✅ Dependency updates (Dependabot)
-- ✅ Static analysis (ruff, audit.yml)
+- ✅ Dependency updates (Dependabot + uv.lock)
+- ✅ Static analysis (ruff linting + audit.yml)
+- ✅ Type safety (ty type checker)
 - ✅ OpenSSF Scorecard (scorecard.yml) ✨ New!
 
 ### 📝 Needs Documentation

@@ -124,11 +124,16 @@ canvodpy loads Python configuration files:
 
 ### Current Implementation
 
+- ✅ **OpenSSF Best Practices Badge** (Passing level) - [Project 12329](https://www.bestpractices.dev/projects/12329)
 - ✅ Automated dependency scanning (Dependabot)
 - ✅ OpenSSF Scorecard monitoring
 - ✅ SPDX license compliance (REUSE 3.3)
 - ✅ Pinned dependencies in `uv.lock`
-- ✅ Pre-commit hooks (ruff, conventional commits)
+- ✅ Pre-commit hooks (ruff linting & formatting, ty type checking, conventional commits)
+- ✅ Continuous integration (8 workflows: tests, coverage, code quality, audit, FAIR checks)
+- ✅ Static analysis (ruff with 50+ rule sets)
+- ✅ Type checking (ty with type budget enforcement)
+- ✅ Dynamic analysis (pytest test suite with coverage tracking)
 
 ### Planned Enhancements
 
