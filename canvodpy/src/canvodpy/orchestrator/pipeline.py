@@ -63,6 +63,11 @@ class PipelineOrchestrator:
         Process nice value (0=normal, 19=lowest)
     threads_per_worker : int | None
         Threads per Dask worker process. None defaults to 1.
+    scheduler_address : str | None
+        Address of an existing Dask scheduler (e.g. ``'tcp://host:8786'``).
+        When set a LocalCluster is NOT created — the client connects to the
+        remote scheduler instead.  Ignored when parallelization_strategy is
+        ``'processpool'``.
 
     """
 
@@ -77,6 +82,7 @@ class PipelineOrchestrator:
         nice_priority: int = 0,
         threads_per_worker: int | None = None,
         parallelization_strategy: str = "dask",
+        scheduler_address: str | None = None,
     ) -> None:
         self.site = site
         self.n_max_workers = n_max_workers
@@ -124,6 +130,7 @@ class PipelineOrchestrator:
             "cpu_affinity": cpu_affinity,
             "nice_priority": nice_priority,
             "threads_per_worker": threads_per_worker,
+            "scheduler_address": scheduler_address,
         }
         self._use_processpool = parallelization_strategy == "processpool"
         self._cluster_manager: DaskClusterManager | None = None

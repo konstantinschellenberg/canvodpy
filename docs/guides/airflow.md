@@ -259,6 +259,126 @@ Variable.
 
 ---
 
+## Running Multiple Configurations
+
+Two processing scenarios are common:
+
+| Scenario | Reader | Ephemeris | DAG |
+|---|---|---|---|
+| **a** — agency quality, delayed | RINEX | SP3/CLK (final) | `canvod_{site}_rinex` |
+| **b** — same-day, broadcast geometry | SBF | SBF SatVisibility | `canvod_{site}_sbf` |
+
+Both DAGs are generated automatically per site. To run them with **different
+config files** (e.g. different store paths, observables, or ephemeris product
+types), use one of the three patterns below.
+
+---
+
+### Option 1 — `dag_run.conf` at trigger time
+
+Pass a `config_path` override when triggering manually.  The task functions
+read it from `context["dag_run"].conf` and fall back to the default config
+if absent.
+
+```bash
+# Scenario a — RINEX + final SP3/CLK
+airflow dags trigger canvod_rosalia_rinex \
+  --conf '{"config_path": "/etc/canvod/sites_rinex_agency.yaml"}'
+
+# Scenario b — SBF + broadcast geometry
+airflow dags trigger canvod_rosalia_sbf \
+  --conf '{"config_path": "/etc/canvod/sites_sbf_broadcast.yaml"}'
+```
+
+Or via the `af` CLI:
+
+```bash
+af runs trigger canvod_rosalia_rinex \
+  -F config_path=/etc/canvod/sites_rinex_agency.yaml
+```
+
+This is the simplest approach for one-off or backfill runs.
+
+!!! info "Backfill DAG already supports conf"
+    `canvod_backfill` accepts `site`, `branch`, `start_date`, and `end_date`
+    as params — add `config_path` to the same `--conf` dict to backfill with
+    a specific config.
+
+---
+
+### Option 2 — Airflow Variables (environment-level config)
+
+Store the config path as an Airflow Variable.  This is appropriate when
+an entire Airflow environment (prod / dev / staging) should always use a
+specific config — no per-run override needed.
+
+```bash
+# Set once per environment
+airflow variables set canvod_config_path /etc/canvod/sites_production.yaml
+```
+
+Tasks retrieve it with:
+
+```python
+from airflow.models import Variable
+config_path = Variable.get("canvod_config_path", default_var=None)
+```
+
+Two Airflow deployments can point at entirely different Icechunk stores and
+processing parameters without any code changes.
+
+---
+
+### Option 3 — DAG-level `Param` default
+
+For a permanent two-scenario setup where each DAG always defaults to a
+specific config, define `config_path` as a `Param` in the DAG definition:
+
+```python
+from airflow.models.param import Param
+
+@dag(
+    dag_id=f"canvod_{site}_rinex",
+    params={
+        "config_path": Param(
+            default="/etc/canvod/sites_rinex_agency.yaml",
+            type="string",
+            description="Path to sites.yaml — override per run if needed",
+        )
+    },
+    ...
+)
+def rinex_dag(): ...
+```
+
+The Airflow UI exposes `config_path` as an editable field when triggering
+the DAG manually, so ad-hoc overrides remain possible without CLI flags.
+
+---
+
+### Config differences between scenarios
+
+The two scenarios typically differ in these `processing.yaml` fields:
+
+```yaml
+# Scenario a — RINEX + agency ephemeris
+processing:
+  ephemeris_source: final          # SP3/CLK, ~12-18 day lag
+  keep_rnx_vars: [SNR, Pseudorange, Phase, Doppler]
+  store_radial_distance: true
+
+# Scenario b — SBF + broadcast ephemeris
+processing:
+  ephemeris_source: broadcast      # Embedded in SBF binary, same-day
+  store_sbf_raw_observables: true  # SNR_raw, Phase_raw, Pseudorange_unsmoothed
+  store_radial_distance: true
+```
+
+Separate `sites_rinex.yaml` and `sites_sbf.yaml` files can share the same
+site geometry and receiver layout while differing only in the processing block.
+
+---
+
 ## Calling Tasks Without Airflow
 
 The task functions are plain Python functions with no Airflow dependency.

@@ -341,6 +341,7 @@ class Pipeline:
             nice_priority=nice_priority,
             threads_per_worker=threads_per_worker,
             parallelization_strategy=proc.parallelization_strategy,
+            scheduler_address=proc.scheduler_address,
         )
 
         self.log.info(
@@ -690,5 +691,5 @@ def preview_processing(site: str) -> dict:
     Total files: 8640
 
     """
-    pipeline = Pipeline(site, dry_run=True)
-    return pipeline.preview()
+    with Pipeline(site, dry_run=True) as pipeline:
+        return pipeline.preview()

@@ -98,8 +98,8 @@ class TestDailyDagStructure:
         assert 'mode="reschedule"' in dag_source
 
     def test_has_sp3_abandonment(self, dag_source):
-        """Must abandon SP3 sensor after 30 days."""
-        assert "AirflowSkipException" in dag_source
+        """Must abandon SP3 sensor after 30 days (via check_sp3_availability)."""
+        assert "check_sp3_availability" in dag_source
 
     def test_validate_dirs_no_retry(self, dag_source):
         """validate_dirs must have retries=0."""
@@ -163,13 +163,15 @@ class TestBackfillDagStructure:
         assert '"rinex"' in dag_source
 
     def test_sequential_processing(self, dag_source):
-        """Must process dates sequentially (for Icechunk safety)."""
-        assert "for yyyydoy in dates" in dag_source
+        """Must serialise Icechunk commits: max_active_tis_per_dagrun=1 + dynamic map."""
+        assert "max_active_tis_per_dagrun=1" in dag_source
+        assert "expand(yyyydoy=" in dag_source
 
-    def test_per_date_error_handling(self, dag_source):
-        """Must catch per-date errors and continue."""
-        assert "except Exception" in dag_source
-        assert 'results[yyyydoy] = f"error' in dag_source
+    def test_per_date_independence(self, dag_source):
+        """Each date must be an independent mapped task (Airflow retry handles isolation)."""
+        # Dynamic task mapping gives per-date retry without try/except
+        assert "t_process_day.expand" in dag_source
+        assert "retries" in dag_source  # retry policy in default_args
 
     def test_both_branches_end_at_vod(self, dag_source):
         """Both _process_single_day functions must end at VOD + cleanup."""
@@ -179,8 +181,8 @@ class TestBackfillDagStructure:
         assert "update_statistics" not in dag_source
 
     def test_timeout_sufficient(self, dag_source):
-        """Backfill task timeout must be >= 48 hours."""
+        """Per-day backfill task timeout must be >= 4 hours."""
         match = re.search(r"execution_timeout=timedelta\(hours=(\d+)\)", dag_source)
         assert match, "No execution_timeout found on backfill task"
         hours = int(match.group(1))
-        assert hours >= 48, f"Timeout {hours}h too short for year-long backfill"
+        assert hours >= 4, f"Timeout {hours}h too short for single-day backfill"

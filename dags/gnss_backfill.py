@@ -1,7 +1,17 @@
 """Manual backfill DAG for reprocessing historical GNSS-T data.
 
-Triggered manually with parameters. Processes a date range sequentially,
-reusing the same task functions as the daily DAGs.
+Triggered manually with parameters.  Each date in the range becomes an
+independent Airflow task instance via dynamic task mapping (Airflow 2.7+).
+A failure on one date retries that date only — the rest of the batch
+continues unaffected.
+
+**Concurrency safety** — Icechunk stores require serialised commits on a
+branch.  ``max_active_tis_per_dagrun=1`` enforces this within a single
+backfill run.  The ``canvod_store_write`` pool (create it with one slot in
+the Airflow UI) provides the same guarantee across simultaneous backfill
+runs and the daily DAGs::
+
+    airflow pools set canvod_store_write 1 "Serialise Icechunk commits"
 
 Usage (Airflow UI or CLI)::
 
@@ -34,10 +44,10 @@ def _task_failure_callback(context):
     """Log structured failure info."""
     ti = context["task_instance"]
     logger.error(
-        "BACKFILL TASK FAILED | dag=%s task=%s date=%s error=%s",
+        "BACKFILL TASK FAILED | dag=%s task=%s map_index=%s error=%s",
         ti.dag_id,
         ti.task_id,
-        context.get("ds", "?"),
+        ti.map_index,
         context.get("exception", "unknown"),
     )
 
@@ -47,14 +57,13 @@ def _task_failure_callback(context):
     schedule=None,  # manual trigger only
     start_date=datetime(2025, 1, 1),
     catchup=False,
-    max_active_runs=1,
+    max_active_runs=3,  # allow a few concurrent backfill runs (pool controls writes)
     default_args={
         "owner": "canvod",
-        "retries": 3,
-        "retry_delay": timedelta(minutes=5),
+        "retries": 2,
+        "retry_delay": timedelta(minutes=10),
         "retry_exponential_backoff": True,
         "max_retry_delay": timedelta(hours=1),
-        "execution_timeout": timedelta(hours=6),
         "on_failure_callback": _task_failure_callback,
     },
     tags=["canvod", "gnss", "backfill"],
@@ -65,8 +74,13 @@ def _task_failure_callback(context):
         "branch": Param(
             "sbf",
             type="string",
-            enum=["sbf", "rinex"],
-            description="Processing branch: sbf (broadcast) or rinex (agency SP3/CLK)",
+            enum=["sbf", "rinex", "sbf_agency"],
+            description=(
+                "Processing branch: "
+                "sbf (broadcast ephemeris, same-day), "
+                "rinex (agency SP3/CLK, ~12-18 day lag), "
+                "sbf_agency (SBF observables + agency geometry)"
+            ),
         ),
         "start_date": Param(
             "2025-001",
@@ -95,18 +109,20 @@ def canvod_backfill():
         start = YYYYDOY.from_str(params["start_date"])
         end = YYYYDOY.from_str(params["end_date"])
 
+        if start.date is None:
+            raise ValueError(f"Invalid start_date: {params['start_date']!r}")
+        if end.date is None:
+            raise ValueError(f"Invalid end_date: {params['end_date']!r}")
+
         dates: list[str] = []
         current = start.date
-        end_date = end.date
-        assert current is not None, f"Invalid start date: {params['start_date']}"
-        assert end_date is not None, f"Invalid end date: {params['end_date']}"
-        while current <= end_date:
+        while current <= end.date:
             doy = (current - dt.date(current.year, 1, 1)).days + 1
             dates.append(f"{current.year}{doy:03d}")
             current += dt.timedelta(days=1)
 
         logger.info(
-            "backfill: %s %s — %d days from %s to %s",
+            "backfill: %s/%s — %d days (%s → %s)",
             params["site"],
             params["branch"],
             len(dates),
@@ -115,58 +131,48 @@ def canvod_backfill():
         )
         return dates
 
-    @task(execution_timeout=timedelta(hours=72))
-    def t_process_date_range(dates: list[str], **context) -> dict:
-        """Process each date sequentially.
+    @task(
+        execution_timeout=timedelta(hours=6),
+        # Serialise commits within this DAG run.  One date at a time prevents
+        # concurrent Icechunk writes to the same branch.
+        max_active_tis_per_dagrun=1,
+        # Optional pool for cross-run serialisation (create with slot=1 in UI).
+        pool="canvod_store_write",
+        pool_slots=1,
+    )
+    def t_process_day(yyyydoy: str, **context) -> dict:
+        """Process the full ingest + VOD pipeline for a single date.
 
-        Sequential within task to prevent concurrent store writes
-        (Icechunk max_active_runs=1). Each date runs the full ingest +
-        analysis pipeline. Per-date errors are caught and logged —
-        processing continues to the next date. Idempotent: already-
-        processed dates are skipped by hash dedup in the store layer.
+        Idempotent: already-processed dates are skipped by the store's
+        three-layer dedup (hash match → temporal overlap → intra-batch).
         """
         params = context["params"]
         site = params["site"]
         branch = params["branch"]
 
-        results: dict[str, str] = {}
+        if branch == "sbf":
+            _process_single_day_sbf(site, yyyydoy)
+        elif branch == "rinex":
+            _process_single_day_rinex(site, yyyydoy)
+        elif branch == "sbf_agency":
+            _process_single_day_sbf_agency(site, yyyydoy)
+        else:
+            raise ValueError(f"Unknown branch: {branch!r}")
 
-        for yyyydoy in dates:
-            try:
-                if branch == "sbf":
-                    _process_single_day_sbf(site, yyyydoy)
-                else:
-                    _process_single_day_rinex(site, yyyydoy)
-                results[yyyydoy] = "ok"
-                logger.info("backfill: %s %s %s — ok", site, branch, yyyydoy)
-            except Exception as exc:
-                results[yyyydoy] = f"error: {exc}"
-                logger.exception("backfill: %s %s %s — failed", site, branch, yyyydoy)
-
-        n_ok = sum(1 for v in results.values() if v == "ok")
-        n_fail = len(results) - n_ok
-        logger.info(
-            "backfill complete: %d ok, %d failed out of %d",
-            n_ok,
-            n_fail,
-            len(results),
-        )
-
-        return {
-            "site": site,
-            "branch": branch,
-            "total": len(results),
-            "ok": n_ok,
-            "failed": n_fail,
-            "details": results,
-        }
+        logger.info("backfill: %s/%s %s — ok", site, branch, yyyydoy)
+        return {"site": site, "branch": branch, "yyyydoy": yyyydoy, "status": "ok"}
 
     dates = t_resolve_dates()
-    t_process_date_range(dates=dates)
+    t_process_day.expand(yyyydoy=dates)
+
+
+# ---------------------------------------------------------------------------
+# Per-day pipeline helpers (ingest → VOD; no analytics in public package)
+# ---------------------------------------------------------------------------
 
 
 def _process_single_day_sbf(site: str, yyyydoy: str) -> None:
-    """Run the SBF pipeline for a single day (ingest → VOD)."""
+    """SBF + broadcast ephemeris pipeline for one day."""
     from canvodpy.workflows.tasks import (
         calculate_vod,
         check_sbf,
@@ -183,7 +189,7 @@ def _process_single_day_sbf(site: str, yyyydoy: str) -> None:
 
 
 def _process_single_day_rinex(site: str, yyyydoy: str) -> None:
-    """Run the RINEX pipeline for a single day (ingest → VOD)."""
+    """RINEX + agency SP3/CLK pipeline for one day."""
     from canvodpy.workflows.tasks import (
         calculate_vod,
         check_rinex,
@@ -200,6 +206,30 @@ def _process_single_day_rinex(site: str, yyyydoy: str) -> None:
         yyyydoy,
         aux_zarr_path=aux_info["aux_zarr_path"],
         receiver_files=rinex_info["receivers"],
+    )
+    validate_ingest(site, yyyydoy)
+    calculate_vod(site, yyyydoy)
+    cleanup(site, yyyydoy)
+
+
+def _process_single_day_sbf_agency(site: str, yyyydoy: str) -> None:
+    """SBF observables + agency SP3/CLK geometry pipeline for one day."""
+    from canvodpy.workflows.tasks import (
+        calculate_vod,
+        check_sbf,
+        cleanup,
+        fetch_aux_data,
+        process_sbf,
+        validate_ingest,
+    )
+
+    sbf_info = check_sbf(site, yyyydoy)
+    aux_info = fetch_aux_data(site, yyyydoy)
+    process_sbf(
+        site,
+        yyyydoy,
+        receiver_files=sbf_info["receivers"],
+        aux_zarr_path=aux_info["aux_zarr_path"],
     )
     validate_ingest(site, yyyydoy)
     calculate_vod(site, yyyydoy)

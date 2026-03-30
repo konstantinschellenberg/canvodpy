@@ -175,6 +175,7 @@ class DaskClusterManager:
         cpu_affinity: list[int] | None = None,
         nice_priority: int = 0,
         threads_per_worker: int | None = None,
+        scheduler_address: str | None = None,
     ) -> None:
         if not _HAS_DISTRIBUTED:
             msg = (
@@ -183,35 +184,74 @@ class DaskClusterManager:
             )
             raise ImportError(msg)
 
-        cluster_kwargs: dict = {
-            "threads_per_worker": threads_per_worker
-            if threads_per_worker is not None
-            else 1,
-            "memory_limit": memory_limit_per_worker,
-        }
-        if n_workers is not None:
-            cluster_kwargs["n_workers"] = n_workers
+        self._scheduler_address = scheduler_address
 
-        self._cluster = LocalCluster(**cluster_kwargs)
-        self._client = Client(self._cluster)
+        # Cap BLAS/OpenMP thread counts before starting workers so that
+        # worker subprocesses inherit the env vars.  Without this, numpy/
+        # scipy can spawn os.cpu_count() threads per worker, multiplying
+        # actual CPU use by (n_workers × blas_threads).
+        _effective_threads = threads_per_worker if threads_per_worker is not None else 1
+        _thread_str = str(_effective_threads)
+        for _var in (
+            "OMP_NUM_THREADS",
+            "MKL_NUM_THREADS",
+            "OPENBLAS_NUM_THREADS",
+            "NUMEXPR_NUM_THREADS",
+            "VECLIB_MAXIMUM_THREADS",
+        ):
+            if _var not in os.environ:
+                os.environ[_var] = _thread_str
 
-        # Only register resource init plugin if affinity or nice is set
-        if cpu_affinity is not None or nice_priority > 0:
-            plugin_cls = cast(Any, _ResourceInitPluginClass)
-            plugin = plugin_cls(
-                cpu_affinity=cpu_affinity,
-                nice_value=nice_priority,
+        if scheduler_address is not None:
+            # Connect to an existing scheduler — do NOT create a LocalCluster.
+            # Resource caps (n_workers, memory, affinity) are properties of the
+            # remote cluster, not configurable from here.
+            self._cluster = None
+            self._client = Client(address=scheduler_address)
+            logger.info(
+                "dask_cluster_remote",
+                scheduler_address=scheduler_address,
             )
-            self._client.register_plugin(plugin)
+        else:
+            cluster_kwargs: dict = {
+                "threads_per_worker": threads_per_worker
+                if threads_per_worker is not None
+                else 1,
+                "memory_limit": memory_limit_per_worker,
+            }
+            if n_workers is not None:
+                cluster_kwargs["n_workers"] = n_workers
 
-        self.log_cluster_info()
+            self._cluster = LocalCluster(**cluster_kwargs)
+            self._client = Client(self._cluster)
+
+            # Ensure the local cluster is shut down when the process exits
+            # (covers SIGTERM, uncaught exceptions, and Airflow task timeouts
+            # that bypass __exit__).  atexit handlers run before interpreter
+            # shutdown — workers are terminated cleanly instead of becoming
+            # orphans that linger until Dask's idle timeout (~30 min).
+            import atexit
+
+            atexit.register(self.close)
+
+            # Only register resource init plugin if affinity or nice is set
+            if cpu_affinity is not None or nice_priority > 0:
+                plugin_cls = cast(Any, _ResourceInitPluginClass)
+                plugin = plugin_cls(
+                    cpu_affinity=cpu_affinity,
+                    nice_value=nice_priority,
+                )
+                self._client.register_plugin(plugin)
+
+        self._closed = False
+        self.log_cluster_info(threads_per_worker=threads_per_worker)
 
     @property
     def client(self) -> Client:
         """The Dask distributed client."""
         return self._client
 
-    def log_cluster_info(self) -> None:
+    def log_cluster_info(self, threads_per_worker: int | None = None) -> None:
         """Log cluster configuration details."""
         info = self._client.scheduler_info()
         workers = info.get("workers", {})
@@ -225,18 +265,32 @@ class DaskClusterManager:
             if mem_bytes:
                 mem_limit = f"{mem_bytes / (1024**3):.1f} GB"
 
+        dashboard = (
+            self._cluster.dashboard_link
+            if self._cluster is not None
+            else "n/a (remote)"
+        )
         logger.info(
             "dask_cluster_started",
+            cluster_type="remote" if self._scheduler_address else "local",
+            scheduler_address=self._scheduler_address or "auto",
             n_workers=n_workers,
+            threads_per_worker=threads_per_worker
+            if threads_per_worker is not None
+            else 1,
             memory_limit_per_worker=mem_limit,
-            dashboard_url=self._cluster.dashboard_link,
+            dashboard_url=dashboard,
         )
 
     def close(self) -> None:
         """Shut down client and cluster."""
+        if self._closed:
+            return
+        self._closed = True
         logger.info("dask_cluster_shutting_down")
         self._client.close()
-        self._cluster.close()
+        if self._cluster is not None:
+            self._cluster.close()
         logger.info("dask_cluster_stopped")
 
     def __enter__(self) -> DaskClusterManager:

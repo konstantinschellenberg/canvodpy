@@ -573,8 +573,38 @@ class GnssResearchSite:
 
         canopy_ds, reference_ds = self.prepare_vod_input_data(analysis_name, time_range)
 
-        # Use the calculator's class method for calculation
-        vod_ds = calculator_class.from_datasets(canopy_ds, reference_ds, align=True)
+        # Align once so we can access both r arrays for radial_diff before
+        # passing to the calculator (which would otherwise re-align internally).
+        canopy_aligned, reference_aligned = xr.align(
+            canopy_ds, reference_ds, join="inner"
+        )
+
+        # Use the calculator's class method for calculation (alignment already done)
+        vod_ds = calculator_class.from_datasets(
+            canopy_aligned, reference_aligned, align=False
+        )
+
+        # Apply config-gated derived quantities
+        from canvod.utils.config import load_config as _load_config
+
+        _params = _load_config().processing.processing
+
+        if not _params.store_delta_snr:
+            vod_ds = vod_ds.drop_vars("delta_snr", errors="ignore")
+
+        if _params.store_radial_diff:
+            if "r" in canopy_aligned and "r" in reference_aligned:
+                radial_diff = canopy_aligned["r"] - reference_aligned["r"]
+                radial_diff.attrs["units"] = "m"
+                radial_diff.attrs["long_name"] = (
+                    "radial distance difference (canopy − reference)"
+                )
+                vod_ds["radial_diff"] = radial_diff
+            else:
+                self._logger.warning(
+                    "store_radial_diff=true but 'r' not present in receiver data; "
+                    "set store_radial_distance=true at ingest time to enable this"
+                )
 
         # Add metadata
         analysis_config = self.vod_analyses[analysis_name]
@@ -610,9 +640,8 @@ class GnssResearchSite:
         str
             Snapshot ID
         """
-        from gnssvodpy.utils.tools import (
-            get_version_from_pyproject,  # type: ignore[unresolved-import]
-        )
+        import importlib.metadata
+
         from icechunk.xarray import to_icechunk
 
         canopy_hash = vod_ds.attrs.get("canopy_hash", "unknown")
@@ -629,7 +658,7 @@ class GnssResearchSite:
                 to_icechunk(vod_ds, session, group=analysis_name, append_dim="epoch")
                 action = "append"
 
-            version = get_version_from_pyproject()
+            version = importlib.metadata.version("canvodpy")
             commit_msg = f"[v{version}] VOD for {analysis_name}"
             snapshot_id = session.commit(commit_msg)
 
@@ -755,7 +784,7 @@ class GnssResearchSite:
         if receiver_types is None:
             receiver_types = ["canopy", "reference"]
 
-        from gnssvodpy.utils.date_time import YYYYDOY  # type: ignore[unresolved-import]
+        from canvod.utils.tools import YYYYDOY
 
         yyyydoy_obj = YYYYDOY.from_str(yyyydoy)
 

@@ -226,7 +226,7 @@ class TestValidateIngest:
     def test_good_data_passes(self):
         ds = self._make_good_ds()
         mock_site = MagicMock()
-        mock_site.load_rinex_data.return_value = ds
+        mock_site.read_receiver_data.return_value = ds
 
         config = MagicMock()
         config.sites.sites = {"TestSite": MagicMock()}
@@ -245,7 +245,7 @@ class TestValidateIngest:
         ds["cn0"].values[0, 0] = 999.0
 
         mock_site = MagicMock()
-        mock_site.load_rinex_data.return_value = ds
+        mock_site.read_receiver_data.return_value = ds
 
         config = MagicMock()
         config.sites.sites = {"TestSite": MagicMock()}
@@ -264,7 +264,7 @@ class TestValidateIngest:
         ds.coords["theta"].values[0, 0] = 2.0
 
         mock_site = MagicMock()
-        mock_site.load_rinex_data.return_value = ds
+        mock_site.read_receiver_data.return_value = ds
 
         config = MagicMock()
         config.sites.sites = {"TestSite": MagicMock()}
@@ -284,7 +284,7 @@ class TestValidateIngest:
         )
 
         mock_site = MagicMock()
-        mock_site.load_rinex_data.return_value = ds
+        mock_site.read_receiver_data.return_value = ds
 
         config = MagicMock()
         config.sites.sites = {"TestSite": MagicMock()}
@@ -298,9 +298,9 @@ class TestValidateIngest:
                 validate_ingest("TestSite", "2025001")
 
     def test_no_data_skips_receiver(self):
-        """If load_rinex_data raises, receiver is skipped, not failed."""
+        """If read_receiver_data raises, receiver is skipped, not failed."""
         mock_site = MagicMock()
-        mock_site.load_rinex_data.side_effect = KeyError("no group")
+        mock_site.read_receiver_data.side_effect = KeyError("no group")
 
         config = MagicMock()
         config.sites.sites = {"TestSite": MagicMock()}

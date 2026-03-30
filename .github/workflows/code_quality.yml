@@ -3,11 +3,11 @@ name: Python Code Quality
 on:
     push:
     schedule:
-        - cron: '0 6 * * 1'  # Weekly on Monday at 06:00 UTC
+        - cron: '0 6 * * 1' # Weekly on Monday at 06:00 UTC
 
 env:
-    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-    JUST_VERSION: "1.40.0"
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+    JUST_VERSION: '1.40.0'
 
 jobs:
     lock_file:
@@ -65,12 +65,6 @@ jobs:
             - run: uv sync --locked --dev
             - name: Type check with ty (informational)
               run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
-              # Type hints are being added progressively
-              # This job tracks progress but does not block PRs
-              # Suppresses: unresolved-import (optional deps), test code
-              # Phase 2: excludes two high-noise store files temporarily
-              # Rationale: Scientists focus on correctness tests (audit suite)
-              # over type bureaucracy. Types improve over time without blocking work.
               continue-on-error: true
 
     type_budget:
@@ -87,5 +81,5 @@ jobs:
             - run: uv sync --locked --dev
             - name: Enforce ty diagnostics budget
               env:
-                  TY_MAX_DIAGNOSTICS: "0"
+                  TY_MAX_DIAGNOSTICS: '0'
               run: just check-types-budget

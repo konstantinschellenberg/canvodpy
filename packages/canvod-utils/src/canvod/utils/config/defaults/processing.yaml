@@ -24,6 +24,8 @@ processing:
     - Doppler
   aggregate_glonass_fdma: true
   store_radial_distance: false
+  store_delta_snr: false
+  store_radial_diff: false
   receiver_position_mode: shared
   ephemeris_source: final  # 'final' (SP3/CLK) or 'broadcast' (SBF SatVisibility)
   batch_hours: 24

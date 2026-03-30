@@ -204,7 +204,7 @@ class TestTauOmegaZerothOrder:
         with pytest.raises(ValueError, match="All delta_snr values are NaN"):
             calculator.calculate_vod()
 
-    def test_calculate_vod_negative_transmissivity_warning(self, capsys):
+    def test_calculate_vod_negative_transmissivity_warning(self):
         """Test warning when transmissivity <= 0."""
         n_epoch, n_sid = 5, 3
         canopy_ds = xr.Dataset(
@@ -231,15 +231,19 @@ class TestTauOmegaZerothOrder:
             result.values[0, 1] = -0.5
             return result
 
-        with unittest.mock.patch.object(
-            TauOmegaZerothOrder, "decibel2linear", mock_d2l
+        with (
+            unittest.mock.patch.object(TauOmegaZerothOrder, "decibel2linear", mock_d2l),
+            unittest.mock.patch("canvod.vod.calculator.log") as mock_log,
         ):
             calculator = TauOmegaZerothOrder(canopy_ds=canopy_ds, sky_ds=sky_ds)
             calculator.calculate_vod()
 
-        captured = capsys.readouterr()
-        assert "Warning" in captured.out
-        assert "transmissivity values <= 0" in captured.out
+        mock_log.warning.assert_called_once_with(
+            "invalid_transmissivity",
+            invalid_count=unittest.mock.ANY,
+            total_count=unittest.mock.ANY,
+            percent=unittest.mock.ANY,
+        )
 
     def test_calculate_vod_zero_delta_snr(self):
         """Test VOD is exactly 0 when canopy_SNR == sky_SNR (delta_snr = 0)."""

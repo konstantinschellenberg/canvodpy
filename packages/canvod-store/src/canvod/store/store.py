@@ -1366,15 +1366,66 @@ class MyIcechunkStore:
         append_dim: str = "epoch",
         branch: str = "main",
         commit_message: str | None = None,
-    ) -> None:
-        """Write or append a dataset to a group (no File Hash guardrails).
+        dedup: bool = False,
+    ) -> bool:
+        """Write or append a dataset to a group.
 
-        Suitable for VOD stores and other derived-data stores where the
-        rinex-style hash/temporal-overlap guardrails do not apply.
+        By default (``dedup=False``) no guardrails are applied — suitable for
+        VOD stores and other derived-data stores where rinex-style dedup does
+        not apply.
 
-        If the group does not exist, creates it (mode='w').
+        When ``dedup=True`` the method runs a full hash-match + temporal-overlap
+        check (via :meth:`should_skip_file`) **before** opening a write session.
+        This makes the store the authoritative final gate for RINEX/SBF ingest
+        paths, backstopping any pre-checks in the caller.
+
+        If the group does not exist, creates it (``mode='w'``).
         If it exists, appends along ``append_dim``.
+
+        Parameters
+        ----------
+        dataset : xr.Dataset
+            Dataset to write or append.
+        group_name : str
+            Target Icechunk group.
+        append_dim : str, default "epoch"
+            Dimension along which to append when the group already exists.
+        branch : str, default "main"
+            Icechunk branch to write to.
+        commit_message : str or None
+            Commit message.  Auto-generated if ``None``.
+        dedup : bool, default False
+            When ``True``, check for duplicate hash or temporal overlap before
+            writing.  If the dataset would be a duplicate, the write is skipped,
+            a warning is logged, and ``False`` is returned.  Set to ``True`` for
+            RINEX/SBF ingest; leave ``False`` for VOD and derived-data stores.
+
+        Returns
+        -------
+        bool
+            ``True`` if the dataset was written, ``False`` if skipped
+            (only possible when ``dedup=True``).
         """
+        if dedup:
+            file_hash = dataset.attrs.get("File Hash")
+            time_start = dataset.epoch.min().values
+            time_end = dataset.epoch.max().values
+            skip, reason = self.should_skip_file(
+                group_name=group_name,
+                file_hash=file_hash,
+                time_start=time_start,
+                time_end=time_end,
+                branch=branch,
+            )
+            if skip:
+                self._logger.warning(
+                    "write_or_append_group skipped duplicate",
+                    group=group_name,
+                    reason=reason,
+                    file_hash=file_hash,
+                )
+                return False
+
         dataset = self._normalize_encodings(dataset)
 
         if self.group_exists(group_name, branch):
@@ -1395,6 +1446,7 @@ class MyIcechunkStore:
             self._logger.info(
                 f"Created group '{group_name}' with {len(dataset.epoch)} epochs"
             )
+        return True
 
     def append_metadata(
         self,
@@ -1759,6 +1811,67 @@ class MyIcechunkStore:
                 return True, overlaps
 
             return False, pl.DataFrame()
+
+    def should_skip_file(
+        self,
+        group_name: str,
+        file_hash: str | None,
+        time_start: np.datetime64,
+        time_end: np.datetime64,
+        branch: str = "main",
+    ) -> tuple[bool, str]:
+        """Check whether a file should be skipped before processing and writing.
+
+        Thin public wrapper around :meth:`metadata_row_exists` that returns a
+        simple ``(skip, reason)`` pair instead of a DataFrame, suitable for use
+        in Airflow task functions as an early-exit optimisation.
+
+        This method is an early-exit optimisation: it avoids opening a write
+        session for files that are already present.  Pass ``dedup=True`` to
+        :meth:`write_or_append_group` to make the store the authoritative
+        final gate (runs the same check again before writing).
+
+        Checks performed (in order):
+
+        1. **Hash match** — file was previously ingested (exact duplicate).
+        2. **Temporal overlap** — incoming time range overlaps existing epochs.
+
+        Layer 3 (intra-batch overlap) is not applicable here because task
+        functions process files one at a time.
+
+        Parameters
+        ----------
+        group_name : str
+            Icechunk group name.
+        file_hash : str or None
+            Hash from ``dataset.attrs["File Hash"]``.  When ``None`` the check
+            is skipped and ``(False, "")`` is returned.
+        time_start : np.datetime64
+            First epoch of the incoming dataset.
+        time_end : np.datetime64
+            Last epoch of the incoming dataset.
+        branch : str, default "main"
+            Branch name in the Icechunk repository.
+
+        Returns
+        -------
+        tuple[bool, str]
+            ``(True, "hash_match")`` — exact duplicate, skip.
+            ``(True, "temporal_overlap")`` — overlapping time range, skip.
+            ``(False, "")`` — safe to ingest.
+        """
+        if file_hash is None:
+            return False, ""
+
+        exists, matches = self.metadata_row_exists(
+            group_name, file_hash, time_start, time_end, branch
+        )
+        if not exists:
+            return False, ""
+
+        if not matches.is_empty() and (matches["rinex_hash"] == file_hash).any():
+            return True, "hash_match"
+        return True, "temporal_overlap"
 
     def batch_check_existing(self, group_name: str, file_hashes: list[str]) -> set[str]:
         """Check which file hashes already exist in metadata."""

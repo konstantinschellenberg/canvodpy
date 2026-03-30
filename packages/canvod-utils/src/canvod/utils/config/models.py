@@ -167,6 +167,21 @@ class ProcessingParams(BaseModel):
         False,
         description="Store radial distance (r) in the output store",
     )
+    store_delta_snr: bool = Field(
+        False,
+        description=(
+            "Store delta SNR (SNR_canopy − SNR_reference, dB) in the VOD store. "
+            "Useful for diagnosing canopy attenuation without the angular correction."
+        ),
+    )
+    store_radial_diff: bool = Field(
+        False,
+        description=(
+            "Store radial distance difference (r_canopy − r_reference, m) in the "
+            "VOD store. Requires store_radial_distance=true at ingest time so that "
+            "r is available in both receiver datasets."
+        ),
+    )
     receiver_position_mode: Literal["shared", "per_receiver"] = Field(
         "shared",
         description=(
@@ -232,6 +247,15 @@ class ProcessingParams(BaseModel):
             "processing (default). 'processpool': use ProcessPoolExecutor "
             "directly, skipping Dask overhead — faster for small datasets or "
             "when Dask startup latency dominates."
+        ),
+    )
+    scheduler_address: str | None = Field(
+        None,
+        description=(
+            "Address of an existing Dask scheduler to connect to instead of "
+            "spinning up a LocalCluster (e.g. 'tcp://192.168.1.100:8786'). "
+            "When set, parallelization_strategy must be 'dask'. "
+            "Useful on shared clusters where one scheduler serves all workers."
         ),
     )
     store_sbf_raw_observables: bool = Field(
