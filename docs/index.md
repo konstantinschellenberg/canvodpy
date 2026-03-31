@@ -17,7 +17,7 @@ signal-to-noise ratio observations.
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12329/badge)](https://www.bestpractices.dev/projects/12329)
+[![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/12329/badge)](https://bestpractices.coreinfrastructure.org/projects/12329)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 
