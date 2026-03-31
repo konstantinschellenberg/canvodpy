@@ -23,7 +23,7 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 
 import numpy as np
 import structlog
@@ -132,7 +132,7 @@ def _last_processed_date(store) -> str | None:
 
     # numpy datetime64 fallback
     ts = (latest_epoch - np.datetime64("1970-01-01T00:00:00")) / np.timedelta64(1, "s")
-    dt = datetime.utcfromtimestamp(float(ts))
+    dt = datetime.fromtimestamp(float(ts), tz=UTC).replace(tzinfo=None)
     return f"{dt.year}{dt.timetuple().tm_yday:03d}"
 
 

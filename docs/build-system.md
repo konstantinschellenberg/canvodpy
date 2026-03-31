@@ -78,14 +78,14 @@ description     = "GNSS data format readers for canVODpy"
 readme          = "README.md"
 license         = {text = "Apache-2.0"}
 authors         = [{name = "Nicolas Bader", email = "nicolas.bader@geo.tuwien.ac.at"}]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 keywords        = ["gnss", "rinex", "geodesy", "vod"]
 
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: GIS",
 ]
 

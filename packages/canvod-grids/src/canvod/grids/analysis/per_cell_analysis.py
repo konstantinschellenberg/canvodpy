@@ -140,7 +140,7 @@ class PerCellVODAnalyzer:
         Uses ``cell_weights`` when available.
         """
         cell_ts = ds.cell_timeseries
-        hours = ds.time.dt.hour.values
+        hours = pd.Series(pd.to_datetime(ds.time.values)).dt.hour.to_numpy()
         unique_hours = np.unique(hours)
 
         means, stds, counts = [], [], []
@@ -178,8 +178,9 @@ class PerCellVODAnalyzer:
     def _compute_diurnal_dynamics_30min(self, ds: xr.Dataset) -> dict:
         """30-minute-resolution diurnal statistics from one dataset."""
         cell_ts = ds.cell_timeseries
-        hours = ds.time.dt.hour.values
-        minutes = ds.time.dt.minute.values
+        time_series = pd.Series(pd.to_datetime(ds.time.values))
+        hours = time_series.dt.hour.to_numpy()
+        minutes = time_series.dt.minute.to_numpy()
         bins_30 = hours * 2 + (minutes >= 30).astype(int)
         unique_bins = np.unique(bins_30)
 
@@ -252,7 +253,8 @@ class PerCellVODAnalyzer:
         for hour in range(24):
             vals: list[float] = []
             for ds in self.datasets:
-                mask = ds.time.dt.hour.values == hour
+                ds_hours = pd.Series(pd.to_datetime(ds.time.values)).dt.hour.to_numpy()
+                mask = ds_hours == hour
                 if np.any(mask):
                     raw = ds.cell_timeseries[:, mask].values.flatten()
                     vals.extend(raw[np.isfinite(raw)].tolist())
@@ -337,7 +339,8 @@ class PerCellVODAnalyzer:
         self, time_aggregation: str, theta_bins: int
     ) -> tuple[np.ndarray, dict]:
         """Average theta-time heatmaps across all datasets."""
-        heatmaps, time_info = [], None
+        heatmaps: list[np.ndarray] = []
+        time_info: dict[str, object] | None = None
         for ds in self.datasets:
             h, ti = self._compute_single_theta_time_heatmap(
                 ds,
@@ -347,6 +350,8 @@ class PerCellVODAnalyzer:
             heatmaps.append(h)
             if time_info is None:
                 time_info = ti
+        if time_info is None:
+            raise ValueError("No datasets available for averaged theta-time heatmap")
         return np.nanmean(np.stack(heatmaps, axis=0), axis=0), time_info
 
     @staticmethod
@@ -364,7 +369,7 @@ class PerCellVODAnalyzer:
 
         """
         if time_aggregation == "diurnal":
-            groups = pd.to_datetime(time_coord).hour.values
+            groups = pd.Series(pd.to_datetime(time_coord)).dt.hour.to_numpy()
             n = 24
             ticks = np.arange(0, 24, 4)
             tick_labels = [f"{h:02d}:00" for h in ticks]
@@ -391,7 +396,7 @@ class PerCellVODAnalyzer:
 
         elif time_aggregation == "monthly":
             dates = pd.to_datetime(time_coord)
-            months = dates.month
+            months = pd.Series(dates).dt.month.to_numpy()
             unique_months = np.unique(months)
             groups = np.searchsorted(unique_months, months)
             n = len(unique_months)

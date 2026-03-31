@@ -369,26 +369,38 @@ class SbfBroadcastProvider(EphemerisProvider):
                 "aux_datasets with 'sbf_obs' key."
             )
 
-        if meta_ds is None or "theta" not in meta_ds or "phi" not in meta_ds:
+        if (
+            meta_ds is None
+            or "broadcast_theta" not in meta_ds
+            or "broadcast_phi" not in meta_ds
+        ):
             raise ValueError(
-                "sbf_obs metadata does not contain theta/phi. "
+                "sbf_obs metadata does not contain broadcast_theta/broadcast_phi. "
                 "Cannot use broadcast ephemeris."
             )
 
-        # Align broadcast theta/phi to observation epoch+SID space
-        geo = meta_ds[["theta", "phi"]]
-        if "epoch" in geo.dims:
-            common_epochs = np.intersect1d(ds.epoch.values, geo.epoch.values)
-            geo = geo.sel(epoch=common_epochs)
-            geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
+        from canvod.auxiliary.position.spherical_coords import (
+            add_broadcast_spherical_coords_to_dataset,
+        )
 
-        common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
-        geo = geo.sel(sid=common_sids)
-        geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
+        # Extract broadcast geometry (already in radians from reader)
+        bt = meta_ds["broadcast_theta"]
+        bp = meta_ds["broadcast_phi"]
 
-        # SBF SatVisibility stores theta/phi in degrees; convert to radians
-        # for consistency with AgencyEphemerisProvider (which outputs radians).
-        ds["theta"] = np.deg2rad(geo["theta"])
-        ds["phi"] = np.deg2rad(geo["phi"])
+        # Align to observation epoch space
+        if "epoch" in bt.dims:
+            common_epochs = np.intersect1d(ds.epoch.values, bt.epoch.values)
+            bt = bt.sel(epoch=common_epochs).reindex(
+                epoch=ds.epoch.values, fill_value=np.nan
+            )
+            bp = bp.sel(epoch=common_epochs).reindex(
+                epoch=ds.epoch.values, fill_value=np.nan
+            )
 
-        return ds
+        # Align to observation SID space
+        common_sids = sorted(set(ds.sid.values) & set(bt.sid.values))
+        bt = bt.sel(sid=common_sids).reindex(sid=ds.sid.values, fill_value=np.nan)
+        bp = bp.sel(sid=common_sids).reindex(sid=ds.sid.values, fill_value=np.nan)
+
+        # Use .values to prevent coord leakage from meta_ds (pdop, hdop, …)
+        return add_broadcast_spherical_coords_to_dataset(ds, bt.values, bp.values)

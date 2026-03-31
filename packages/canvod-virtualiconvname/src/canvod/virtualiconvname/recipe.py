@@ -234,11 +234,31 @@ class NamingRecipe(BaseModel):
         """
         parsed = self.parse_filename(file_path.name)
 
+        def _require_int(parsed_key: str) -> int:
+            value = parsed[parsed_key]
+            if isinstance(value, int):
+                return value
+            msg = (
+                f"Recipe '{self.name}': expected integer field '{parsed_key}' "
+                f"for {file_path.name!r}, got {value!r}"
+            )
+            raise ValueError(msg)
+
+        def _require_str(parsed_key: str) -> str:
+            value = parsed[parsed_key]
+            if isinstance(value, str):
+                return value
+            msg = (
+                f"Recipe '{self.name}': expected string field '{parsed_key}' "
+                f"for {file_path.name!r}, got {value!r}"
+            )
+            raise ValueError(msg)
+
         # Resolve year
         if "year" in parsed:
-            year = parsed["year"]
+            year = _require_int("year")
         elif "yy" in parsed:
-            year = resolve_year_from_yy(parsed["yy"])
+            year = resolve_year_from_yy(_require_int("yy"))
         else:
             raise ValueError(
                 f"Recipe '{self.name}': no 'year' or 'yy' field "
@@ -247,11 +267,15 @@ class NamingRecipe(BaseModel):
 
         # Resolve DOY (from doy directly, or from month+day)
         if "doy" in parsed:
-            doy = parsed["doy"]
+            doy = _require_int("doy")
         elif "month" in parsed and "day" in parsed:
             from datetime import date
 
-            doy = date(year, parsed["month"], parsed["day"]).timetuple().tm_yday
+            doy = (
+                date(year, _require_int("month"), _require_int("day"))
+                .timetuple()
+                .tm_yday
+            )
         else:
             raise ValueError(
                 f"Recipe '{self.name}': no 'doy' or 'month'+'day' fields "
@@ -260,14 +284,14 @@ class NamingRecipe(BaseModel):
 
         # Resolve hour
         if "hour" in parsed:
-            hour = parsed["hour"]
+            hour = _require_int("hour")
         elif "hour_letter" in parsed:
-            hour = hour_letter_to_int(parsed["hour_letter"])
+            hour = hour_letter_to_int(_require_str("hour_letter"))
         else:
             hour = 0
 
         # Resolve minute
-        minute = parsed.get("minute", 0)
+        minute = _require_int("minute") if "minute" in parsed else 0
 
         # Determine period: daily if hour=0 and minute=0 and no hour field
         period = self.period

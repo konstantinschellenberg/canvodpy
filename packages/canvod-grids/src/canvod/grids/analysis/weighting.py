@@ -385,6 +385,8 @@ class WeightCalculator:
 
         if hasattr(self.grid, "vertices") and self.grid.vertices is not None:
             vertices_df = self.grid.vertices
+            if not isinstance(vertices_df, pl.DataFrame):
+                return solid_angles
 
             for cell_id in range(self.grid.ncells):
                 try:
@@ -635,11 +637,14 @@ class WeightCalculator:
         if cell_id_var is not None:
             return cell_id_var
 
+        if not isinstance(self.ds, xr.Dataset):
+            raise ValueError("No dataset available for cell_id variable detection")
+
         candidate = f"cell_id_{self.grid.grid_type}"
-        if candidate in self.ds:
+        if candidate in self.ds.data_vars:
             return candidate
 
-        cell_vars = [v for v in self.ds.data_vars if v.startswith("cell_id_")]
+        cell_vars = [str(v) for v in self.ds.data_vars if str(v).startswith("cell_id_")]
         if cell_vars:
             logger.info(f"Auto-detected cell_id variable: {cell_vars[0]}")
             return cell_vars[0]

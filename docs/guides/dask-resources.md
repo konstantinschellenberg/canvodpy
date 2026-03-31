@@ -72,6 +72,39 @@ processing:
 
 ---
 
+## Cluster lifecycle
+
+`DaskClusterManager` owns the full lifetime of the local Dask cluster. It starts
+the cluster when the pipeline begins and shuts it down when the pipeline ends,
+regardless of whether the run completes normally, raises an exception, or is
+interrupted by the user.
+
+Shutdown happens automatically through two complementary mechanisms. When the
+manager is used as a context manager — which is how the pipeline always runs it
+— the cluster is stopped in `__exit__` as soon as the `with` block exits.
+Additionally, a handler is registered with Python's `atexit` module at creation
+time, so the cluster is also stopped if the Python process exits without
+executing the `with` block's cleanup (for example, if `sys.exit()` is called
+from a Dask worker or a signal handler). Both paths call the same `close()`
+method, which is guarded against double execution: if `close()` is called a
+second time — for instance, because atexit fires after `__exit__` has already
+run — it returns immediately without attempting to stop an already-stopped
+cluster.
+
+You never call `close()` directly. The manager is designed to be used
+exclusively as a context manager, and the pipeline infrastructure handles
+startup and teardown transparently.
+
+```python
+# The pipeline does this internally — you do not call these methods yourself
+with DaskClusterManager(config) as manager:
+    client = manager.client
+    # ... work happens here ...
+# cluster is stopped here, or by atexit if the process exits first
+```
+
+---
+
 ## Worker plugins
 
 ### ResourceInitPlugin

@@ -39,7 +39,7 @@ import warnings
 import numpy as np
 import xarray as xr
 from astropy.stats import mad_std, sigma_clip
-from numba import jit, prange
+from numba import jit
 from tqdm.auto import tqdm
 
 warnings.filterwarnings("ignore")
@@ -93,7 +93,7 @@ def vectorized_sliding_window_hampel(
     filtered_data = data.copy()
     outlier_mask = np.zeros(n_points, dtype=np.bool_)
 
-    for i in prange(n_points):
+    for i in range(n_points):
         if not np.isfinite(data[i]):
             continue
 
@@ -483,9 +483,10 @@ def astropy_hampel_ultra_fast(
                     maxiters=1,
                     masked=True,
                 )
+                clipped_arr = np.ma.array(clipped, copy=False)
                 cell_indices = np.where(cell_mask)[0]
-                filtered_data[cell_indices, sid_idx] = clipped.data
-                outlier_mask[cell_indices, sid_idx] = clipped.mask
+                filtered_data[cell_indices, sid_idx] = np.asarray(clipped_arr.data)
+                outlier_mask[cell_indices, sid_idx] = np.ma.getmaskarray(clipped_arr)
             except Exception:
                 continue
 

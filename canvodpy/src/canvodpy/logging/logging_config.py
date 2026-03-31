@@ -9,8 +9,10 @@ This module configures structured logging with multiple outputs:
 
 import logging
 import sys
+from collections.abc import Callable
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -43,12 +45,12 @@ def _setup_log_directories(base_dir: Path) -> dict[str, Path]:
     return dirs
 
 
-def _create_human_renderer() -> callable:
+def _create_human_renderer() -> Callable[..., Any]:
     """Create human-readable formatter function.
 
     Returns
     -------
-    callable
+    Callable
         Processor function for human-readable logs.
     """
 
@@ -75,12 +77,12 @@ def _create_human_renderer() -> callable:
     return human_format
 
 
-def _create_error_renderer() -> callable:
+def _create_error_renderer() -> Callable[..., Any]:
     """Create detailed error formatter with stack traces.
 
     Returns
     -------
-    callable
+    Callable
         Processor function for error logs with full context.
     """
 
@@ -223,7 +225,7 @@ def configure_logging(logfile: Path | None = None) -> structlog.BoundLogger:
     if logfile is None:
         try:
             logfile = load_config().processing.logging.get_log_file()
-        except (FileNotFoundError, Exception):
+        except FileNotFoundError, Exception:
             # Fallback when config system isn't available (e.g. CI, tests)
             logfile = Path.cwd() / ".logs" / "canvodpy.log"
 
@@ -429,7 +431,7 @@ def get_file_logger(fname: Path) -> structlog.BoundLogger:
     """
     try:
         depth = load_config().processing.logging.log_path_depth
-    except (FileNotFoundError, Exception):
+    except FileNotFoundError, Exception:
         depth = 6
     rel_path = Path(*fname.parts[-depth:])
     return LOGGER.bind(file=str(rel_path))

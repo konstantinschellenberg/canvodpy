@@ -355,6 +355,11 @@ packages/*/config/
 .vscode/
 
 # ============================================================================
+# Private packages (symlinked from external repos, local only)
+# ============================================================================
+packages/canvod-streamstats
+
+# ============================================================================
 # Private audit scripts (gnssvodpy cross-validation, local only)
 # ============================================================================
 packages/canvod-audit/src/canvod/audit/runners/vs_gnssvodpy.py

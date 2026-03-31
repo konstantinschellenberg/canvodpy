@@ -1,5 +1,7 @@
 """Default pipeline construction from configuration."""
 
+from __future__ import annotations
+
 from canvod.ops.grid import GridAssignment
 from canvod.ops.pipeline import Pipeline
 from canvod.ops.temporal import TemporalAggregate

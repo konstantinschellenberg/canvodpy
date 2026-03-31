@@ -102,7 +102,7 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
     ```toml
     [tool.ruff]
     line-length = 88
-    target-version = "py313"
+    target-version = "py314"
 
     [tool.ruff.lint]
     select = ["E", "F", "W", "I", "UP", "B", "RUF"]
@@ -123,7 +123,7 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
 
     ```toml
     [tool.ty]
-    python = "3.13"
+    python = "3.14"
     ```
 
 ---
@@ -208,3 +208,75 @@ canVODpy uses a modern Python toolchain built almost entirely on the [Astral](ht
 | Publishing | twine | uv |
 | Task runner | make / tox | just |
 | Documentation | Sphinx | Zensical (MkDocs) |
+
+---
+
+## Quality & Security
+
+canVODpy follows FAIR software principles and OpenSSF best practices:
+
+<div class="grid cards" markdown>
+
+-   :fontawesome-solid-shield-halved: &nbsp; **OpenSSF Best Practices**
+
+    ---
+
+    Certified compliance with open source security best practices.
+
+    **Status:** ✅ Passing level
+    **Badge:** [Project 12329](https://www.bestpractices.dev/projects/12329)
+
+    [:octicons-arrow-right-24: Application Guide](OPENSSF_BADGE_GUIDE.md)
+
+-   :fontawesome-solid-star: &nbsp; **FAIR Software**
+
+    ---
+
+    Compliance with the 5 FAIR software recommendations (findable,
+    accessible, interoperable, reusable).
+
+    **Status:** 4/5 met (PyPI pending v1.0)
+    **Automated:** howfairis workflow runs on every push
+
+    [:octicons-arrow-right-24: Implementation Summary](FAIR_IMPLEMENTATION_SUMMARY.md)
+
+-   :fontawesome-solid-chart-line: &nbsp; **OpenSSF Scorecard**
+
+    ---
+
+    Automated security monitoring across 18+ best practice checks.
+
+    **Runs:** Weekly + on every push to main
+    **Results:** GitHub Security tab
+
+    [:octicons-arrow-right-24: View Scorecard](https://securityscorecards.dev/viewer/?uri=github.com/nfb2021/canvodpy)
+
+-   :fontawesome-solid-lock: &nbsp; **Security Policy**
+
+    ---
+
+    Vulnerability reporting process with defined response timelines.
+
+    **Private reporting:** GitHub Security Advisories
+    **Response time:** 48 hours initial, 7-90 days fix
+
+    [:octicons-arrow-right-24: Security Policy](../SECURITY.md)
+
+</div>
+
+### Continuous Integration
+
+All quality checks run automatically:
+
+| Workflow | Runs On | Purpose |
+|----------|---------|---------|
+| `test_platforms.yml` | Push, PR | Multi-platform tests (Linux/macOS/Windows) |
+| `test_coverage.yml` | Push, PR | Coverage tracking → Coveralls |
+| `code_quality.yml` | Push | Linting, formatting, type checking |
+| `audit.yml` | PR, Weekly | Integration tests with real data |
+| `fair-software.yml` | Push, PR | FAIR compliance checks |
+| `scorecard.yml` | Weekly, Push to main | Security best practices |
+
+All workflows must pass before merging to `main`.
+
+**See also:** [Security Policy](../SECURITY.md) · [FAIR Compliance](FAIR_IMPLEMENTATION_SUMMARY.md)

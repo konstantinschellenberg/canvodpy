@@ -4,11 +4,23 @@ Run this once when you have a known-good set of outputs (e.g. after
 passing Tier 0 + Tier 1).  The checkpoints are NetCDF files stored
 alongside the audit output.
 
+Stores frozen
+-------------
+tier0_rinex     : ``tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_RINEX_store``
+                  (produce_canvodpy_store.py, rinex input, final ephemeris)
+tier0_vod       : ``tier0_rinex_vs_gnssvodpy/Rosalia/canvodpy_VOD_store``
+                  (produce_vod_store.py, from the RINEX store above)
+tier1_sbf_agency: ``tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_store``
+                  (produce_sbf_store_final.py, sbf input, final ephemeris)
+tier1_sbf_broadcast: ``tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store``
+                  (produce_sbf_store_broadcast.py, sbf input, broadcast ephemeris)
+
 Prerequisites
 -------------
-1. Tier 0 store: ``tier0_rinex/Rosalia/canvodpy_store``
-2. Tier 1a store: ``tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_allvars_store``
-3. Tier 1b store: ``tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store``
+1. Tier 0 RINEX store: ``produce_canvodpy_store.py``
+2. Tier 0 VOD store: ``produce_vod_store.py``
+3. Tier 1a SBF agency store: ``produce_sbf_store_final.py``
+4. Tier 1b SBF broadcast store: ``produce_sbf_store_broadcast.py``
 """
 
 from __future__ import annotations
@@ -29,15 +41,15 @@ VERSION = "0.1.0"
 STORES = {
     # (store_path, groups_to_freeze)
     "tier0_rinex": (
-        AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_RINEX_store",
+        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_RINEX_store",
         ["canopy_01", "reference_01_canopy_01"],
     ),
     "tier0_vod": (
-        AUDIT_ROOT / "tier0_rinex" / "Rosalia" / "canvodpy_VOD_store",
+        AUDIT_ROOT / "tier0_rinex_vs_gnssvodpy" / "Rosalia" / "canvodpy_VOD_store",
         ["canopy_01_vs_reference_01"],
     ),
     "tier1_sbf_agency": (
-        AUDIT_ROOT / "tier1_sbf_vs_rinex" / "Rosalia" / "canvodpy_SBF_allvars_store",
+        AUDIT_ROOT / "tier1_sbf_vs_rinex" / "Rosalia" / "canvodpy_SBF_store",
         ["canopy_01", "reference_01_canopy_01"],
     ),
     "tier1_sbf_broadcast": (
@@ -45,7 +57,7 @@ STORES = {
         / "tier1_broadcast_vs_agency"
         / "Rosalia"
         / "canvodpy_SBF_broadcast_store",
-        ["canopy_01"],
+        ["canopy_01", "reference_01_canopy_01"],
     ),
 }
 

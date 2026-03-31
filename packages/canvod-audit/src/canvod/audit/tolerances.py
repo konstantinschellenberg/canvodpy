@@ -48,7 +48,7 @@ class ToleranceTier(Enum):
     computed from the same source data with the same algorithm."""
 
     NUMERICAL = "numerical"
-    """Float64 precision. atol=1e-12, mae_atol=1e-10. Use for values that
+    """Float64 precision. atol=1e-6, mae_atol=1e-10. Use for values that
     should be mathematically identical but may differ due to floating-point
     operation ordering."""
 

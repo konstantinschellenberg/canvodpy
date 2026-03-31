@@ -18,11 +18,11 @@ import json
 import re
 import warnings
 from collections import Counter, defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Literal, Self
+from typing import Any, Literal, Self, cast
 
 import georinex as gr
 import numpy as np
@@ -197,8 +197,10 @@ class Rnxv3Header(BaseModel):
         if v is None or (isinstance(v, str) and not v.strip()):
             return None
         try:
+            if not isinstance(v, (str, int, float)):
+                return None
             return int(v)
-        except (ValueError, TypeError):
+        except ValueError, TypeError:
             return None
 
     @classmethod
@@ -213,10 +215,10 @@ class Rnxv3Header(BaseModel):
             msg = f"Failed to read RINEX header: {e}"
             raise ValueError(msg) from e
 
-        RnxVersion3Model.version_must_be_3(header["version"])
+        cast(Any, RnxVersion3Model).version_must_be_3(header["version"])
 
         # Parse and create instance using original logic
-        parsed_data = cls._parse_header_data(header, fpath)
+        parsed_data = cls._parse_header_data(cast(dict[str, Any], header), fpath)
         return cls.model_validate(parsed_data)
 
     @staticmethod
@@ -300,7 +302,7 @@ class Rnxv3Header(BaseModel):
         def safe_float(s: str, default: float = 0.0) -> float:
             try:
                 return float(s)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 return default
 
         pos_y = (
@@ -344,7 +346,7 @@ class Rnxv3Header(BaseModel):
         else:
             now = datetime.now(UTC)
             data["t0"] = {
-                "UTC": now.replace(tzinfo=pytz.UTC) if now.tzinfo is None else now,
+                "UTC": now if now.tzinfo is not None else now.replace(tzinfo=UTC),
                 "GPS": now,
             }
 
@@ -546,7 +548,7 @@ class Rnxv3Header(BaseModel):
 
             return {"UTC": tz.localize(dt_utc), "GPS": dt_gps}
 
-        except (ValueError, TypeError, IndexError):
+        except ValueError, TypeError, IndexError:
             now = datetime.now(UTC)
             return {"UTC": now, "GPS": now}
 
@@ -604,7 +606,7 @@ class Rnxv3Header(BaseModel):
                     slot = components[i]
                     freq_num = int(components[i + 1])
                     result[slot] = freq_num
-                except (ValueError, IndexError):
+                except ValueError, IndexError:
                     continue
 
         return result
@@ -651,7 +653,7 @@ class Rnxv3Header(BaseModel):
                 try:
                     phase_shift = float(components[i + 2])
                     i += 3
-                except (ValueError, TypeError):
+                except ValueError, TypeError:
                     i += 2
             else:
                 i += 2
@@ -757,7 +759,7 @@ class Rnxv3Obs(GNSSDataReader):
     aggregate_glonass_fdma: bool = True
 
     _header: Rnxv3Header = PrivateAttr()
-    _signal_mapper: "SignalIDMapper" = PrivateAttr()
+    _signal_mapper: SignalIDMapper = PrivateAttr()
 
     _lines: list[str] = PrivateAttr()
     _file_hash: str = PrivateAttr()
@@ -992,7 +994,7 @@ class Rnxv3Obs(GNSSDataReader):
                     value = float(value_str)
                     return value, lli, ssi
 
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             pass
 
         try:
@@ -1033,7 +1035,7 @@ class Rnxv3Obs(GNSSDataReader):
 
                     return value, lli, ssi
 
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             pass
 
         # Method 3: Last resort - try simple float parsing
@@ -1108,7 +1110,7 @@ class Rnxv3Obs(GNSSDataReader):
         """
         return list(self.iter_epochs())
 
-    def iter_epochs(self) -> Iterable[Rnxv3ObsEpochRecord]:
+    def iter_epochs(self) -> Iterator[Rnxv3ObsEpochRecord]:
         """Yield epochs one by one instead of materializing the whole list.
 
         Returns
@@ -1124,7 +1126,9 @@ class Rnxv3Obs(GNSSDataReader):
         """
         for start, end in self.get_epoch_record_batches():
             try:
-                info = Rnxv3ObsEpochRecordLineModel(epoch=self._lines[start])
+                info = Rnxv3ObsEpochRecordLineModel.model_validate(
+                    {"epoch": self._lines[start]}
+                )
 
                 # Skip event epochs (flag 2-6: special records, not observations)
                 if info.epoch_flag > 1:
@@ -1134,12 +1138,10 @@ class Rnxv3Obs(GNSSDataReader):
                 data = [line for line in self._lines[start + 1 : end] if line.strip()]
                 epoch = Rnxv3ObsEpochRecord(
                     info=info,
-                    data=(
-                        self.process_satellite_data(line) for line in data
-                    ),  # generator here too
+                    data=[self.process_satellite_data(line) for line in data],
                 )
                 yield epoch
-            except (InvalidEpochError, IncompleteEpochError, ValueError):
+            except InvalidEpochError, IncompleteEpochError, ValueError:
                 # Skip epochs with validation errors (invalid SV, malformed data,
                 # pydantic ValidationError inherits from ValueError)
                 pass
@@ -1239,7 +1241,9 @@ class Rnxv3Obs(GNSSDataReader):
         dts: list[datetime] = []
 
         for start, _end in self.get_epoch_record_batches():
-            info = Rnxv3ObsEpochRecordLineModel(epoch=self._lines[start])
+            info = Rnxv3ObsEpochRecordLineModel.model_validate(
+                {"epoch": self._lines[start]}
+            )
             dts.append(
                 datetime(
                     year=int(info.year),
@@ -1373,7 +1377,7 @@ class Rnxv3Obs(GNSSDataReader):
         epoch_indices = self.get_epoch_record_batches()
 
         # This throws MissingEpochError automatically if inconsistent
-        Rnxv3ObsEpochRecordCompletenessModel(
+        cast(Any, Rnxv3ObsEpochRecordCompletenessModel)(
             epoch_records_indeces=epoch_indices,
             rnx_file_dump_interval=dump_interval,
             sampling_interval=sampling_interval,
@@ -1637,16 +1641,26 @@ class Rnxv3Obs(GNSSDataReader):
             ssi = ssi[valid_mask]
 
         # Build coordinate arrays from pre-computed properties
-        sv_list = [sid_properties[sid]["sv"] for sid in sorted_sids]
-        constellation_list = [sid_properties[sid]["system"] for sid in sorted_sids]
-        band_list = [sid_properties[sid]["band"] for sid in sorted_sids]
-        code_list = [sid_properties[sid]["code"] for sid in sorted_sids]
+        sv_list = np.array(
+            [sid_properties[sid]["sv"] for sid in sorted_sids], dtype=object
+        )
+        constellation_list = np.array(
+            [sid_properties[sid]["system"] for sid in sorted_sids], dtype=object
+        )
+        band_list = np.array(
+            [sid_properties[sid]["band"] for sid in sorted_sids], dtype=object
+        )
+        code_list = np.array(
+            [sid_properties[sid]["code"] for sid in sorted_sids], dtype=object
+        )
         freq_center_list = [sid_properties[sid]["freq_center"] for sid in sorted_sids]
         freq_min_list = [sid_properties[sid]["freq_min"] for sid in sorted_sids]
         freq_max_list = [sid_properties[sid]["freq_max"] for sid in sorted_sids]
 
         signal_id_coord = xr.DataArray(
-            sorted_sids, dims=["sid"], attrs=COORDS_METADATA["sid"]
+            np.array(sorted_sids, dtype=object),
+            dims=["sid"],
+            attrs=COORDS_METADATA["sid"],
         )
         coords = {
             "epoch": ("epoch", timestamps, COORDS_METADATA["epoch"]),
@@ -1747,13 +1761,8 @@ class Rnxv3Obs(GNSSDataReader):
 
     def to_ds(
         self,
-        outname: Path | str | None = None,
         keep_data_vars: list[str] | None = None,
-        write_global_attrs: bool = False,
-        pad_global_sid: bool = True,
-        strip_fillval: bool = True,
-        add_future_datavars: bool = True,
-        keep_sids: list[str] | None = None,
+        **kwargs: object,
     ) -> xr.Dataset:
         """Convert RINEX observations to xarray.Dataset with signal ID structure.
 
@@ -1781,6 +1790,13 @@ class Rnxv3Obs(GNSSDataReader):
             Dataset with dimensions (epoch, sid) and requested data variables
 
         """
+        outname = cast(Path | str | None, kwargs.pop("outname", None))
+        write_global_attrs = bool(kwargs.pop("write_global_attrs", False))
+        pad_global_sid = bool(kwargs.pop("pad_global_sid", True))
+        strip_fillval = bool(kwargs.pop("strip_fillval", True))
+        add_future_datavars = bool(kwargs.pop("add_future_datavars", True))
+        keep_sids = cast(list[str] | None, kwargs.pop("keep_sids", None))
+
         if keep_data_vars is None:
             from canvod.utils.config import load_config
 
@@ -1791,7 +1807,7 @@ class Rnxv3Obs(GNSSDataReader):
         # drop unwanted vars
         for var in list(ds.data_vars):
             if var not in keep_data_vars:
-                ds = ds.drop_vars(var)
+                ds = ds.drop_vars([var])
 
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
@@ -1868,7 +1884,7 @@ class Rnxv3Obs(GNSSDataReader):
             ds = self.to_ds(write_global_attrs=False)
 
         # Prepare header dict for validators
-        header_dict = {
+        header_dict: dict[str, Any] = {
             "obs_codes_per_system": self.header.obs_codes_per_system,
         }
 
@@ -1893,7 +1909,7 @@ class Rnxv3Obs(GNSSDataReader):
         return results
 
     def _create_comprehensive_attrs(self) -> dict[str, object]:
-        attrs = {
+        attrs: dict[str, object] = {
             "File Path": str(self.fpath),
             "File Type": self.header.filetype,
             "RINEX Version": self.header.version,

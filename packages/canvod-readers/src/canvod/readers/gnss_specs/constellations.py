@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import structlog
 
@@ -46,7 +46,7 @@ class ConstellationBase:
 
     BANDS: ClassVar[dict[str, str]] = {}
     BAND_CODES: ClassVar[dict[str, list[str]]] = {}
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {}
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {}
 
     #: Single-letter system prefix used by SatelliteCatalog (e.g. "G", "E").
     SYSTEM_PREFIX: ClassVar[str] = ""
@@ -136,7 +136,7 @@ class GALILEO(ConstellationBase):
         "E5": ["I", "Q", "X"],
         "E6": ["A", "B", "C", "X", "Z"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "E1": {
             "freq": 1575.42 * UREG.MHz,
             "bandwidth": 24.552 * UREG.MHz,
@@ -200,7 +200,7 @@ class GPS(ConstellationBase):
         "L2": ["C", "D", "S", "L", "X", "P", "W", "Y", "M", "N"],
         "L5": ["I", "Q", "X"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "L1": {
             "freq": 1575.42 * UREG.MHz,
             "bandwidth": 30.69 * UREG.MHz,
@@ -277,7 +277,7 @@ class BEIDOU(ConstellationBase):
         "B3I": ["I", "Q", "X", "A"],
         "B2": ["D", "P", "X"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "B1I": {
             "freq": 1561.098 * UREG.MHz,
             "bandwidth": 4.092 * UREG.MHz,
@@ -369,7 +369,7 @@ class GLONASS(ConstellationBase):
         "G1a": ["A", "B", "X"],
         "G2a": ["A", "B", "X"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "G1a": {
             "freq": 1600.995 * UREG.MHz,
             "bandwidth": 7.875 * UREG.MHz,
@@ -396,7 +396,7 @@ class GLONASS(ConstellationBase):
         "G2": ["C", "P"],
     }
 
-    AGGR_G1_G2_BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    AGGR_G1_G2_BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "G1": {
             "freq": 1602.28125 * UREG.MHz,  # see Note on G1 & G2
             "bandwidth": 8.3345 * UREG.MHz,  # see Note on G1 & G2
@@ -418,7 +418,7 @@ class GLONASS(ConstellationBase):
         aggregate_fdma: bool = True,
     ) -> None:
         """Initialize GLONASS constellation with FDMA channel assignments."""
-        if not glonass_channel_pth.exists():
+        if glonass_channel_pth is None or not glonass_channel_pth.exists():
             msg = f"{glonass_channel_pth} does not exist"
             raise FileNotFoundError(msg)
         self.pth = glonass_channel_pth
@@ -426,24 +426,28 @@ class GLONASS(ConstellationBase):
         self.aggregate_fdma = aggregate_fdma
 
         if self.aggregate_fdma:
-            # Aggregate mode: G1 and G2 are single bands
-            self.BANDS = {**self.BANDS, **self.AGGR_BANDS}
-            self.BAND_CODES = {**self.BAND_CODES, **self.AGGR_BAND_CODES}
-            self.BAND_PROPERTIES = {
+            # Aggregate mode: G1 and G2 are single bands.
+            # Instance attributes intentionally shadow the ClassVars for per-instance config.
+            self.__dict__["BANDS"] = {**self.BANDS, **self.AGGR_BANDS}
+            self.__dict__["BAND_CODES"] = {
+                **self.BAND_CODES,
+                **self.AGGR_BAND_CODES,
+            }
+            self.__dict__["BAND_PROPERTIES"] = {
                 **self.BAND_PROPERTIES,
                 **self.AGGR_G1_G2_BAND_PROPERTIES,
             }
         else:
             # Non-aggregate mode: Map 1/2 to FDMA bands
             # Note: Frequencies will be computed per-SV in freqs_lut
-            self.BANDS = {**self.BANDS, "1": "G1_FDMA", "2": "G2_FDMA"}
-            self.BAND_CODES = {
+            self.__dict__["BANDS"] = {**self.BANDS, "1": "G1_FDMA", "2": "G2_FDMA"}
+            self.__dict__["BAND_CODES"] = {
                 **self.BAND_CODES,
                 "G1_FDMA": ["C", "P"],
                 "G2_FDMA": ["C", "P"],
             }
             # Add placeholder properties (actual freqs are SV-dependent)
-            self.BAND_PROPERTIES = {
+            self.__dict__["BAND_PROPERTIES"] = {
                 **self.BAND_PROPERTIES,
                 "G1_FDMA": {
                     "freq": 1602.0 * UREG.MHz,  # Nominal center
@@ -542,7 +546,7 @@ class SBAS(ConstellationBase):
         "L1": ["C"],
         "L5": ["I", "Q", "X"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "L1": {
             "freq": 1575.42 * UREG.MHz,
             "bandwidth": 30.69 * UREG.MHz,
@@ -586,7 +590,7 @@ class IRNSS(ConstellationBase):
         "L5": ["A", "B", "C", "X"],
         "S": ["A", "B", "C", "X"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "L5": {"freq": 1176.45 * UREG.MHz, "bandwidth": 24.0 * UREG.MHz, "system": "I"},
         "S": {"freq": 2492.028 * UREG.MHz, "bandwidth": 16.5 * UREG.MHz, "system": "I"},
     }
@@ -631,7 +635,7 @@ class QZSS(ConstellationBase):
         "L5": ["I", "Q", "X", "D", "P", "Z"],
         "L6": ["S", "L", "X", "E", "Z"],
     }
-    BAND_PROPERTIES: ClassVar[dict[str, dict[str, pint.Quantity]]] = {
+    BAND_PROPERTIES: ClassVar[dict[str, dict[str, Any]]] = {
         "L1": {
             "freq": 1575.42 * UREG.MHz,
             "bandwidth": 30.69 * UREG.MHz,

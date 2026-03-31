@@ -147,6 +147,7 @@ class ClkFile(AuxFile):
             (or dimensionless if specified).
         """
         # Parse file using modular parser
+        assert self.fpath is not None, "fpath must be set before calling read_file"
         epochs, satellites, clock_offsets = parse_clk_file(self.fpath)
 
         # Convert units (microseconds → seconds)
@@ -185,6 +186,10 @@ class ClkFile(AuxFile):
         xr.Dataset
             Dataset with complete metadata.
         """
+        assert self.fpath is not None, (
+            "fpath must be set \
+            before calling _prepare_dataset"
+        )
         ds.attrs = {
             "file": str(self.fpath.name),
             "agency": self.agency,

@@ -12,10 +12,12 @@ import pytest
 def _can_import_pipeline():
     """Check if pipeline can be imported (requires gnssvodpy)."""
     try:
-        from canvod.auxiliary import AuxDataPipeline  # noqa: F401
+        from canvod.auxiliary import (
+            AuxDataPipeline,  # noqa: F401  # type: ignore[unresolved-import]
+        )
 
         return True
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         return False
 
 
@@ -25,7 +27,7 @@ def _can_import_augmentation():
         from canvod.auxiliary import AuxDataAugmenter  # noqa: F401
 
         return True
-    except (ImportError, AttributeError):
+    except ImportError, AttributeError:
         return False
 
 

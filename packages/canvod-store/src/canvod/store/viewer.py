@@ -21,7 +21,7 @@ from __future__ import annotations
 import uuid
 from functools import lru_cache
 from html import escape
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from canvod.store.store import MyIcechunkStore
@@ -394,7 +394,7 @@ class IcechunkStoreViewer:
                 import zarr
 
                 with self.store.readonly_session(branch) as session:
-                    root = zarr.open(session.store, mode="r")
+                    root = cast(Any, zarr.open_group(session.store, mode="r"))
                     for group_key in root.group_keys():
                         if f"{group_key}/metadata/sbf_obs" in root:
                             return "SBF"
@@ -436,7 +436,7 @@ class IcechunkStoreViewer:
             with self.store.readonly_session(branch) as session:
                 import zarr
 
-                root = zarr.open(session.store, mode="r")
+                root = cast(Any, zarr.open_group(session.store, mode="r"))
                 if group_name in root:
                     group = root[group_name]
                     # Get dimensions from first array
@@ -470,7 +470,7 @@ class IcechunkStoreViewer:
             with self.store.readonly_session(branch) as session:
                 import zarr
 
-                root = zarr.open(session.store, mode="r")
+                root = cast(Any, zarr.open_group(session.store, mode="r"))
                 if "grids" in root:
                     grids_group = root["grids"]
                     grid_names = list(grids_group.group_keys())
@@ -748,7 +748,7 @@ class IcechunkStoreViewer:
 
                     table_widget = mo.ui.table(data=metadata_df, pagination=True)
                     table_html = table_widget._repr_html_()
-                except (ImportError, AttributeError):
+                except ImportError, AttributeError:
                     # Fallback to Polars HTML for Jupyter
                     table_html = metadata_df._repr_html_()
 
@@ -807,7 +807,7 @@ class IcechunkStoreViewer:
                     with self.store.readonly_session(branch) as session:
                         import zarr
 
-                        root = zarr.open(session.store, mode="r")
+                        root = cast(Any, zarr.open_group(session.store, mode="r"))
                         if "grids" in root:
                             n_grids = len(list(root["grids"].group_keys()))
                 except Exception:
@@ -1047,10 +1047,10 @@ def add_rich_display_to_store(store_class: type) -> type:
         )
 
     # Add methods to class
-    store_class._repr_html_ = _repr_html_
-    store_class.show_tree = show_tree
-    store_class.preview = preview
-    store_class.to_marimo_table = to_marimo_table
+    setattr(store_class, "_repr_html_", _repr_html_)
+    setattr(store_class, "show_tree", show_tree)
+    setattr(store_class, "preview", preview)
+    setattr(store_class, "to_marimo_table", to_marimo_table)
 
     return store_class
 

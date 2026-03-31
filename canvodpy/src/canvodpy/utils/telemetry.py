@@ -39,8 +39,11 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 try:
-    from opentelemetry import metrics, trace
-    from opentelemetry.trace import Status, StatusCode
+    from opentelemetry import metrics, trace  # type: ignore[unresolved-import]
+    from opentelemetry.trace import (  # type: ignore[unresolved-import]
+        Status,
+        StatusCode,
+    )
 
     OTEL_AVAILABLE = True
 except ImportError:
@@ -186,7 +189,7 @@ def trace_icechunk_write(
     >>> with trace_icechunk_write("2025213", dataset_size_mb=size_mb):
     ...     dataset.to_zarr(store_path, group="2025213", mode="a")
     """
-    attributes = {"icechunk.group": group_name}
+    attributes: dict[str, Any] = {"icechunk.group": group_name}
     if dataset_size_mb is not None:
         attributes["icechunk.size_mb"] = round(dataset_size_mb, 2)
     if num_variables is not None:

@@ -256,8 +256,8 @@ class AuxDataPipeline:
     def get_for_time_range(
         self,
         name: str,
-        start_time: "np.datetime64",
-        end_time: "np.datetime64",
+        start_time: np.datetime64,
+        end_time: np.datetime64,
         buffer_minutes: int = 5,
     ) -> xr.Dataset:
         """Get aux data sliced for a specific time range with buffer.
@@ -307,7 +307,9 @@ class AuxDataPipeline:
         else:
             # Fallback if epoch dimension has different name
             time_dim = [
-                d for d in full_ds.sizes if "time" in d.lower() or "epoch" in d.lower()
+                d
+                for d in full_ds.sizes
+                if "time" in str(d).lower() or "epoch" in str(d).lower()
             ]
             if time_dim:
                 sliced_ds = full_ds.sel(
@@ -357,7 +359,7 @@ class AuxDataPipeline:
         ftp_server: str | None = None,
         user_email: str | None = None,
         keep_sids: list[str] | None = None,
-    ) -> "AuxDataPipeline":
+    ) -> AuxDataPipeline:
         """Factory method to create a standard pipeline with ephemerides and
         clock.
 
@@ -415,9 +417,13 @@ class AuxDataPipeline:
         # Initialize pipeline
         pipeline = cls(matched_dirs=matched_dirs, keep_sids=keep_sids)
 
+        date_obj = matched_dirs.yyyydoy.date
+        if date_obj is None:
+            raise ValueError("MatchedDirs.yyyydoy must include a valid date")
+
         # Register ephemerides (REQUIRED)
         sp3_file = Sp3File.from_datetime_date(
-            date=matched_dirs.yyyydoy.date,
+            date=date_obj,
             agency=agency,
             product_type=product_type,
             ftp_server=ftp_server,
@@ -428,7 +434,7 @@ class AuxDataPipeline:
 
         # Register clock (REQUIRED)
         clk_file = ClkFile.from_datetime_date(
-            date=matched_dirs.yyyydoy.date,
+            date=date_obj,
             agency=agency,
             product_type=product_type,
             ftp_server=ftp_server,

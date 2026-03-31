@@ -201,6 +201,65 @@ class TestBatchTemporalOverlap:
         assert "hash_overlap" in overlaps
         assert "hash_clean" not in overlaps
 
+
+class TestShouldSkipFile:
+    """Test should_skip_file — the public 3-layer early-exit check."""
+
+    def test_skip_exact_hash(self, rinex_store) -> None:
+        """Returns (True, 'hash_match') for a file already ingested."""
+        skip, reason = rinex_store.should_skip_file(
+            group_name="canopy_01",
+            file_hash="hash_15min_file_1",
+            time_start=np.datetime64("2025-01-01T00:00:00", "ns"),
+            time_end=np.datetime64("2025-01-01T00:14:55", "ns"),
+        )
+        assert skip is True
+        assert reason == "hash_match"
+
+    def test_skip_temporal_overlap(self, rinex_store) -> None:
+        """Returns (True, 'temporal_overlap') for new hash but overlapping range."""
+        skip, reason = rinex_store.should_skip_file(
+            group_name="canopy_01",
+            file_hash="hash_new_daily_file",
+            time_start=np.datetime64("2025-01-01T00:00:00", "ns"),
+            time_end=np.datetime64("2025-01-01T23:59:55", "ns"),
+        )
+        assert skip is True
+        assert reason == "temporal_overlap"
+
+    def test_no_skip_new_file(self, rinex_store) -> None:
+        """Returns (False, '') for a new file with no overlap."""
+        skip, reason = rinex_store.should_skip_file(
+            group_name="canopy_01",
+            file_hash="hash_next_15min",
+            time_start=np.datetime64("2025-01-01T00:30:00", "ns"),
+            time_end=np.datetime64("2025-01-01T00:44:55", "ns"),
+        )
+        assert skip is False
+        assert reason == ""
+
+    def test_no_skip_when_hash_is_none(self, rinex_store) -> None:
+        """Returns (False, '') when file_hash is None (cannot check)."""
+        skip, reason = rinex_store.should_skip_file(
+            group_name="canopy_01",
+            file_hash=None,
+            time_start=np.datetime64("2025-01-01T00:00:00", "ns"),
+            time_end=np.datetime64("2025-01-01T23:59:55", "ns"),
+        )
+        assert skip is False
+        assert reason == ""
+
+    def test_no_skip_fresh_group(self, rinex_store) -> None:
+        """Returns (False, '') when the group does not yet exist."""
+        skip, reason = rinex_store.should_skip_file(
+            group_name="canopy_99",
+            file_hash="hash_anything",
+            time_start=np.datetime64("2025-01-01T00:00:00", "ns"),
+            time_end=np.datetime64("2025-01-01T00:14:55", "ns"),
+        )
+        assert skip is False
+        assert reason == ""
+
     def test_empty_intervals(self, rinex_store) -> None:
         """Empty interval list returns empty set."""
         overlaps = rinex_store.check_temporal_overlaps("canopy_01", [])

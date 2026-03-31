@@ -48,7 +48,7 @@ def main():
     print("Example 2: SP3 File - from_file() with velocities")
     print("=" * 60)
 
-    if sp3_file.fpath.exists():
+    if sp3_file.fpath is not None and sp3_file.fpath.exists():
         sp3_from_file = Sp3File.from_file(
             sp3_file.fpath,
             add_velocities=True,
@@ -107,7 +107,10 @@ def main():
                 ftp_server="ftp://gssc.esa.int/gnss",
                 local_dir=temp_dir,
             )
-            print(f"✓ {agency}: {sp3.fpath.name}")
+            if sp3.fpath is not None:
+                print(f"✓ {agency}: {sp3.fpath.name}")
+            else:
+                print(f"✓ {agency}: (no local file path)")
         except Exception as e:
             print(f"✗ {agency}: {str(e)[:80]}...")
 

@@ -791,7 +791,7 @@ just test-coverage
     :   Your SSH key is not set up correctly. Go back to [step 4](#4-set-up-an-ssh-key-for-github) and make sure the key is added to both the SSH agent and your GitHub account.
 
     **`uv sync` fails with a Python version error**
-    :   canVODpy requires Python 3.13 or 3.14. Install a supported version with `uv python install 3.13` and try again.
+    :   canVODpy requires Python 3.14. Install a supported version with `uv python install 3.14` and try again.
 
     **Pre-commit hook fails on commit**
     :   Run `just check` — it will auto-fix most linting and formatting issues. Stage the fixed files and commit again.

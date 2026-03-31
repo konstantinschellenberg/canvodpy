@@ -63,11 +63,12 @@ def _banner(title: str, paths: list[tuple[str, Path]], extra: str = "") -> None:
 
 
 def _human_size(nbytes: int) -> str:
+    size = float(nbytes)
     for unit in ("B", "KB", "MB", "GB", "TB"):
-        if abs(nbytes) < 1024:
-            return f"{nbytes:.1f} {unit}"
-        nbytes /= 1024
-    return f"{nbytes:.1f} PB"
+        if abs(size) < 1024:
+            return f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} PB"
 
 
 def _confirm(action: str) -> bool:

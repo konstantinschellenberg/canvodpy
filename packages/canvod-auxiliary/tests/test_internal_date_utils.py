@@ -20,7 +20,7 @@ class TestYYYYDOY:
         yyyydoy = YYYYDOY.from_date(date)
 
         assert yyyydoy.year == 2024
-        assert yyyydoy.doy == "015"
+        assert yyyydoy.doy == 15
         assert yyyydoy.date == date
 
     def test_from_str(self):
@@ -28,7 +28,7 @@ class TestYYYYDOY:
         yyyydoy = YYYYDOY.from_str("2024015")
 
         assert yyyydoy.year == 2024
-        assert yyyydoy.doy == "015"
+        assert yyyydoy.doy == 15
         assert yyyydoy.date == datetime.date(2024, 1, 15)
 
     def test_from_int(self):
@@ -36,7 +36,7 @@ class TestYYYYDOY:
         yyyydoy = YYYYDOY.from_int(2024015)
 
         assert yyyydoy.year == 2024
-        assert yyyydoy.doy == "015"
+        assert yyyydoy.doy == 15
 
     def test_to_str(self):
         """Test converting YYYYDOY to string."""

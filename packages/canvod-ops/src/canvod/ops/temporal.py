@@ -7,10 +7,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import polars as pl
+import structlog
 import xarray as xr
-from loguru import logger
 
 from canvod.ops.base import Op, OpResult
+
+logger = structlog.get_logger(__name__)
 
 
 def _convert_to_polars_freq(freq_str: str) -> str:
@@ -58,19 +60,18 @@ class TemporalAggregate(Op):
     def __call__(self, ds: xr.Dataset) -> tuple[xr.Dataset, OpResult]:
         t0 = time.perf_counter()
         params: dict[str, Any] = {"freq": self._freq, "method": self._method}
-        input_shape = dict(ds.sizes)
+        input_shape = {str(k): int(v) for k, v in dict(ds.sizes).items()}
 
         # --- Early exit if data is already at or coarser than requested freq ---
-        requested_td = pd.Timedelta(
-            pd.tseries.frequencies.to_offset(self._freq).nanos, unit="ns"
-        )  # type: ignore[union-attr]
+        requested_ns = int(pd.tseries.frequencies.to_offset(self._freq).nanos)
+        requested_td = pd.Timedelta(requested_ns, unit="ns")
         median_spacing = _median_epoch_spacing(ds.epoch.values)
 
         if median_spacing >= requested_td:
             logger.info(
-                "Temporal aggregation skipped — median spacing ({}) >= requested ({})",
-                median_spacing,
-                requested_td,
+                "temporal_aggregation_skipped",
+                median_spacing=str(median_spacing),
+                requested=str(requested_td),
             )
             result = OpResult(
                 op_name=self.name,
@@ -96,7 +97,7 @@ class TemporalAggregate(Op):
             elif set(dims) == {"epoch", "sid"}:
                 epoch_sid_coords.append(str(cname))
 
-        data_var_names = list(ds.data_vars)
+        data_var_names: list[str] = [str(v) for v in ds.data_vars]
 
         # --- Build long-form Polars DataFrame ---
         epoch_vals = ds.epoch.values  # datetime64
@@ -188,13 +189,13 @@ class TemporalAggregate(Op):
         out = xr.Dataset(new_data_vars, coords=new_coords, attrs=ds.attrs.copy())
 
         duration = time.perf_counter() - t0
-        output_shape = dict(out.sizes)
+        output_shape = {str(k): int(v) for k, v in dict(out.sizes).items()}
 
         logger.info(
-            "Temporal aggregation complete: {} -> {} ({})",
-            input_shape,
-            output_shape,
-            f"{duration:.2f}s",
+            "temporal_aggregation_complete",
+            input_shape=input_shape,
+            output_shape=output_shape,
+            duration_s=round(duration, 2),
         )
 
         result = OpResult(

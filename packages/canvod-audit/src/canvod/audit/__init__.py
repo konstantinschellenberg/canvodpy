@@ -22,7 +22,13 @@ Quick start::
 """
 
 from canvod.audit._meta import __version__
-from canvod.audit.core import AlignmentInfo, ComparisonResult, compare_datasets
+from canvod.audit.core import (
+    AlignmentInfo,
+    ComparisonResult,
+    CoverageReport,
+    compare_datasets,
+)
+from canvod.audit.reporting.typst import to_typst
 from canvod.audit.stats import VariableStats, compute_variable_stats
 from canvod.audit.tolerances import (
     SCIENTIFIC_DEFAULTS,
@@ -37,6 +43,7 @@ __all__ = [
     "TIER_DEFAULTS",
     "AlignmentInfo",
     "ComparisonResult",
+    "CoverageReport",
     "Tolerance",
     "ToleranceTier",
     "VariableStats",
@@ -44,4 +51,5 @@ __all__ = [
     "compare_datasets",
     "compute_variable_stats",
     "get_tolerance",
+    "to_typst",
 ]

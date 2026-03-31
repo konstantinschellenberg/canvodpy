@@ -4,16 +4,13 @@ Each function accepts only primitives (str, dict, list, None) and returns
 JSON-serializable dicts suitable for XCom.  They delegate to existing
 canvodpy machinery — no pipeline rewrite.
 
-Typical DAG topology::
+Two DAG topologies (SBF and RINEX)::
 
-    [check_rinex] ──> [fetch_aux_data] ──> [process_rinex] ──> [calculate_vod]
+    SBF:   validate_dirs → check_sbf → process_sbf
+             → validate_ingest → calculate_vod → cleanup
 
-``check_rinex`` discovers whether RINEX files exist for **both** canopy
-and reference receivers on the requested date (via ``PairDataDirMatcher``).
-If they do, ``fetch_aux_data`` downloads SP3+CLK orbit/clock products — a
-step that is expected to fail for recent dates (products lag by 1-14 days).
-When aux data is available, ``process_rinex`` augments the observations and
-writes to Icechunk, then ``calculate_vod`` computes vegetation optical depth.
+    RINEX: validate_dirs → wait_for_rinex → wait_for_sp3 → fetch_aux_data
+             → process_rinex → validate_ingest → calculate_vod → cleanup
 """
 
 from __future__ import annotations
@@ -22,6 +19,7 @@ import datetime
 import logging
 import shutil
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -29,7 +27,6 @@ import xarray as xr
 from canvod.auxiliary.pipeline import AuxDataPipeline
 from canvod.auxiliary.position import ECEFPosition
 from canvod.readers import MatchedDirs
-from canvod.readers.matching.dir_matcher import _has_rinex_files
 from canvod.utils.config import load_config
 from canvod.utils.tools import YYYYDOY
 from canvodpy.orchestrator.interpolator import (
@@ -40,6 +37,27 @@ from canvodpy.orchestrator.interpolator import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _cap_blas_threads(n: int = 1) -> None:
+    """Set BLAS/OpenMP thread-cap env vars if not already set by the caller.
+
+    Called at the start of CPU-heavy tasks so that numpy/scipy don't spawn
+    os.cpu_count() threads per process.  Only sets vars that are absent,
+    so an operator-level override (e.g. Airflow env) always wins.
+    """
+    import os
+
+    s = str(n)
+    for var in (
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+    ):
+        if var not in os.environ:
+            os.environ[var] = s
 
 
 # GNSS file glob patterns — sourced from canvod-virtualiconvname BUILTIN_PATTERNS
@@ -119,13 +137,59 @@ def _get_rinex_files(directory: Path) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def check_rinex(site: str, yyyydoy: str) -> dict:
-    """Check whether RINEX files exist for both receivers on the given date.
+def _discover_files_for_date(
+    site_cfg,
+    rcfg,
+    receiver_name: str,
+    date_obj: YYYYDOY,
+    base: Path,
+) -> tuple[list[Path], list[str]]:
+    """Discover files for a receiver+date using FilenameMapper or glob fallback.
 
-    Uses the same ``PairDataDirMatcher`` directory scanning logic that the
-    orchestrator uses: the ``receiver.directory`` field from ``sites.yaml``
-    is the relative path from ``gnss_site_data_root`` to the RINEX
-    directories.  Date subdirectories are ``YYDDD`` (5-digit).
+    Returns (file_paths, warnings).
+    """
+    warnings: list[str] = []
+
+    # Prefer FilenameMapper when naming config is available
+    if site_cfg.naming and rcfg.naming:
+        try:
+            from canvod.virtualiconvname import (
+                FilenameMapper,
+                ReceiverNamingConfig,
+                SiteNamingConfig,
+            )
+
+            mapper = FilenameMapper(
+                site_naming=SiteNamingConfig(**site_cfg.naming),
+                receiver_naming=ReceiverNamingConfig(**rcfg.naming),
+                receiver_type=rcfg.type,
+                receiver_base_dir=base / rcfg.directory,
+            )
+            vfs = mapper.discover_for_date(date_obj.year, date_obj.doy)
+            overlaps = FilenameMapper.detect_overlaps(vfs)
+            if overlaps:
+                warnings.append(
+                    f"{receiver_name}: {len(overlaps)} temporal overlaps detected"
+                )
+                overlap_paths = {vf.physical_path for pair in overlaps for vf in pair}
+                vfs = [vf for vf in vfs if vf.physical_path not in overlap_paths]
+            return [vf.physical_path for vf in vfs], warnings
+        except Exception:
+            # Fall back to glob if naming config is invalid
+            pass
+
+    # Fallback: raw glob
+    recv_dir = base / rcfg.directory / date_obj.yydoy
+    files = _get_rinex_files(recv_dir)
+    return files, warnings
+
+
+def check_rinex(site: str, yyyydoy: str) -> dict:
+    """Check whether RINEX files exist for all receivers on the given date.
+
+    Uses ``FilenameMapper`` when naming config is available (prevents
+    duplicate ingest from daily+sub-daily files). Falls back to raw
+    glob when naming config is absent.
 
     Parameters
     ----------
@@ -154,14 +218,16 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
     all_ready = True
 
     for name, rcfg in site_cfg.receivers.items():
-        recv_dir = base / rcfg.directory / date_obj.yydoy
-        has_files = _has_rinex_files(recv_dir)
-        files = _get_rinex_files(recv_dir) if has_files else []
+        files, file_warnings = _discover_files_for_date(
+            site_cfg, rcfg, name, date_obj, base
+        )
+        has_files = len(files) > 0
         receivers[name] = {
-            "directory": str(recv_dir),
+            "directory": str(base / rcfg.directory),
             "has_files": has_files,
             "files": [str(f) for f in files],
             "count": len(files),
+            "warnings": file_warnings,
         }
         if not has_files:
             all_ready = False
@@ -183,6 +249,79 @@ def check_rinex(site: str, yyyydoy: str) -> dict:
         raise RuntimeError(msg)
 
     logger.info("check_rinex: %s %s — all receivers ready", site, date_obj.to_str())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Task 1a-sbf — check_sbf
+# ---------------------------------------------------------------------------
+
+
+def check_sbf(site: str, yyyydoy: str) -> dict:
+    """Check whether SBF files exist for all receivers on the given date.
+
+    Same logic as :func:`check_rinex` but for SBF binary data. SBF files
+    are available immediately after receiver transfer (no sensor wait needed).
+
+    Parameters
+    ----------
+    site : str
+        Research site name (must exist in config).
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "ready": bool, "receivers": {...}}``
+
+    Raises
+    ------
+    RuntimeError
+        If SBF files are missing for any receiver.
+    """
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+    base = site_cfg.get_base_path()
+
+    receivers: dict[str, dict] = {}
+    all_ready = True
+
+    for name, rcfg in site_cfg.receivers.items():
+        files, file_warnings = _discover_files_for_date(
+            site_cfg, rcfg, name, date_obj, base
+        )
+        # Filter to SBF files only
+        sbf_files = [f for f in files if f.suffix.lower() == ".sbf"]
+        has_files = len(sbf_files) > 0
+        receivers[name] = {
+            "directory": str(base / rcfg.directory),
+            "has_files": has_files,
+            "files": [str(f) for f in sbf_files],
+            "count": len(sbf_files),
+            "warnings": file_warnings,
+        }
+        if not has_files:
+            all_ready = False
+
+    result = {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "ready": all_ready,
+        "receivers": receivers,
+    }
+
+    if not all_ready:
+        missing = [n for n, r in receivers.items() if not r["has_files"]]
+        msg = (
+            f"SBF files not yet available for {site} {date_obj.to_str()}: "
+            f"missing receivers {missing}"
+        )
+        logger.warning(msg)
+        raise RuntimeError(msg)
+
+    logger.info("check_sbf: %s %s — all receivers ready", site, date_obj.to_str())
     return result
 
 
@@ -439,6 +578,66 @@ def validate_data_dirs(site: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# SP3/CLK sensor helper — shared by all DAGs that wait for agency products
+# ---------------------------------------------------------------------------
+
+
+def check_sp3_availability(ds: str) -> object:
+    """Return a ``PokeReturnValue`` for the SP3/CLK date-age sensor.
+
+    Uses a date-age heuristic keyed to ``processing.aux_data.product_type``:
+
+    * ``ultra-rapid`` — gate at 0 days (always available)
+    * ``rapid``       — gate at 2 days
+    * ``final``       — gate at 14 days (default)
+
+    Raises ``AirflowSkipException`` when age > 30 days to prevent zombie runs.
+    Falls back to ``"final"`` if config cannot be loaded.
+
+    Intended for use inside ``@task.sensor`` bodies so that the four identical
+    sensor copies (2 DAGs × 2 repos) share a single implementation.
+
+    Parameters
+    ----------
+    ds : str
+        Airflow ``ds`` macro value (``YYYY-MM-DD`` ISO date string).
+    """
+    import datetime as dt
+
+    from airflow.exceptions import (
+        AirflowSkipException,  # type: ignore[unresolved-import]
+    )
+    from airflow.sensors.base import PokeReturnValue  # type: ignore[unresolved-import]
+
+    target = dt.date.fromisoformat(ds)
+    age = (dt.date.today() - target).days
+
+    if age > 30:
+        raise AirflowSkipException(
+            f"SP3 not available for {ds} after {age} days — abandoning"
+        )
+
+    try:
+        product_type = load_config().processing.aux_data.product_type
+    except Exception:
+        product_type = "final"
+
+    _MIN_AGE: dict[str, int] = {"ultra-rapid": 0, "rapid": 2, "final": 14}
+    min_age = _MIN_AGE.get(product_type, 14)
+    available = age >= min_age
+
+    return PokeReturnValue(
+        is_done=available,
+        xcom_value={
+            "sp3_ready": available,
+            "product_type": product_type,
+            "age_days": age,
+            "min_age_days": min_age,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
 # Task 2 — fetch_aux_data
 # ---------------------------------------------------------------------------
 
@@ -523,8 +722,12 @@ def fetch_aux_data(
 
     # 2. Detect sampling interval from RINEX filename
     if sampling_interval_s is None:
+        yydoy = date_obj.yydoy
+        if yydoy is None:
+            msg = f"Missing YYDOY for date {date_obj.to_str()}"
+            raise ValueError(msg)
         for _name, rcfg in site_cfg.receivers.items():
-            recv_dir = base / rcfg.directory / date_obj.yydoy
+            recv_dir = base / rcfg.directory / yydoy
             rnx_files = _get_rinex_files(recv_dir)
             if rnx_files:
                 sampling_interval_s = parse_sampling_interval_from_filename(
@@ -619,6 +822,7 @@ def process_rinex(
     from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
 
     config = load_config()
+    _cap_blas_threads(config.processing.processing.threads_per_worker or 1)
     site_cfg = config.sites.sites[site]
     date_obj = _resolve_date(yyyydoy)
     keep_vars = config.processing.processing.keep_rnx_vars
@@ -633,7 +837,11 @@ def process_rinex(
     # Iterate over configured receivers
     for recv_name, rcfg in site_cfg.receivers.items():
         recv_type = rcfg.type
-        recv_dir = base / rcfg.directory / date_obj.yydoy
+        yydoy = date_obj.yydoy
+        if yydoy is None:
+            msg = f"Missing YYDOY for date {date_obj.to_str()}"
+            raise ValueError(msg)
+        recv_dir = base / rcfg.directory / yydoy
 
         # Determine store groups for this receiver
         if recv_type == "canopy":
@@ -686,18 +894,28 @@ def process_rinex(
                 logger.exception("Failed to process %s", rnx_file.name)
                 continue
 
+            file_hash = augmented_ds.attrs.get("File Hash")
+            time_start = augmented_ds.epoch.min().values
+            time_end = augmented_ds.epoch.max().values
+
             # Write to each store group for this receiver
             for group in store_groups:
-                file_hash = augmented_ds.attrs.get("File Hash")
-
-                # Dedup: skip if this file hash already exists
-                existing = research_site.rinex_store.batch_check_existing(
-                    group,
-                    [file_hash] if file_hash else [],
+                # Early-exit pre-check (hash match + temporal overlap).
+                # write_or_append_group(dedup=True) repeats this check as the
+                # authoritative store-level gate, covering races and future
+                # refactors that might bypass this pre-check.
+                skip, reason = research_site.rinex_store.should_skip_file(
+                    group_name=group,
+                    file_hash=file_hash,
+                    time_start=time_start,
+                    time_end=time_end,
                 )
-                if file_hash and file_hash in existing:
+                if skip:
                     logger.info(
-                        "Skipping duplicate %s in group %s", rnx_file.name, group
+                        "Skipping %s in group %s (reason=%s)",
+                        rnx_file.name,
+                        group,
+                        reason,
                     )
                     continue
 
@@ -705,6 +923,7 @@ def process_rinex(
                     dataset=augmented_ds,
                     group_name=group,
                     commit_message=f"Airflow ingest {rnx_file.name}",
+                    dedup=True,
                 )
                 total_files_written += 1
 
@@ -721,7 +940,344 @@ def process_rinex(
         "yyyydoy": date_obj.to_str(),
         "receivers_processed": receivers_processed,
         "files_written": total_files_written,
+        "store_radial_distance": config.processing.processing.store_radial_distance,
     }
+
+
+# ---------------------------------------------------------------------------
+# Task 3b — process_sbf (broadcast or agency ephemeris)
+# ---------------------------------------------------------------------------
+
+
+def process_sbf(
+    site: str,
+    yyyydoy: str,
+    receiver_files: dict | None = None,
+    aux_zarr_path: str | None = None,
+) -> dict:
+    """Read SBF, augment with ephemeris, and write to Icechunk store.
+
+    Supports two ephemeris modes controlled by ``aux_zarr_path``:
+
+    * ``aux_zarr_path=None`` *(default)* — **broadcast geometry**: theta/phi
+      come from SBF ``SatVisibility`` blocks embedded in the binary.  No
+      external products needed; results are available same-day.
+    * ``aux_zarr_path=<path>`` — **agency geometry**: theta/phi are computed
+      from Hermite-interpolated SP3/CLK products (same path produced by
+      ``fetch_aux_data``).  Geometry quality matches the RINEX pipeline at
+      the cost of a 12-18 day product lag.
+
+    In both modes SBF observables (SNR, Phase, Pseudorange, Doppler) and
+    metadata (PVT, DOP, SatVisibility as ``sbf_obs``) are written.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+    receiver_files : dict, optional
+        ``{receiver_name: {"files": [str, ...], "count": N}}`` from
+        ``check_sbf``.  When ``None``, files are discovered from disk.
+    aux_zarr_path : str or None, optional
+        Path to the Hermite-interpolated auxiliary Zarr store produced by
+        ``fetch_aux_data``.  When ``None``, broadcast geometry is used.
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "receivers_processed", "files_written",
+        "sbf_obs_written", "ephemeris_source"}``
+    """
+    from canvod.store import GnssResearchSite
+    from canvodpy.orchestrator.processor import preprocess_with_hermite_aux
+
+    config = load_config()
+    _cap_blas_threads(config.processing.processing.threads_per_worker or 1)
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+    keep_vars = config.processing.processing.keep_rnx_vars
+    keep_sids = config.sids.get_sids()
+    base = site_cfg.get_base_path()
+
+    use_broadcast = aux_zarr_path is None
+    # preprocess_with_hermite_aux always requires an aux path argument;
+    # when using broadcast geometry the path is unused internally.
+    effective_aux_path = Path("/dev/null") if use_broadcast else Path(aux_zarr_path)  # ty: ignore[invalid-argument-type]
+
+    research_site = GnssResearchSite(site)
+    receivers_processed: list[str] = []
+    total_files_written = 0
+    sbf_obs_written = False
+
+    for recv_name, rcfg in site_cfg.receivers.items():
+        recv_type = rcfg.type
+
+        # Determine store groups
+        if recv_type == "canopy":
+            store_groups = [recv_name]
+        else:
+            canopy_names = site_cfg.resolve_scs_from(recv_name)
+            store_groups = [f"{recv_name}_{cn}" for cn in canopy_names]
+
+        # Resolve SBF files
+        if receiver_files and recv_name in receiver_files:
+            sbf_files = [Path(f) for f in receiver_files[recv_name]["files"]]
+        else:
+            files, _ = _discover_files_for_date(
+                site_cfg, rcfg, recv_name, date_obj, base
+            )
+            sbf_files = [f for f in files if f.suffix.lower() == ".sbf"]
+
+        if not sbf_files:
+            logger.warning("process_sbf: no SBF files for %s, skipping", recv_name)
+            continue
+
+        # Receiver position from first SBF file's metadata
+        position: ECEFPosition | None = None
+        for ff in sbf_files:
+            try:
+                from canvodpy.factories import ReaderFactory
+
+                reader = ReaderFactory.create("sbf", fpath=ff)
+                ds_tmp = reader.to_ds(keep_data_vars=None, write_global_attrs=True)
+                position = ECEFPosition.from_ds_metadata(ds_tmp)
+                break
+            except Exception as exc:
+                logger.warning("SBF position extract failed for %s: %s", ff.name, exc)
+
+        if position is None:
+            logger.error("No valid position for %s — skipping", recv_name)
+            continue
+
+        # Process each SBF file
+        sbf_obs_parts: list[xr.Dataset] = []
+        for sbf_file in sbf_files:
+            try:
+                _path, augmented_ds, aux_datasets, _sid_issues = (
+                    preprocess_with_hermite_aux(
+                        rnx_file=sbf_file,
+                        keep_vars=keep_vars,
+                        aux_zarr_path=effective_aux_path,
+                        receiver_position=position,
+                        receiver_type=recv_name,
+                        keep_sids=keep_sids,
+                        reader_name="sbf",
+                        use_sbf_geometry=use_broadcast,
+                    )
+                )
+            except Exception:
+                logger.exception("Failed to process SBF %s", sbf_file.name)
+                continue
+
+            # Collect sbf_obs metadata for later writing
+            if "sbf_obs" in aux_datasets:
+                sbf_obs_parts.append(aux_datasets["sbf_obs"])
+
+            file_hash = augmented_ds.attrs.get("File Hash")
+            time_start = augmented_ds.epoch.min().values
+            time_end = augmented_ds.epoch.max().values
+
+            # Write to each store group
+            for group in store_groups:
+                # Early-exit pre-check (hash match + temporal overlap).
+                # write_or_append_group(dedup=True) repeats this check as the
+                # authoritative store-level gate, covering races and future
+                # refactors that might bypass this pre-check.
+                skip, reason = research_site.rinex_store.should_skip_file(
+                    group_name=group,
+                    file_hash=file_hash,
+                    time_start=time_start,
+                    time_end=time_end,
+                )
+                if skip:
+                    logger.info(
+                        "Skipping %s in group %s (reason=%s)",
+                        sbf_file.name,
+                        group,
+                        reason,
+                    )
+                    continue
+
+                research_site.rinex_store.write_or_append_group(
+                    dataset=augmented_ds,
+                    group_name=group,
+                    commit_message=f"Airflow SBF ingest {sbf_file.name}",
+                    dedup=True,
+                )
+                total_files_written += 1
+
+        # Write sbf_obs metadata per receiver — no in-memory concat
+        if sbf_obs_parts:
+            try:
+                rinex_store_any = cast(Any, research_site.rinex_store)
+                rinex_store_any.append_metadata_datasets(
+                    sbf_obs_parts, recv_name, "sbf_obs"
+                )
+                sbf_obs_written = True
+                logger.info(
+                    "process_sbf: wrote sbf_obs for %s (%d parts)",
+                    recv_name,
+                    len(sbf_obs_parts),
+                )
+            except Exception:
+                logger.exception("Failed to write sbf_obs for %s", recv_name)
+
+        receivers_processed.append(recv_name)
+        logger.info(
+            "process_sbf: %s processed %d files -> groups %s",
+            recv_name,
+            len(sbf_files),
+            store_groups,
+        )
+
+    return {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "receivers_processed": receivers_processed,
+        "files_written": total_files_written,
+        "sbf_obs_written": sbf_obs_written,
+        "ephemeris_source": "broadcast" if use_broadcast else "agency",
+        "store_radial_distance": config.processing.processing.store_radial_distance,
+        "store_sbf_raw_observables": config.processing.processing.store_sbf_raw_observables,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task 3c — validate_ingest (quality gate between ingest and VOD)
+# ---------------------------------------------------------------------------
+
+
+def validate_ingest(site: str, yyyydoy: str) -> dict:
+    """Spot-check stored data before VOD computation.
+
+    Reads back ingested data from the Icechunk store and verifies basic
+    physical plausibility. Catches corrupt writes, coordinate transform
+    bugs, or SID mismatches before they propagate into VOD.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "valid": bool, "checks": {...}}``
+
+    Raises
+    ------
+    RuntimeError
+        If any check fails (blocks VOD computation).
+    """
+    from canvod.store import GnssResearchSite
+
+    config = load_config()
+    site_cfg = config.sites.sites[site]
+    date_obj = _resolve_date(yyyydoy)
+
+    research_site = GnssResearchSite(site)
+    checks: dict[str, dict] = {}
+    all_valid = True
+
+    import datetime as _dt
+
+    assert date_obj.date is not None
+    day_start = _dt.datetime.combine(date_obj.date, _dt.time.min)
+    day_end = day_start + _dt.timedelta(days=1)
+    time_range = (day_start, day_end)
+
+    for recv_name, rcfg in site_cfg.receivers.items():
+        recv_checks: dict[str, str] = {}
+
+        try:
+            ds = research_site.read_receiver_data(
+                receiver_name=recv_name,
+                time_range=time_range,
+            )
+        except Exception:
+            recv_checks["data_loaded"] = "SKIP: no data for this date"
+            checks[recv_name] = recv_checks
+            continue
+
+        n_epochs = ds.sizes.get("epoch", 0)
+        n_sids = ds.sizes.get("sid", 0)
+
+        # Check 1: non-empty
+        if n_epochs == 0 or n_sids == 0:
+            recv_checks["non_empty"] = f"FAIL: {n_epochs} epochs, {n_sids} sids"
+            all_valid = False
+        else:
+            recv_checks["non_empty"] = f"OK: {n_epochs} epochs, {n_sids} sids"
+
+        # Check 2: SNR in plausible range (0-70 dB-Hz)
+        for snr_var in ["cn0", "SNR", "S1C", "S1W", "S2C", "S2W"]:
+            if snr_var in ds.data_vars:
+                snr_vals = ds[snr_var].values[np.isfinite(ds[snr_var].values)]
+                if len(snr_vals) > 0:
+                    snr_min, snr_max = float(snr_vals.min()), float(snr_vals.max())
+                    if snr_min < 0 or snr_max > 70:
+                        recv_checks["snr_range"] = (
+                            f"FAIL: {snr_var} range [{snr_min:.1f}, {snr_max:.1f}]"
+                        )
+                        all_valid = False
+                    else:
+                        recv_checks["snr_range"] = (
+                            f"OK: {snr_var} [{snr_min:.1f}, {snr_max:.1f}]"
+                        )
+                break
+
+        # Check 3: theta (polar angle) in valid range [0, π/2]
+        if "theta" in ds.coords:
+            theta = ds.coords["theta"].values[np.isfinite(ds.coords["theta"].values)]
+            if len(theta) > 0:
+                t_min, t_max = float(theta.min()), float(theta.max())
+                if t_min < -0.01 or t_max > np.pi / 2 + 0.01:
+                    recv_checks["theta_range"] = (
+                        f"FAIL: theta [{t_min:.4f}, {t_max:.4f}] rad"
+                    )
+                    all_valid = False
+                else:
+                    recv_checks["theta_range"] = (
+                        f"OK: theta [{t_min:.4f}, {t_max:.4f}] rad"
+                    )
+
+        # Check 4: phi (azimuth) in valid range [0, 2π]
+        if "phi" in ds.coords:
+            phi = ds.coords["phi"].values[np.isfinite(ds.coords["phi"].values)]
+            if len(phi) > 0:
+                p_min, p_max = float(phi.min()), float(phi.max())
+                if p_min < -0.01 or p_max > 2 * np.pi + 0.01:
+                    recv_checks["phi_range"] = (
+                        f"FAIL: phi [{p_min:.4f}, {p_max:.4f}] rad"
+                    )
+                    all_valid = False
+                else:
+                    recv_checks["phi_range"] = f"OK: phi [{p_min:.4f}, {p_max:.4f}] rad"
+
+        checks[recv_name] = recv_checks
+
+    result = {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "valid": all_valid,
+        "checks": checks,
+    }
+
+    if not all_valid:
+        failed = {
+            r: {k: v for k, v in c.items() if v.startswith("FAIL")}
+            for r, c in checks.items()
+            if any(v.startswith("FAIL") for v in c.values())
+        }
+        msg = f"Ingest validation failed for {site} {date_obj.to_str()}: {failed}"
+        logger.error(msg)
+        raise RuntimeError(msg)
+
+    logger.info("validate_ingest: %s %s — all checks passed", site, date_obj.to_str())
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -753,6 +1309,9 @@ def calculate_vod(site: str, yyyydoy: str) -> dict:
 
     # Build time range for this day
     day_date = date_obj.date
+    if day_date is None:
+        msg = f"Missing calendar date for {date_obj.to_str()}"
+        raise ValueError(msg)
     start_time = datetime.datetime.combine(day_date, datetime.time.min)
     end_time = datetime.datetime.combine(day_date, datetime.time.max)
     time_range = (start_time, end_time)
@@ -772,8 +1331,8 @@ def calculate_vod(site: str, yyyydoy: str) -> dict:
             commit_message=f"Airflow VOD {analysis_name} {date_obj.to_str()}",
         )
 
-        # Collect stats
-        tau_values = vod_ds["tau"].values if "tau" in vod_ds else None
+        # Collect stats — TauOmegaZerothOrder returns variable "VOD"
+        tau_values = vod_ds["VOD"].values if "VOD" in vod_ds else None
         analyses_result[analysis_name] = {
             "mean_vod": float(np.nanmean(tau_values))
             if tau_values is not None
@@ -786,4 +1345,50 @@ def calculate_vod(site: str, yyyydoy: str) -> dict:
         "site": site,
         "yyyydoy": date_obj.to_str(),
         "analyses": analyses_result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Task 5 — cleanup (runs regardless of upstream outcome)
+# ---------------------------------------------------------------------------
+
+
+def cleanup(site: str, yyyydoy: str) -> dict:
+    """Remove temporary files created during pipeline execution.
+
+    Cleans up the aux Zarr store from ``fetch_aux_data`` and any other
+    temporary artifacts. Designed to run with ``TriggerRule.ALL_DONE``
+    so it executes even if upstream tasks fail.
+
+    Parameters
+    ----------
+    site : str
+        Research site name.
+    yyyydoy : str
+        Date in ``YYYYDDD`` format **or** Airflow ``ds`` (``YYYY-MM-DD``).
+
+    Returns
+    -------
+    dict
+        ``{"site", "yyyydoy", "cleaned": [...]}``
+    """
+    date_obj = _resolve_date(yyyydoy)
+    cleaned: list[str] = []
+
+    # Clean up aux Zarr temp files
+    try:
+        config = load_config()
+        aux_dir = config.processing.storage.get_aux_data_dir()
+        aux_zarr_path = aux_dir / f"aux_{date_obj.to_str()}.zarr"
+        if aux_zarr_path.exists():
+            shutil.rmtree(aux_zarr_path)
+            cleaned.append(str(aux_zarr_path))
+            logger.info("cleanup: removed %s", aux_zarr_path)
+    except Exception:
+        logger.exception("cleanup: failed to remove aux Zarr")
+
+    return {
+        "site": site,
+        "yyyydoy": date_obj.to_str(),
+        "cleaned": cleaned,
     }

@@ -80,7 +80,8 @@ class SignalIDMapper:
         1176.45
 
         """
-        return self.BAND_PROPERTIES.get(band_name, {}).get("freq")
+        freq = self.BAND_PROPERTIES.get(band_name, {}).get("freq")
+        return float(freq) if isinstance(freq, (int, float)) else None
 
     def get_band_bandwidth(self, band_name: str) -> float | list[float] | None:
         """Get bandwidth for a band.
@@ -106,7 +107,12 @@ class SignalIDMapper:
         None
 
         """
-        return self.BAND_PROPERTIES.get(band_name, {}).get("bandwidth")
+        bandwidth = self.BAND_PROPERTIES.get(band_name, {}).get("bandwidth")
+        if isinstance(bandwidth, (int, float)):
+            return float(bandwidth)
+        if isinstance(bandwidth, list):
+            return [float(v) for v in bandwidth if isinstance(v, (int, float))]
+        return None
 
     def get_overlapping_group(self, band_name: str) -> str | None:
         """Get overlapping group for a band.

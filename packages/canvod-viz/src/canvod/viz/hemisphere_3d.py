@@ -223,7 +223,7 @@ class HemisphereVisualizer3D:
 
                 vertex_count += 4
 
-            except (KeyError, IndexError):
+            except KeyError, IndexError:
                 continue
 
         return go.Mesh3d(
@@ -282,7 +282,7 @@ class HemisphereVisualizer3D:
 
                 vertex_count += 3
 
-            except (KeyError, TypeError, ValueError):
+            except KeyError, TypeError, ValueError:
                 continue
 
         return go.Mesh3d(
@@ -307,7 +307,7 @@ class HemisphereVisualizer3D:
         colorscale: str,
         opacity: float,
         show_colorbar: bool,
-    ) -> go.Mesh3d:
+    ) -> go.Mesh3d | go.Scatter3d:
         """Render geodesic triangular cells as 3D mesh.
 
         Reads ``geodesic_vertices`` (3 vertex indices per cell) and looks up
@@ -349,7 +349,7 @@ class HemisphereVisualizer3D:
                 all_k.append(vertex_count + 2)
                 vertex_count += 3
 
-            except (KeyError, IndexError, TypeError, ValueError):
+            except KeyError, IndexError, TypeError, ValueError:
                 continue
 
         return go.Mesh3d(
@@ -374,7 +374,7 @@ class HemisphereVisualizer3D:
         colorscale: str,
         opacity: float,
         show_colorbar: bool,
-    ) -> go.Mesh3d:
+    ) -> go.Mesh3d | go.Scatter3d:
         """Render HEALPix curvilinear cells as 3D mesh.
 
         Uses ``healpy.boundaries()`` to obtain true pixel boundaries,
@@ -426,7 +426,7 @@ class HemisphereVisualizer3D:
 
                 vertex_count += n_verts
 
-            except (KeyError, IndexError, TypeError, ValueError):
+            except KeyError, IndexError, TypeError, ValueError:
                 continue
 
         return go.Mesh3d(
@@ -451,7 +451,7 @@ class HemisphereVisualizer3D:
         colorscale: str,
         opacity: float,
         show_colorbar: bool,
-    ) -> go.Mesh3d:
+    ) -> go.Mesh3d | go.Scatter3d:
         """Render Fibonacci Voronoi cells as 3D mesh.
 
         Reads ``voronoi_region`` (variable-length vertex index list) and
@@ -504,7 +504,7 @@ class HemisphereVisualizer3D:
 
                 vertex_count += n_verts
 
-            except (KeyError, IndexError, TypeError, ValueError):
+            except KeyError, IndexError, TypeError, ValueError:
                 continue
 
         return go.Mesh3d(
@@ -707,7 +707,7 @@ class HemisphereVisualizer3D:
                         hoverinfo="skip",
                     )
                     traces.append(trace)
-                except (KeyError, TypeError, ValueError):
+                except KeyError, TypeError, ValueError:
                     continue
         else:
             # Not supported for this grid type

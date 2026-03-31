@@ -347,7 +347,7 @@ class FluentWorkflow:
             for name, ds in self._datasets.items():
                 try:
                     rx_pos = ECEFPosition.from_ds_metadata(ds)
-                except (KeyError, ValueError):
+                except (KeyError, ValueError):  # fmt: skip
                     log.warning(
                         "no_receiver_position",
                         receiver=name,
@@ -382,7 +382,7 @@ class FluentWorkflow:
         self._grid = builder.build()
 
         for name, ds in self._datasets.items():
-            self._datasets[name] = add_cell_ids_to_ds_fast(ds, self._grid)
+            self._datasets[name] = add_cell_ids_to_ds_fast(ds, self._grid, grid_type)
 
         self.log.info("grid_complete", grid=grid_type, ncells=self._grid.ncells)
         return self
@@ -432,11 +432,11 @@ class FluentWorkflow:
         if self._vod_result is not None:
             # Store VOD result — requires a store name convention
             self.log.info("to_store_vod")
-            self._site.vod_store.write_group("vod_result", self._vod_result)
+            self._site.vod_store.write_or_append_group(self._vod_result, "vod_result")
         else:
             for name, ds in self._datasets.items():
                 self.log.info("to_store_dataset", receiver=name)
-                self._site.rinex_store.write_group(name, ds)
+                self._site.rinex_store.write_or_append_group(ds, name)
         return self
 
     @terminal
@@ -444,9 +444,8 @@ class FluentWorkflow:
         """Execute the plan and visualise the result."""
         from canvod.viz import HemisphereVisualizer
 
-        data = self._vod_result if self._vod_result is not None else self._datasets
-        viz = HemisphereVisualizer()
-        return viz.plot_2d(data)
+        viz = HemisphereVisualizer(self._grid)
+        return viz.plot_2d()
 
     # ------------------------------------------------------------------
     # Plan inspection (does NOT execute)

@@ -626,7 +626,7 @@ class SatelliteCatalog:
             "glonass_channel": self.glonass_channel(svn, on_date),
         }
 
-    def summary(self) -> dict[str, int]:
+    def summary(self) -> dict[str, int | dict[str, int]]:
         """Return a summary of catalog contents."""
         constellations: dict[str, int] = {}
         for svn in self.identities:

@@ -331,7 +331,7 @@ on:
 3. **Install tools**
    ```yaml
    - uses: astral-sh/setup-uv@v7
-   - run: uv python install 3.13
+   - run: uv python install 3.14
    ```
 
 4. **Generate release notes**

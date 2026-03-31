@@ -11,6 +11,20 @@ Expected differences
   difference between broadcast and final products
 - NaN rates may differ: broadcast and SP3 cover different satellite sets
 
+Stores required
+---------------
+BROADCAST_STORE: ``tier1_broadcast_vs_agency/Rosalia/canvodpy_SBF_broadcast_store``
+    Produced by ``produce_sbf_store_broadcast.py``
+    (config: sbf input, ephemeris_source: broadcast,
+     stores_root_dir: tier1_broadcast_vs_agency,
+     rinex_store_name: canvodpy_SBF_broadcast_store)
+
+AGENCY_STORE   : ``tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_store``
+    Produced by ``produce_sbf_store_final.py``
+    (config: sbf input, ephemeris_source: final,
+     stores_root_dir: tier1_sbf_vs_rinex,
+     rinex_store_name: canvodpy_SBF_store)
+
 Prerequisites
 -------------
 1. SBF agency store from ``produce_sbf_store_final.py``
@@ -19,10 +33,14 @@ Prerequisites
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from canvod.audit.core import compare_datasets
+from canvod.audit.reporting.typst import to_typst
 from canvod.audit.runners.common import load_group, open_store
+from canvod.audit.runners.ephemeris import DEFAULT_VARIABLES, EPHEMERIS_TOLERANCES
 from canvod.audit.tolerances import ToleranceTier
 
 # ── Store paths ──────────────────────────────────────────────────────────
@@ -32,10 +50,11 @@ BROADCAST_STORE = (
 )
 AGENCY_STORE = (
     "/Volumes/ExtremePro/canvod_audit_output"
-    "/tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_allvars_store"
+    "/tier1_sbf_vs_rinex/Rosalia/canvodpy_SBF_store"
 )
 
 GROUPS = ["canopy_01", "reference_01_canopy_01"]
+REPORT_DIR = Path("/Volumes/ExtremePro/canvod_audit_output/reports")
 
 
 def main() -> None:
@@ -58,6 +77,8 @@ def main() -> None:
             ds_broad,
             ds_agency,
             tier=ToleranceTier.SCIENTIFIC,
+            variables=DEFAULT_VARIABLES,
+            tolerance_overrides=EPHEMERIS_TOLERANCES,
             label=f"Broadcast vs Agency: {group}",
         )
 
@@ -70,6 +91,29 @@ def main() -> None:
                 f"bias={vs.bias:.6g}, nan_agree={vs.nan_agreement_rate:.6f}, "
                 f"n_compared={vs.n_compared}"
             )
+
+        # ── Typst report ──────────────────────────────────────────────
+        REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        report_path = REPORT_DIR / f"tier1_broadcast_vs_agency_{group}.typ"
+        to_typst(
+            r,
+            title=f"Tier 1b: Broadcast vs Agency Ephemeris — {group}",
+            path=report_path,
+            compile=True,
+            notes=[
+                "Both stores use the same SBF input files. Only the ephemeris "
+                "source differs: broadcast (SBF SatVisibility records, real-time, "
+                ") vs agency final (COD SP3/CLK, some days "
+                "latency).",
+                "SNR is independent of ephemeris and must be identical. Any "
+                "difference would indicate a reader bug.",
+                "phi/theta differences reflect the real orbit accuracy "
+                "difference between broadcast and final products. These are "
+                "expected and not a bug. The question is whether they are large "
+                "enough to cause downstream issues for canvodpy users",
+            ],
+        )
+        print(f"\nReport → {report_path.with_suffix('.pdf')}")
 
         # ── Deep dive per variable ─────────────────────────────────────
         print(f"\n--- {group} deep dive ---")
@@ -87,7 +131,8 @@ def main() -> None:
             diff = bv[both_valid] - av[both_valid]
             nonzero = int(np.sum(np.abs(diff) > 0))
             total = len(diff)
-            print(f"\n{var}: {nonzero}/{total} non-zero ({100 * nonzero / total:.2f}%)")
+            pct = f"({100 * nonzero / total:.2f}%)" if total > 0 else "(no data)"
+            print(f"\n{var}: {nonzero}/{total} non-zero {pct}")
             if nonzero > 0:
                 absdiff = np.abs(diff[np.abs(diff) > 0])
                 unit = "rad" if var in ("phi", "theta") else ""

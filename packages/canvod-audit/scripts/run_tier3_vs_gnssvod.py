@@ -86,6 +86,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+from canvod.audit.reporting.typst import to_typst
 from canvod.audit.rinex_trimmer import gps_galileo_l1_l2
 from canvod.audit.runners.common import AuditResult
 from canvod.audit.runners.vs_gnssvod import audit_vs_gnssvod
@@ -526,6 +527,44 @@ def step4_compare(
     except Exception as e:
         print(f"\n  Could not save stats: {e}")
 
+    # ── Typst reports ─────────────────────────────────────────────────
+    _TIER3_NOTES = [
+        "SP3 interpolation methods differ fundamentally: canvodpy uses "
+        "scipy CubicHermiteSpline (piecewise cubic, SP3 positions + "
+        "velocities); gnssvod uses numpy degree-16 polyfit on 4-hour "
+        "windows (positions only, no velocity data). This produces "
+        "systematic, reproducible differences in satellite ECEF positions "
+        "→ different theta/phi → different Elevation/Azimuth → different "
+        "cos(theta) in the VOD formula. All are expected and not bugs.",
+        "SNR: canvodpy stores as float32 (~7 significant digits); gnssvod "
+        "uses float64. RINEX SNR precision is ~0.001 dB; float32 truncation "
+        "introduces max ~2e-6 dB error — 1000x below measurement resolution.",
+        "Elevation cutoff: gnssvod drops observations with elevation ≤ -10° "
+        "in gnssDataframe(). canvodpy masks below-horizon (< 0°) to NaN but "
+        "retains the array positions. The comparison operates on shared "
+        "(epoch, SID) pairs only; NaN-rate tolerance accounts for the "
+        "systematic cutoff difference.",
+        "Bands with 100% NaN on both sides (e.g. L5): vacuously pass — "
+        "neither tool produced data for this band, which is expected given "
+        "the GPS+Galileo L1+L2 trimming applied before comparison.",
+    ]
+    report_dir = AUDIT_ROOT / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    for name, r in result.results.items():
+        safe_name = name.replace("|", "_").replace(" ", "_")
+        report_path = report_dir / f"tier3_{safe_name}.typ"
+        try:
+            to_typst(
+                r,
+                title=f"Tier 3: canvodpy vs gnssvod — {name}",
+                path=report_path,
+                compile=True,
+                notes=_TIER3_NOTES,
+            )
+            print(f"Report → {report_path.with_suffix('.pdf')}")
+        except Exception as e:
+            print(f"  Could not write report for {name}: {e}")
+
     return result
 
 
@@ -534,13 +573,24 @@ def _compare_vod(
     gnssvod_vod_parquet: Path,
     result: AuditResult,
 ) -> None:
-    """Compare canvodpy VOD against gnssvod calc_vod output."""
-    from canvod.audit.core import compare_datasets
+    """Compare canvodpy VOD against gnssvod calc_vod output.
+
+    Reports full difference statistics (no pass/fail gate on VOD — the
+    difference is systematic and explained by different SP3 interpolation
+    methods).  Also runs vod_difference_decomposition() to quantify how
+    much of the VOD difference is explained by Δcos(θ) vs a true residual.
+    """
     from canvod.audit.runners.vs_gnssvod import (
-        GNSSVOD_TOLERANCES,
+        _VOD_BUDGET_NOTE,
         gnssvod_df_to_xarray,
+        print_vod_decomposition,
+        vod_difference_decomposition,
     )
-    from canvod.audit.tolerances import ToleranceTier
+    from canvod.audit.stats import (
+        VariableBudget,
+        compute_diff_report,
+        print_diff_report,
+    )
 
     print("\n── Tier 3B: VOD comparison ──")
 
@@ -560,13 +610,21 @@ def _compare_vod(
     print(f"  gnssvod VOD xarray: {dict(ds_gnssvod_vod.sizes)}")
     print(f"    vars: {sorted(ds_gnssvod_vod.data_vars)}")
 
-    # Compare each VOD band
-    # canvodpy has one VOD variable covering all SIDs;
-    # gnssvod has VOD_L1, VOD_L2, etc. per band.
+    # canvodpy has one VOD variable; gnssvod has VOD_L1, VOD_L2 per band.
+    # Both the gnssvod VOD output and canvodpy store have Elevation/theta
+    # so we can run the decomposition: predicted_ΔV from Δcos(θ) vs residual.
     band_mapping = [
         ("VOD_L1", "L1|C"),
         ("VOD_L2", "L2|W"),
     ]
+
+    vod_budget = VariableBudget(
+        budget=None,
+        unit="",
+        source="Different SP3 interp → different cos(θ); see decomposition.",
+        note=_VOD_BUDGET_NOTE,
+        vod_relevant=True,
+    )
 
     for vod_band, canvod_band_suffix in band_mapping:
         if vod_band not in ds_gnssvod_vod.data_vars:
@@ -584,16 +642,21 @@ def _compare_vod(
             )
             continue
 
-        # Build canvodpy VOD dataset with PRN-based sids (matching gnssvod)
+        # Build canvodpy VOD+Elevation dataset with PRN sids (matching gnssvod)
         ds_band = ds_canvod.sel(sid=matching_sids)
         prns = [str(s).split("|")[0] for s in matching_sids]
 
+        data_vars: dict = {vod_band: (["epoch", "sid"], ds_band["VOD"].values)}
+        if "theta" in ds_band.data_vars:
+            elev_canvod = 90.0 - np.degrees(ds_band["theta"].values)
+            data_vars["Elevation"] = (["epoch", "sid"], elev_canvod)
+
         ds_canvod_vod = xr.Dataset(
-            {vod_band: (["epoch", "sid"], ds_band["VOD"].values)},
+            data_vars,
             coords={"epoch": ds_band.epoch.values, "sid": prns},
         )
 
-        # Check alignment
+        # Align on shared (epoch, sid) pairs
         shared_sids = np.intersect1d(
             ds_canvod_vod.sid.values, ds_gnssvod_vod.sid.values
         )
@@ -614,32 +677,35 @@ def _compare_vod(
             f"{len(shared_epochs)} shared epochs"
         )
 
-        r = compare_datasets(
-            ds_canvod_vod,
-            ds_gnssvod_vod,
-            variables=[vod_band],
-            tier=ToleranceTier.SCIENTIFIC,
-            tolerance_overrides={vod_band: GNSSVOD_TOLERANCES["VOD"]},
-            label=f"canvodpy vs gnssvod: {vod_band}",
-            metadata={
-                "comparison_type": "external_vod",
-                "band": canvod_band_suffix,
-                "vod_col": vod_band,
-            },
-        )
-        result.results[f"3B_{vod_band}"] = r
+        ds_a = ds_canvod_vod.sel(sid=shared_sids, epoch=shared_epochs)
+        ds_b = ds_gnssvod_vod.sel(sid=shared_sids, epoch=shared_epochs)
 
-        for var, vs in r.variable_stats.items():
-            status = "PASS" if var not in r.failures else "FAIL"
-            print(
-                f"  [{status}] {var}: "
-                f"RMSE={vs.rmse:.6g}, MAE={vs.mae:.6g}, "
-                f"max={vs.max_abs_diff:.6g}, bias={vs.bias:.6g}, "
-                f"n={vs.n_compared:,}, "
-                f"NaN: {vs.pct_nan_a:.1%} vs {vs.pct_nan_b:.1%}"
+        # Full difference report (budget=None — no gate, just report stats)
+        budgets = {vod_band: vod_budget}
+        diff_stats = compute_diff_report(
+            ds_a,
+            ds_b,
+            budgets,
+            vars_to_check=[vod_band],
+            label_a="canvodpy",
+            label_b="gnssvod",
+        )
+        print_diff_report(
+            diff_stats,
+            f"VOD: {vod_band}",
+            label_a="canvodpy",
+            label_b="gnssvod",
+        )
+
+        # VOD decomposition: how much of ΔV is explained by Δcos(θ)?
+        if "Elevation" in ds_a.data_vars and "Elevation" in ds_b.data_vars:
+            decomp = vod_difference_decomposition(
+                ds_a["Elevation"].values.ravel(),
+                ds_b["Elevation"].values.ravel(),
+                ds_a[vod_band].values.ravel(),
+                ds_b[vod_band].values.ravel(),
             )
-            if var in r.failures:
-                print(f"    !! {r.failures[var]}")
+            print_vod_decomposition(decomp, vod_band)
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────

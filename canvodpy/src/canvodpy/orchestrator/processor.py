@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import time
 from collections.abc import Generator
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 try:
     from dask.distributed import Client
@@ -16,8 +15,8 @@ try:
     _HAS_DISTRIBUTED = True
 except ImportError:
     _HAS_DISTRIBUTED = False
-    Client = None  # type: ignore[assignment,misc]
-    dask_as_completed = None  # type: ignore[assignment]
+    Client = None  # ty: ignore[invalid-assignment]
+    dask_as_completed = None  # ty: ignore[invalid-assignment]
 from datetime import UTC, datetime
 from datetime import time as dt_time
 from pathlib import Path
@@ -27,6 +26,7 @@ import polars as pl
 import pydantic_core
 import xarray as xr
 import zarr
+import zarr.errors
 from icechunk.session import ForkSession
 from icechunk.xarray import to_icechunk
 from natsort import natsorted
@@ -58,7 +58,6 @@ from canvodpy.orchestrator.interpolator import (
     Sp3Config,
     Sp3InterpolationStrategy,
 )
-from canvodpy.utils.telemetry import trace_icechunk_write
 
 # ============================================================================
 # MODULE-LEVEL FUNCTIONS (Required for Dask / ProcessPoolExecutor serialization)
@@ -88,6 +87,7 @@ def preprocess_with_hermite_aux(
     reader_name: str = "rinex3",
     use_sbf_geometry: bool = False,
     store_radial_distance: bool = False,
+    store_sbf_raw_observables: bool = True,
     broadcast_canopy_file: Path | None = None,
     broadcast_canopy_fmt: str | None = None,
 ) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
@@ -159,6 +159,7 @@ def preprocess_with_hermite_aux(
                 keep_data_vars=keep_vars,
                 write_global_attrs=True,
                 keep_sids=keep_sids,
+                store_raw_observables=store_sbf_raw_observables,
             )
             ds.attrs["File Hash"] = rnx.file_hash
             t_rinex = time.perf_counter()
@@ -181,22 +182,42 @@ def preprocess_with_hermite_aux(
                     meta_ds = canopy_aux.get("sbf_obs")
                 else:
                     meta_ds = aux_datasets.get("sbf_obs")
-                if meta_ds is not None and "theta" in meta_ds and "phi" in meta_ds:
-                    # Align broadcast theta/phi to obs epoch+SID space
-                    geo = meta_ds[["theta", "phi"]]
-                    if "epoch" in geo.dims:
-                        common_epochs = np.intersect1d(
-                            ds.epoch.values, geo.epoch.values
+                if (
+                    meta_ds is not None
+                    and "broadcast_theta" in meta_ds
+                    and "broadcast_phi" in meta_ds
+                ):
+                    # Extract broadcast geometry (already in radians from reader)
+                    bt = meta_ds["broadcast_theta"]
+                    bp = meta_ds["broadcast_phi"]
+
+                    # Align to obs epoch space
+                    if "epoch" in bt.dims:
+                        common_epochs = np.intersect1d(ds.epoch.values, bt.epoch.values)
+                        bt = bt.sel(epoch=common_epochs).reindex(
+                            epoch=ds.epoch.values, fill_value=np.nan
                         )
-                        geo = geo.sel(epoch=common_epochs)
-                        geo = geo.reindex(epoch=ds.epoch.values, fill_value=np.nan)
-                    common_sids = sorted(set(ds.sid.values) & set(geo.sid.values))
-                    geo = geo.sel(sid=common_sids)
-                    geo = geo.reindex(sid=ds.sid.values, fill_value=np.nan)
-                    # SBF SatVisibility stores theta/phi in degrees;
-                    # convert to radians for consistency with agency path.
-                    ds["theta"] = np.deg2rad(geo["theta"])
-                    ds["phi"] = np.deg2rad(geo["phi"])
+                        bp = bp.sel(epoch=common_epochs).reindex(
+                            epoch=ds.epoch.values, fill_value=np.nan
+                        )
+
+                    # Align to obs SID space
+                    common_sids = sorted(set(ds.sid.values) & set(bt.sid.values))
+                    bt = bt.sel(sid=common_sids).reindex(
+                        sid=ds.sid.values, fill_value=np.nan
+                    )
+                    bp = bp.sel(sid=common_sids).reindex(
+                        sid=ds.sid.values, fill_value=np.nan
+                    )
+
+                    from canvod.auxiliary.position.spherical_coords import (
+                        add_broadcast_spherical_coords_to_dataset,
+                    )
+
+                    # .values prevents epoch-level coord leakage (pdop, hdop, …)
+                    ds = add_broadcast_spherical_coords_to_dataset(
+                        ds, bt.values, bp.values
+                    )
                 from canvod.auxiliary.preprocessing import flush_sid_accumulators
 
                 sid_issues = flush_sid_accumulators()
@@ -218,7 +239,9 @@ def preprocess_with_hermite_aux(
                     ds = ds[available_vars]
 
             # 2. Open preprocessed aux data and select matching epochs
-            aux_store = xr.open_zarr(aux_zarr_path, decode_timedelta=True)
+            aux_store = xr.open_zarr(
+                aux_zarr_path, decode_timedelta=True, consolidated=False
+            )
             aux_slice = aux_store.sel(epoch=ds.epoch, method="nearest")
 
             # Eagerly load aux slice — batches all Zarr reads (X, Y, Z, clock)
@@ -473,6 +496,7 @@ def worker_task_append_only(
         group=receiver_name,
         mode="a",
         append_dim="epoch",
+        consolidated=False,
     )
 
     return fname, fork
@@ -488,6 +512,7 @@ def worker_task_with_region_auto(
     fork: ForkSession,
     keep_sids: list[str] | None = None,
     reader_name: str = "rinex3",
+    store_sbf_raw_observables: bool = True,
 ) -> ForkSession:
     """Worker uses region='auto' to write to correct position."""
     _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
@@ -498,6 +523,7 @@ def worker_task_with_region_auto(
         receiver_type,
         keep_sids,
         reader_name,
+        store_sbf_raw_observables=store_sbf_raw_observables,
     )
 
     ds_clean = _sanitize_ds_for_write(ds)
@@ -819,6 +845,7 @@ class RinexDataProcessor:
         # 4. Get auxiliary datasets from pipeline
         t2 = time.perf_counter()
         self._logger.debug("fetching_auxiliary_datasets")
+        assert self.aux_pipeline is not None, "aux_pipeline must be initialized"
         ephem_ds = self.aux_pipeline.get("ephemerides")
         clock_ds = self.aux_pipeline.get("clock")
         t3 = time.perf_counter()
@@ -893,7 +920,7 @@ class RinexDataProcessor:
             output_path=str(output_path),
             data_size=dict(aux_processed.sizes),
         )
-        aux_processed.to_zarr(output_path, mode="w")
+        aux_processed.to_zarr(output_path, mode="w", consolidated=False)
         t9 = time.perf_counter()
 
         self._logger.info(
@@ -1226,6 +1253,7 @@ class RinexDataProcessor:
         """
         effective_reader = reader_format or self._reader_name
         store_r = self._config.processing.processing.store_radial_distance
+        store_raw = self._config.processing.processing.store_sbf_raw_observables
         if self._dask_client is not None and _HAS_DISTRIBUTED:
             return self._parallel_process_rinex_dask(
                 rinex_files,
@@ -1235,6 +1263,7 @@ class RinexDataProcessor:
                 receiver_type,
                 effective_reader,
                 store_r,
+                store_raw,
             )
         return self._parallel_process_rinex_pool(
             rinex_files,
@@ -1244,6 +1273,7 @@ class RinexDataProcessor:
             receiver_type,
             effective_reader,
             store_r,
+            store_raw,
         )
 
     def _parallel_process_rinex_dask(
@@ -1255,6 +1285,7 @@ class RinexDataProcessor:
         receiver_type: str,
         reader_format: str | None = None,
         store_radial_distance: bool = False,
+        store_sbf_raw_observables: bool = True,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1263,6 +1294,9 @@ class RinexDataProcessor:
         """Process RINEX files via the Dask distributed client."""
         start_time = time.time()
         client = self._dask_client
+        assert client is not None, (
+            "_dask_client must be set before calling _parallel_process_rinex_dask"
+        )
 
         self._logger.info(
             "parallel_processing_started",
@@ -1299,6 +1333,7 @@ class RinexDataProcessor:
                 effective_reader,
                 self.use_sbf_geometry,
                 store_radial_distance,
+                store_sbf_raw_observables,
                 pure=False,
             ): rinex_file
             for rinex_file in rinex_files
@@ -1380,6 +1415,7 @@ class RinexDataProcessor:
         receiver_type: str,
         reader_format: str | None = None,
         store_radial_distance: bool = False,
+        store_sbf_raw_observables: bool = True,
     ) -> tuple[
         list[tuple[Path, xr.Dataset]],
         dict[Path, dict[str, xr.Dataset]],
@@ -1422,6 +1458,7 @@ class RinexDataProcessor:
                     effective_reader,
                     self.use_sbf_geometry,
                     store_radial_distance,
+                    store_sbf_raw_observables,
                 ): rinex_file
                 for rinex_file in rinex_files
             }
@@ -1507,7 +1544,7 @@ class RinexDataProcessor:
                 session.store, group=receiver_name, consolidated=False
             )
             store_vars = set(ds_store.data_vars)
-        except (KeyError, zarr.errors.GroupNotFoundError):
+        except KeyError, zarr.errors.GroupNotFoundError:
             return  # New group, nothing to check
 
         if not augmented_datasets:
@@ -1560,7 +1597,7 @@ class RinexDataProcessor:
             ).compute(
                 scheduler="synchronous"
             )  # synchronous avoids Dask serialization error
-        except (KeyError, zarr.errors.GroupNotFoundError):
+        except KeyError, zarr.errors.GroupNotFoundError:
             return  # New group, nothing to prepare
 
         # 2. Collect epoch ranges to remove (files that exist and will be overwritten)
@@ -1621,330 +1658,6 @@ class RinexDataProcessor:
             self.site.rinex_store.restore_metadata_table(
                 receiver_name, metadata_backup, session
             )
-
-    def _append_to_icechunk_slow(
-        self,
-        augmented_datasets: list[tuple[Path, xr.Dataset]],
-        receiver_name: str,
-        rinex_files: list[Path],
-    ) -> None:
-        """Sequentially append augmented datasets to Icechunk store.
-
-        Uses the IcechunkDataReader pattern for proper deduplication
-        and metadata tracking.
-
-        Parameters
-        ----------
-        augmented_datasets : list[tuple[Path, xr.Dataset]]
-            List of (filename, dataset) tuples
-        receiver_name : str
-            Receiver name (e.g., 'canopy', 'reference')
-        rinex_files : list[Path]
-            Original list of RINEX files (for context)
-
-        """
-        _ = rinex_files
-        start_time = time.time()
-        self._logger.info(
-            "icechunk_write_started",
-            receiver=receiver_name,
-            datasets=len(augmented_datasets),
-            strategy=self._rinex_store_strategy,
-            mode="sequential",
-        )
-
-        groups = self.site.rinex_store.list_groups() or []
-        version = get_version_from_pyproject()
-
-        self._icechunk_log.debug(
-            "store_opened",
-            operation="list_groups",
-            group_count=len(groups),
-            groups=groups[:10]
-            if len(groups) > 10
-            else groups,  # Sample for large stores
-        )
-
-        self._logger.debug(
-            "icechunk_store_info",
-            existing_groups=groups,
-            group_count=len(groups),
-            target_group=receiver_name,
-            version=version,
-        )
-
-        write_count = 0
-        skip_count = 0
-        append_count = 0
-
-        yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
-        desc = f"{yyyydoy} Appending {receiver_name}"
-        _progress = _processing_progress()
-        _progress.start()
-        _task = _progress.add_task(desc, total=len(augmented_datasets))
-        for idx, (fname, ds) in enumerate(augmented_datasets):
-            log = self._logger.bind(file=fname.name)
-
-            if idx % 20 == 0:  # Log progress every 20 files
-                self._logger.debug(
-                    "icechunk_write_progress",
-                    processed=idx,
-                    total=len(augmented_datasets),
-                    written=write_count,
-                    skipped=skip_count,
-                    appended=append_count,
-                )
-
-            try:
-                rel_path = self.site.rinex_store.rel_path_for_commit(fname)
-
-                self._icechunk_log.debug(
-                    "computing_rel_path",
-                    file=fname.name,
-                    rel_path=str(rel_path),
-                )
-
-                log.debug(
-                    "processing_dataset",
-                    index=idx,
-                    total=len(augmented_datasets),
-                    dims=dict(ds.sizes),
-                )
-
-                # Get file metadata
-                rinex_hash = ds.attrs.get("File Hash")
-                if not rinex_hash:
-                    log.warning(
-                        "file_missing_hash",
-                        file=fname.name,
-                        action="skip",
-                    )
-                    continue
-
-                start_epoch = np.datetime64(ds.epoch.min().values)
-                end_epoch = np.datetime64(ds.epoch.max().values)
-
-                log.debug(
-                    "dataset_metadata",
-                    hash=rinex_hash[:16],
-                    start_epoch=str(start_epoch),
-                    end_epoch=str(end_epoch),
-                    n_epochs=len(ds.epoch),
-                    n_sids=len(ds.sid) if "sid" in ds.dims else 0,
-                )
-
-                # Check if file already exists
-                check_start = time.time()
-                self._icechunk_log.debug(
-                    "checking_existence",
-                    group=receiver_name,
-                    hash=rinex_hash[:16],
-                    start_epoch=str(start_epoch),
-                    end_epoch=str(end_epoch),
-                )
-                exists, _matches = self.site.rinex_store.metadata_row_exists(
-                    receiver_name, rinex_hash, start_epoch, end_epoch
-                )
-                check_duration = time.time() - check_start
-
-                self._icechunk_log.debug(
-                    "existence_check_result",
-                    exists=exists,
-                    matches=_matches,
-                    duration_ms=round(check_duration * 1000, 1),
-                )
-
-                log.debug(
-                    "existence_check_complete",
-                    exists=exists,
-                    check_duration_ms=round(check_duration * 1000, 1),
-                )
-
-                # Cleanse dataset attributes
-                cleanse_start = time.time()
-                ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
-                    ds,
-                )
-                self._icechunk_log.debug(
-                    "dataset_cleansed",
-                    duration_ms=round((time.time() - cleanse_start) * 1000, 1),
-                    attrs_before=len(ds.attrs),
-                    attrs_after=len(ds_clean.attrs),
-                )
-
-                # Handle different strategies based on self._rinex_store_strategy
-                match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups:
-                        # Initial commit
-                        log.debug("performing_initial_write", group=receiver_name)
-                        msg = f"[v{version}] Initial commit: {rel_path}"
-
-                        write_start = time.time()
-                        self._icechunk_log.info(
-                            "store_write_initial_start",
-                            group=receiver_name,
-                            file=fname.name,
-                            commit_message=msg,
-                        )
-                        self.site.rinex_store.write_initial_group(
-                            dataset=ds_clean,
-                            group_name=receiver_name,
-                            commit_message=msg,
-                        )
-                        write_duration = time.time() - write_start
-                        self._icechunk_log.info(
-                            "store_write_initial_complete",
-                            group=receiver_name,
-                            duration_seconds=round(write_duration, 2),
-                        )
-                        groups.append(receiver_name)
-                        log.info("initial_write", file=fname.name, group=receiver_name)
-                        write_count += 1
-
-                    case (True, "skip"):
-                        log.debug(
-                            "file_skipped", file=fname.name, reason="already_exists"
-                        )
-                        self._icechunk_log.debug(
-                            "store_metadata_append",
-                            action="skip",
-                            group=receiver_name,
-                            hash=rinex_hash[:16],
-                        )
-                        self.site.rinex_store.append_metadata(
-                            group_name=receiver_name,
-                            rinex_hash=rinex_hash,
-                            start=start_epoch,
-                            end=end_epoch,
-                            snapshot_id="none",
-                            action="skip",
-                            commit_msg=f"Skipped {rel_path}",
-                            dataset_attrs=ds_clean.attrs,
-                        )
-                        skip_count += 1
-
-                    case (True, "append"):
-                        log.debug("performing_append", strategy="append")
-                        msg = f"[v{version}] Appended {rel_path}"
-
-                        append_start = time.time()
-                        self._icechunk_log.info(
-                            "store_append_start",
-                            group=receiver_name,
-                            file=fname.name,
-                            append_dim="epoch",
-                        )
-                        self.site.rinex_store.append_to_group(
-                            dataset=ds_clean,
-                            group_name=receiver_name,
-                            append_dim="epoch",
-                            action="append",
-                            commit_message=msg,
-                        )
-                        append_duration = time.time() - append_start
-                        self._icechunk_log.info(
-                            "store_append_complete",
-                            group=receiver_name,
-                            duration_seconds=round(append_duration, 2),
-                        )
-                        log.info("file_appended", file=fname.name)
-                        append_count += 1
-
-                    case (False, _):
-                        msg = f"[v{version}] Wrote {rel_path}"
-
-                        write_start = time.time()
-                        self._icechunk_log.info(
-                            "store_write_start",
-                            group=receiver_name,
-                            file=fname.name,
-                            append_dim="epoch",
-                        )
-                        self.site.rinex_store.append_to_group(
-                            dataset=ds_clean,
-                            group_name=receiver_name,
-                            append_dim="epoch",
-                            action="write",
-                            commit_message=msg,
-                        )
-                        write_duration = time.time() - write_start
-                        self._icechunk_log.info(
-                            "store_write_complete",
-                            group=receiver_name,
-                            duration_seconds=round(write_duration, 2),
-                        )
-                        log.info("file_written", file=fname.name)
-                        write_count += 1
-
-                    case (True, "overwrite"):
-                        log.debug("performing_overwrite", strategy="overwrite")
-                        msg = f"[v{version}] Overwrote {rel_path}"
-
-                        overwrite_start = time.time()
-                        self.site.rinex_store.overwrite_file_in_group(
-                            dataset=ds_clean,
-                            group_name=receiver_name,
-                            rinex_hash=rinex_hash,
-                            start=start_epoch,
-                            end=end_epoch,
-                            commit_message=msg,
-                        )
-                        overwrite_duration = time.time() - overwrite_start
-                        self._icechunk_log.info(
-                            "store_overwrite_complete",
-                            group=receiver_name,
-                            duration_seconds=round(overwrite_duration, 2),
-                        )
-                        log.info("file_overwritten", file=fname.name)
-                        write_count += 1
-
-                    case _:
-                        log.warning(
-                            "unhandled_strategy",
-                            exists=exists,
-                            strategy=self._rinex_store_strategy,
-                            file=fname.name,
-                        )
-
-            except (OSError, RuntimeError, ValueError) as e:
-                self._icechunk_log.error(
-                    "store_operation_failed",
-                    file=fname.name,
-                    error=str(e),
-                    exception=type(e).__name__,
-                )
-                log.error(
-                    "icechunk_write_failed",
-                    error=str(e),
-                    exception=type(e).__name__,
-                )
-            _progress.advance(_task)
-        _progress.stop()
-
-        duration = time.time() - start_time
-
-        self._icechunk_log.info(
-            "store_session_complete",
-            receiver=receiver_name,
-            total_operations=len(augmented_datasets),
-            written=write_count,
-            appended=append_count,
-            skipped=skip_count,
-            duration_seconds=round(duration, 2),
-            throughput_files_per_sec=round(len(augmented_datasets) / duration, 2)
-            if duration > 0
-            else 0,
-        )
-
-        self._logger.info(
-            "icechunk_write_complete",
-            receiver=receiver_name,
-            duration_seconds=round(duration, 2),
-            files_written=write_count,
-            files_appended=append_count,
-            files_skipped=skip_count,
-            total_files=len(augmented_datasets),
-        )
 
     def _check_existing_with_temporal_overlap(
         self,
@@ -2028,331 +1741,6 @@ class RinexDataProcessor:
             existing_hashes |= intra_overlaps
 
         return existing_hashes
-
-    def _append_to_icechunk_incrementally(
-        self,
-        augmented_datasets: list[tuple[Path, xr.Dataset]],
-        receiver_name: str,
-        rinex_files: list[Path],
-    ) -> None:
-        """Batch append with single commit.
-
-        This method:
-        1. Opens ONE session for all data writes
-        2. Uses only to_icechunk() within the session (no nested sessions)
-        3. Makes ONE commit for all data
-        4. Writes metadata separately after commit succeeds
-        """
-        _ = rinex_files
-        log = self._logger
-        version = get_version_from_pyproject()
-
-        t_start = time.time()
-
-        # STEP 1: Batch check which files exist
-        log.info("Batch checking %s files...", len(augmented_datasets))
-        t1 = time.time()
-
-        file_hash_map = {
-            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
-        }
-
-        existing_hashes = self._check_existing_with_temporal_overlap(
-            receiver_name, augmented_datasets, file_hash_map
-        )
-
-        t2 = time.time()
-        log.info(
-            "Batch check complete in %.2fs: %s/%s existing",
-            t2 - t1,
-            len(existing_hashes),
-            len(augmented_datasets),
-        )
-
-        # STEP 2: Branch-stage-promote for overwrite; direct main for others
-        is_overwrite = self._rinex_store_strategy == "overwrite"
-        temp_branch = None
-
-        if is_overwrite:
-            yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
-            temp_branch = f"overwrite_{receiver_name}_{yyyydoy}"
-            current_snapshot = next(
-                self.site.rinex_store.repo.ancestry(branch="main")
-            ).id
-            try:
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            except Exception:
-                self.site.rinex_store.repo.delete_branch(temp_branch)
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            log.info(
-                "Created temp branch '%s' for overwrite (snapshot: %s...)",
-                temp_branch,
-                current_snapshot[:8],
-            )
-            branch = temp_branch
-        else:
-            branch = "main"
-
-        log.info("Opening Icechunk session...")
-        t3 = time.time()
-        with self.site.rinex_store.writable_session(branch) as session:
-            groups = self.site.rinex_store.list_groups() or []
-            t4 = time.time()
-            log.info("Session opened in %.2fs", t4 - t3)
-
-            # Prepare store for overwrite (remove old epochs, drop stale vars)
-            if is_overwrite and receiver_name in groups:
-                self._prepare_store_for_overwrite(
-                    session,
-                    receiver_name,
-                    augmented_datasets,
-                    existing_hashes,
-                    file_hash_map,
-                )
-
-            actions = {
-                "initial": 0,
-                "skipped": 0,
-                "appended": 0,
-                "written": 0,
-                "overwritten": 0,
-            }
-            metadata_records = []  # Collect metadata to write after commit
-
-            try:
-                # STEP 3: Process all datasets using ONLY to_icechunk()
-                log.info(
-                    "Processing %s datasets...",
-                    len(augmented_datasets),
-                )
-                t5 = time.time()
-
-                for idx, (fname, ds) in enumerate(augmented_datasets):
-                    # Progress logging
-                    if idx % 20 == 0 and idx > 0:
-                        elapsed = time.time() - t5
-                        rate = idx / elapsed if elapsed > 0 else 0
-                        log.info(
-                            "  Progress: %s/%s (%.1f files/s)",
-                            idx,
-                            len(augmented_datasets),
-                            rate,
-                        )
-
-                    file_log = log.bind(file=fname.name)
-                    try:
-                        rel_path = self.site.rinex_store.rel_path_for_commit(fname)
-                        rinex_hash = file_hash_map[fname]
-
-                        if not rinex_hash:
-                            file_log.debug("no_hash_skipping")
-                            continue
-
-                        # Get time range for metadata
-                        start_epoch = np.datetime64(ds.epoch.min().values)
-                        end_epoch = np.datetime64(ds.epoch.max().values)
-
-                        # Fast hash check
-                        exists = rinex_hash in existing_hashes
-
-                        # Cleanse dataset
-                        ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
-                            ds,
-                        )
-
-                        # Collect metadata for ALL files (write later)
-                        metadata_records.append(
-                            {
-                                "fname": fname,
-                                "rinex_hash": rinex_hash,
-                                "start": start_epoch,
-                                "end": end_epoch,
-                                "dataset_attrs": ds.attrs.copy(),
-                                "exists": exists,
-                                "rel_path": rel_path,
-                                "canonical_name": ds.attrs.get("canonical_name", ""),
-                                "physical_path": ds.attrs.get(
-                                    "physical_path", str(fname)
-                                ),
-                            }
-                        )
-
-                        # Handle data writes using ONLY to_icechunk() with our session
-                        match (exists, self._rinex_store_strategy):
-                            case (False, _) if receiver_name not in groups:
-                                # Initial group creation
-                                size_mb = ds_clean.nbytes / (1024 * 1024)
-                                with trace_icechunk_write(
-                                    group_name=receiver_name,
-                                    dataset_size_mb=size_mb,
-                                    num_variables=len(ds_clean.data_vars),
-                                ):
-                                    to_icechunk(ds_clean, session, group=receiver_name)
-                                groups.append(receiver_name)
-                                actions["initial"] += 1
-                                file_log.debug("write_initial", path=rel_path)
-
-                            case (True, "skip"):
-                                # File exists, skip writing data
-                                actions["skipped"] += 1
-                                file_log.debug("write_skipped", path=rel_path)
-
-                            case (True, "append"):
-                                # File exists but append anyway
-                                size_mb = ds_clean.nbytes / (1024 * 1024)
-                                with trace_icechunk_write(
-                                    group_name=receiver_name,
-                                    dataset_size_mb=size_mb,
-                                    num_variables=len(ds_clean.data_vars),
-                                ):
-                                    to_icechunk(
-                                        ds_clean,
-                                        session,
-                                        group=receiver_name,
-                                        append_dim="epoch",
-                                    )
-                                actions["appended"] += 1
-                                file_log.debug("write_appended", path=rel_path)
-
-                            case (False, _):
-                                # New file, write it
-                                size_mb = ds_clean.nbytes / (1024 * 1024)
-                                with trace_icechunk_write(
-                                    group_name=receiver_name,
-                                    dataset_size_mb=size_mb,
-                                    num_variables=len(ds_clean.data_vars),
-                                ):
-                                    to_icechunk(
-                                        ds_clean,
-                                        session,
-                                        group=receiver_name,
-                                        append_dim="epoch",
-                                    )
-                                actions["written"] += 1
-                                file_log.debug("write_complete", path=rel_path)
-
-                            case (True, "overwrite"):
-                                # Old data already removed by _prepare_store_for_overwrite
-                                size_mb = ds_clean.nbytes / (1024 * 1024)
-                                with trace_icechunk_write(
-                                    group_name=receiver_name,
-                                    dataset_size_mb=size_mb,
-                                    num_variables=len(ds_clean.data_vars),
-                                ):
-                                    to_icechunk(
-                                        ds_clean,
-                                        session,
-                                        group=receiver_name,
-                                        append_dim="epoch",
-                                    )
-                                actions["overwritten"] += 1
-                                file_log.debug("write_overwritten", path=rel_path)
-
-                            case _:
-                                file_log.warning(
-                                    "unhandled_strategy",
-                                    exists=exists,
-                                    strategy=self._rinex_store_strategy,
-                                    path=rel_path,
-                                )
-
-                    except (OSError, RuntimeError, ValueError):
-                        file_log.exception("Failed to process file")
-
-                t6 = time.time()
-                log.info("Dataset processing complete in %.2fs", t6 - t5)
-
-                # STEP 4: Single commit for all data
-                summary = ", ".join(f"{k}={v}" for k, v in actions.items() if v > 0)
-                commit_msg = (
-                    f"[v{version}] {receiver_name} "
-                    f"{self.matched_data_dirs.yyyydoy}: {summary}"
-                )
-
-                log.info("Committing: %s", summary)
-                t7 = time.time()
-                try:
-                    snapshot_id = session.commit(commit_msg)
-                    t8 = time.time()
-                    log.info(
-                        "Commit complete in %.2fs (snapshot: %s...)",
-                        t8 - t7,
-                        snapshot_id[:8],
-                    )
-                except Exception as e:
-                    t8 = time.time()
-                    if "no changes" in str(e).lower():
-                        log.info(
-                            "no_changes_to_commit (all files already ingested): %.2fs",
-                            t8 - t7,
-                        )
-                    else:
-                        raise
-
-                # STEP 5: Write metadata (separate transactions after data commit)
-                log.info(
-                    "Writing metadata for %s files...",
-                    len(metadata_records),
-                )
-                t9 = time.time()
-
-                for record in metadata_records:
-                    action = "skip" if record["exists"] else "write"
-                    try:
-                        self.site.rinex_store.append_metadata(
-                            group_name=receiver_name,
-                            rinex_hash=record["rinex_hash"],
-                            start=record["start"],
-                            end=record["end"],
-                            snapshot_id=snapshot_id,
-                            action=action,
-                            commit_msg=f"{action}: {record['rel_path']}",
-                            dataset_attrs=record["dataset_attrs"],
-                        )
-                    except (OSError, RuntimeError, ValueError):
-                        log.warning(
-                            "Failed to write metadata for %s",
-                            record["fname"].name,
-                        )
-
-                    t10 = time.time()
-                    log.info("Metadata written in %.2fs", t10 - t9)
-
-                    # Timing summary
-                    t_end = time.time()
-                    log.info("\nTIMING BREAKDOWN:")
-                    log.info("  Batch check:    %.2fs", t2 - t1)
-                    log.info("  Open session:   %.2fs", t4 - t3)
-                    log.info("  Process data:   %.2fs", t6 - t5)
-                    log.info("  Commit:         %.2fs", t8 - t7)
-                    log.info("  Metadata:       %.2fs", t10 - t9)
-                    log.info("  TOTAL:          %.2fs", t_end - t_start)
-
-                    log.info(
-                        "Successfully processed %s files for '%s'",
-                        len(augmented_datasets),
-                        receiver_name,
-                    )
-
-            except (OSError, RuntimeError, ValueError):
-                log.exception("Batch append failed")
-                raise
-
-        # Promote temp branch to main after successful commit
-        if is_overwrite and temp_branch:
-            try:
-                new_tip = next(
-                    self.site.rinex_store.repo.ancestry(branch=temp_branch)
-                ).id
-                self.site.rinex_store.repo.reset_branch("main", new_tip)
-                log.info(
-                    "Promoted %s to main (snapshot: %s...)",
-                    temp_branch,
-                    new_tip[:8],
-                )
-            finally:
-                with contextlib.suppress(Exception):
-                    self.site.rinex_store.repo.delete_branch(temp_branch)
 
     def _append_to_icechunk(
         self,
@@ -2586,7 +1974,7 @@ class RinexDataProcessor:
                                     rel_path,
                                 )
 
-                    except (OSError, RuntimeError, ValueError):
+                    except OSError, RuntimeError, ValueError:
                         log.exception("Failed to process %s", fname.name)
 
                 t6 = time.time()
@@ -2610,7 +1998,7 @@ class RinexDataProcessor:
                         rows=metadata_records,
                         session=session,
                     )
-                except (OSError, RuntimeError, ValueError):
+                except OSError, RuntimeError, ValueError:
                     log.warning("Metadata write failed, committing data only")
                 t10 = time.time()
                 log.info("Metadata write complete in %.2fs", t10 - t9)
@@ -2665,7 +2053,7 @@ class RinexDataProcessor:
                     receiver_name,
                 )
 
-            except (OSError, RuntimeError, ValueError):
+            except OSError, RuntimeError, ValueError:
                 log.exception("Batch append failed")
                 raise
 
@@ -2764,267 +2152,6 @@ class RinexDataProcessor:
                         receiver_name,
                         exc_info=True,
                     )
-
-        # Promote temp branch to main after successful commit
-        if is_overwrite and temp_branch:
-            try:
-                new_tip = next(
-                    self.site.rinex_store.repo.ancestry(branch=temp_branch)
-                ).id
-                self.site.rinex_store.repo.reset_branch("main", new_tip)
-                log.info(
-                    "Promoted %s to main (snapshot: %s...)",
-                    temp_branch,
-                    new_tip[:8],
-                )
-            finally:
-                with contextlib.suppress(Exception):
-                    self.site.rinex_store.repo.delete_branch(temp_branch)
-
-    def _append_to_icechunk_parallel(
-        self,
-        augmented_datasets: list[tuple[Path, xr.Dataset]],
-        receiver_name: str,
-        rinex_files: list[Path],
-    ) -> None:
-        """Batch append with parallel writes and a single commit.
-
-        May be slower than sequential writes due to locking overhead.
-
-        Strategy:
-        - One writable session
-        - ThreadPoolExecutor for dataset writes (safe: GIL release in zarr/numcodecs IO)
-        - One commit for data
-        - One commit for metadata
-        """
-        _ = rinex_files
-        log = self._logger
-        version = get_version_from_pyproject()
-
-        t_start = time.time()
-
-        # STEP 1: Batch check which files exist
-        log.info("Batch checking %s files...", len(augmented_datasets))
-        t1 = time.time()
-        file_hash_map = {
-            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
-        }
-        existing_hashes = self._check_existing_with_temporal_overlap(
-            receiver_name, augmented_datasets, file_hash_map
-        )
-        t2 = time.time()
-        log.info(
-            "Batch check complete in %.2fs: %s/%s existing",
-            t2 - t1,
-            len(existing_hashes),
-            len(augmented_datasets),
-        )
-
-        # STEP 2: Branch-stage-promote for overwrite; direct main for others
-        is_overwrite = self._rinex_store_strategy == "overwrite"
-        temp_branch = None
-
-        if is_overwrite:
-            yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
-            temp_branch = f"overwrite_{receiver_name}_{yyyydoy}"
-            current_snapshot = next(
-                self.site.rinex_store.repo.ancestry(branch="main")
-            ).id
-            try:
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            except Exception:
-                self.site.rinex_store.repo.delete_branch(temp_branch)
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            log.info(
-                "Created temp branch '%s' for overwrite (snapshot: %s...)",
-                temp_branch,
-                current_snapshot[:8],
-            )
-            branch = temp_branch
-        else:
-            branch = "main"
-
-        log.info("Opening Icechunk session...")
-        t3 = time.time()
-        session = self.site.rinex_store.repo.writable_session(branch=branch)
-        groups = self.site.rinex_store.list_groups() or []
-        t4 = time.time()
-        log.info("Session opened in %.2fs", t4 - t3)
-
-        # Prepare store for overwrite (remove old epochs, drop stale vars)
-        if is_overwrite and receiver_name in groups:
-            self._prepare_store_for_overwrite(
-                session,
-                receiver_name,
-                augmented_datasets,
-                existing_hashes,
-                file_hash_map,
-            )
-
-        actions = {
-            "initial": 0,
-            "skipped": 0,
-            "appended": 0,
-            "written": 0,
-            "overwritten": 0,
-        }
-        metadata_records = []  # Collect metadata to write after commit
-
-        try:
-            log.info(
-                "Processing %s datasets...",
-                len(augmented_datasets),
-            )
-            t5 = time.time()
-
-            def write_one(
-                fname: Path,
-                ds: xr.Dataset,
-                exists: bool,
-                idx: int,
-            ) -> str:
-                ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
-                    ds,
-                )
-                rel_path = self.site.rinex_store.rel_path_for_commit(fname)
-
-                # Collect metadata
-                start_epoch = np.datetime64(ds.epoch.min().values)
-                end_epoch = np.datetime64(ds.epoch.max().values)
-                metadata_records.append(
-                    {
-                        "fname": fname,
-                        "rinex_hash": file_hash_map[fname],
-                        "start": start_epoch,
-                        "end": end_epoch,
-                        "dataset_attrs": ds.attrs.copy(),
-                        "exists": exists,
-                        "rel_path": rel_path,
-                    }
-                )
-
-                # Decide write strategy
-                match (exists, self._rinex_store_strategy):
-                    case (False, _) if receiver_name not in groups:
-                        to_icechunk(ds_clean, session, group=receiver_name)
-                        groups.append(receiver_name)
-                        return "initial"
-                    case (True, "skip"):
-                        return "skipped"
-                    case (True, "append"):
-                        to_icechunk(
-                            ds_clean, session, group=receiver_name, append_dim="epoch"
-                        )
-                        return "appended"
-                    case (False, _):
-                        to_icechunk(
-                            ds_clean, session, group=receiver_name, append_dim="epoch"
-                        )
-                        return "written"
-
-                    case (True, "overwrite"):
-                        # Old data already removed by _prepare_store_for_overwrite
-                        to_icechunk(
-                            ds_clean, session, group=receiver_name, append_dim="epoch"
-                        )
-                        return "overwritten"
-
-                    case _:
-                        log.warning(
-                            "Unhandled strategy: exists=%s, strategy=%s for %s",
-                            exists,
-                            self._rinex_store_strategy,
-                            rel_path,
-                        )
-                        return "skipped"
-
-            # --- THREADPOOL EXECUTION ---
-            futures = []
-            with ThreadPoolExecutor(max_workers=8) as pool:
-                for idx, (fname, ds) in enumerate(augmented_datasets):
-                    rinex_hash = file_hash_map[fname]
-                    if not rinex_hash:
-                        continue
-                    exists = rinex_hash in existing_hashes
-                    if exists and self._rinex_store_strategy == "skip":
-                        actions["skipped"] += 1
-                        continue
-                    futures.append(pool.submit(write_one, fname, ds, exists, idx))
-
-                for fut in as_completed(futures):
-                    result = fut.result()
-                    actions[result] += 1
-
-            t6 = time.time()
-            log.info("Dataset processing complete in %.2fs", t6 - t5)
-
-            # STEP 4: Single commit for all data
-            summary = ", ".join(f"{k}={v}" for k, v in actions.items() if v > 0)
-            commit_msg = (
-                f"[v{version}] {receiver_name} "
-                f"{self.matched_data_dirs.yyyydoy}: {summary}"
-            )
-            log.info("Committing data: %s", summary)
-            t7 = time.time()
-            try:
-                snapshot_id = session.commit(commit_msg)
-            except Exception as e:
-                if "no changes" in str(e).lower():
-                    log.info("no_changes_to_commit (all files already ingested)")
-                    snapshot_id = None
-                else:
-                    raise
-            t8 = time.time()
-            log.info(
-                "Commit complete in %.2fs (snapshot: %s...)",
-                t8 - t7,
-                snapshot_id[:8] if snapshot_id else "no-op",
-            )
-
-            # STEP 5: Metadata in a separate commit
-            log.info(
-                "Writing metadata for %s files...",
-                len(metadata_records),
-            )
-            t9 = time.time()
-            try:
-                meta_session = self.site.rinex_store.repo.writable_session(
-                    branch=branch
-                )
-                self.site.rinex_store.append_metadata_bulk(
-                    group_name=receiver_name,
-                    rows=metadata_records,
-                    session=meta_session,
-                    snapshot_id=snapshot_id,
-                )
-                meta_commit_msg = (
-                    f"[v{version}] metadata for {receiver_name} "
-                    f"{self.matched_data_dirs.yyyydoy}"
-                )
-                meta_session.commit(meta_commit_msg)
-            except (OSError, RuntimeError, ValueError):
-                log.warning("Metadata commit failed")
-            t10 = time.time()
-            log.info("Metadata commit complete in %.2fs", t10 - t9)
-
-            # Timing summary
-            t_end = time.time()
-            log.info("\nTIMING BREAKDOWN:")
-            log.info("  Batch check:    %.2fs", t2 - t1)
-            log.info("  Open session:   %.2fs", t4 - t3)
-            log.info("  Process data:   %.2fs", t6 - t5)
-            log.info("  Commit:         %.2fs", t8 - t7)
-            log.info("  Metadata:       %.2fs", t10 - t9)
-            log.info("  TOTAL:          %.2fs", t_end - t_start)
-            log.info(
-                "Successfully processed %s files for '%s'",
-                len(augmented_datasets),
-                receiver_name,
-            )
-
-        except (OSError, RuntimeError, ValueError):
-            log.exception("Batch append failed")
-            raise
 
         # Promote temp branch to main after successful commit
         if is_overwrite and temp_branch:
@@ -3225,6 +2352,7 @@ class RinexDataProcessor:
             # 3e. Yield final daily dataset
             # Read back from store to get complete daily dataset
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -3468,11 +2596,11 @@ class RinexDataProcessor:
         normalized_configs: list[tuple[str, str, Path, Path | None, str]] = []
         for cfg in receiver_configs:
             if len(cfg) == 3:
-                normalized_configs.append((*cfg, None, self._reader_name))
+                normalized_configs.append((*cfg, None, self._reader_name))  # ty: ignore[invalid-argument-type]
             elif len(cfg) == 4:
-                normalized_configs.append((*cfg, self._reader_name))
+                normalized_configs.append((*cfg, self._reader_name))  # ty: ignore[invalid-argument-type]
             else:
-                normalized_configs.append(cfg)
+                normalized_configs.append(cfg)  # ty: ignore[invalid-argument-type]
 
         if keep_vars is None:
             keep_vars = load_config().processing.processing.keep_rnx_vars
@@ -3595,7 +2723,7 @@ class RinexDataProcessor:
                     self._parallel_process_rinex(
                         rinex_files=rinex_files,
                         keep_vars=keep_vars,
-                        aux_zarr_path=aux_zarr_path,
+                        aux_zarr_path=aux_zarr_path,  # ty: ignore[invalid-argument-type]
                         receiver_position=receiver_position,
                         receiver_type=receiver_name,
                         reader_format=reader_format,
@@ -3625,7 +2753,9 @@ class RinexDataProcessor:
                     ds_no_scs = ds.drop_vars(scs_vars)
 
                     # Recompute SCS using the aux data
-                    aux_store = xr.open_zarr(aux_zarr_path, decode_timedelta=True)
+                    aux_store = xr.open_zarr(
+                        aux_zarr_path, decode_timedelta=True, consolidated=False
+                    )
                     aux_slice = aux_store.sel(epoch=ds_no_scs.epoch, method="nearest")
                     common_sids = sorted(
                         set(ds_no_scs.sid.values) & set(aux_slice.sid.values)
@@ -3660,6 +2790,7 @@ class RinexDataProcessor:
             # Yield final daily dataset
             t_read_start = time.perf_counter()
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -3717,11 +2848,11 @@ class RinexDataProcessor:
         canopy_data_dirs: dict[str, Path] = {}
         base_path = site_config.get_base_path()
 
+        _yydoy = self.matched_data_dirs.yyyydoy.yydoy
+        assert _yydoy is not None, "yyyydoy.yydoy must not be None"
         for name, cfg in site_config.receivers.items():
             if cfg.type == "canopy":
-                canopy_data_dirs[name] = (
-                    base_path / cfg.directory / self.matched_data_dirs.yyyydoy.yydoy
-                )
+                canopy_data_dirs[name] = base_path / cfg.directory / _yydoy
 
         # Add all canopy receivers (each uses own position)
         for name, cfg in site_config.receivers.items():
@@ -3732,9 +2863,7 @@ class RinexDataProcessor:
         for name, cfg in site_config.receivers.items():
             if cfg.type != "reference":
                 continue
-            ref_data_dir = (
-                base_path / cfg.directory / self.matched_data_dirs.yyyydoy.yydoy
-            )
+            ref_data_dir = base_path / cfg.directory / _yydoy
             canopy_names = site_config.resolve_scs_from(name)
             for canopy_name in canopy_names:
                 store_group = f"{name}_{canopy_name}"
@@ -3773,6 +2902,7 @@ class RinexDataProcessor:
 
         # Get datetime objects from YYYYDOY.date
         yyyydoy_date = self.matched_data_dirs.yyyydoy.date
+        assert yyyydoy_date is not None, "yyyydoy.date must not be None"
         day_start = np.datetime64(
             datetime.combine(yyyydoy_date, dt_time.min),
             "ns",
@@ -3805,7 +2935,7 @@ class RinexDataProcessor:
                     zmeta = zarr.open_group(session.store, mode="r")[
                         f"{receiver_name}/metadata/table"
                     ]
-                    data = {col: zmeta[col][:] for col in zmeta.array_keys()}
+                    data = {col: zmeta[col][:] for col in zmeta.array_keys()}  # ty: ignore[invalid-argument-type, not-subscriptable, unresolved-attribute]
                     df = pl.DataFrame(data)
 
                 # Cast datetime columns
@@ -3818,7 +2948,7 @@ class RinexDataProcessor:
 
                 # Filter to this day
                 day_rows = df.filter(
-                    (pl.col("start") >= day_start) & (pl.col("end") <= day_end)
+                    (pl.col("start") >= day_start) & (pl.col("end") <= day_end)  # ty: ignore[invalid-argument-type]
                 )
 
                 if day_rows.is_empty():
@@ -3926,6 +3056,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         # Collect all epochs from all files (or create empty structure)
         # Option A: Process all files first to get full time range
         all_epochs = []
+        store_raw = self._config.processing.processing.store_sbf_raw_observables
         for rinex_file in rinex_files_sorted:
             _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
                 rinex_file,
@@ -3935,6 +3066,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                 receiver_type,
                 self.keep_sids,
                 self._reader_name,
+                store_sbf_raw_observables=store_raw,
             )
             all_epochs.extend(ds.epoch.values)
 
@@ -3947,6 +3079,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             receiver_type,
             self.keep_sids,
             self._reader_name,
+            store_sbf_raw_observables=store_raw,
         )
 
         # Initialize with full epoch dimension
@@ -3981,6 +3114,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                     fork,
                     self.keep_sids,
                     self._reader_name,
+                    store_raw,
                     pure=False,
                 )
                 for rinex_file in rinex_files_sorted
@@ -4012,6 +3146,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                         receiver_name,
                         fork,
                         self.keep_sids,
+                        self._reader_name,
+                        store_raw,
                     )
                     for rinex_file in rinex_files_sorted
                 ]
@@ -4031,421 +3167,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             f"[v{version}] Cooperative write for {receiver_name}"
         )
 
-        return [f.name for f in rinex_files_sorted]
-
-    def _append_to_icechunk_native_context_manager(
-        self,
-        augmented_datasets: list[tuple[Path, xr.Dataset]],
-        receiver_name: str,
-        rinex_files: list[Path],
-    ) -> None:
-        _ = rinex_files
-        log = self._logger
-        version = get_version_from_pyproject()
-
-        # 1) Pre-check which hashes already exist
-        file_hash_map = {
-            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
-        }
-        existing_hashes = self._check_existing_with_temporal_overlap(
-            receiver_name, augmented_datasets, file_hash_map
-        )
-
-        actions = {
-            "initial": 0,
-            "skipped": 0,
-            "appended": 0,
-            "written": 0,
-            "overwritten": 0,
-        }
-        metadata_records: list[dict] = []
-
-        # 2) Open native Icechunk transaction (auto-commit)
-        commit_msg = f"[v{version}] {receiver_name} {self.matched_data_dirs.yyyydoy}"
-
-        with self.site.rinex_store.repo.transaction(
-            branch="main", message=commit_msg
-        ) as store:
-            groups = self.site.rinex_store.list_groups() or []
-
-            # 2a) Synchronous initial write if group does not exist (avoid race)
-            if receiver_name not in groups:
-                for fname, ds in augmented_datasets:
-                    rinex_hash = file_hash_map.get(fname)
-                    if rinex_hash and rinex_hash not in existing_hashes:
-                        ds_init = self.site.rinex_store._cleanse_dataset_attrs(
-                            ds,
-                        )
-                        ds_init.to_zarr(store, group=receiver_name, mode="a")
-
-                        actions["initial"] += 1
-                        groups.append(receiver_name)
-                        break
-
-            # 3) Prepare metadata rows and thread tasks
-            def write_one(
-                _fname: Path,
-                ds: xr.Dataset,
-                exists: bool,
-                _rel_path: str,
-                receiver_name: str,
-                store: zarr.storage.BaseStore,
-            ) -> str:
-                ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
-                    ds,
-                )
-
-                if not exists and receiver_name not in groups:
-                    ds_clean.to_zarr(store, group=receiver_name, mode="w")
-                    return "initial"
-                if exists and self._rinex_store_strategy == "skip":
-                    return "skipped"
-                if exists and self._rinex_store_strategy == "overwrite":
-                    ds_clean.to_zarr(
-                        store, group=receiver_name, mode="a", append_dim="epoch"
-                    )
-                    return "overwritten"
-                if exists and self._rinex_store_strategy == "append":
-                    ds_clean.to_zarr(
-                        store, group=receiver_name, mode="a", append_dim="epoch"
-                    )
-                    return "appended"
-                ds_clean.to_zarr(
-                    store, group=receiver_name, mode="a", append_dim="epoch"
-                )
-                return "written"
-
-            with ThreadPoolExecutor(max_workers=12) as pool:
-                futures = []
-                for fname, ds in augmented_datasets:
-                    rinex_hash = file_hash_map.get(fname)
-                    if not rinex_hash:
-                        continue
-
-                    exists = rinex_hash in existing_hashes
-                    start_epoch = np.datetime64(ds.epoch.min().values)
-                    end_epoch = np.datetime64(ds.epoch.max().values)
-                    rel_path = self.site.rinex_store.rel_path_for_commit(fname)
-
-                    # full-schema metadata row (snapshot_id can stay None)
-                    metadata_records.append(
-                        {
-                            "hash": rinex_hash,
-                            "start": start_epoch,
-                            "end": end_epoch,
-                            "action": "skip" if exists else "write",
-                            "commit_msg": f"{'skip' if exists else 'write'}: {rel_path}",
-                            "written_at": datetime.now(UTC).isoformat(),
-                            "attrs": json.dumps(ds.attrs),
-                            "snapshot_id": None,
-                            "write_strategy": "skip" if exists else "append",
-                        }
-                    )
-
-                    # skip writing if exists & skip strategy
-                    if exists and self._rinex_store_strategy == "skip":
-                        actions["skipped"] += 1
-                        continue
-
-                    # IMPORTANT: pass store explicitly; do NOT close over outer name
-                    futures.append(
-                        pool.submit(
-                            write_one, fname, ds, exists, rel_path, receiver_name, store
-                        )
-                    )
-
-                for fut in as_completed(futures):
-                    result = fut.result()
-                    actions[result] += 1
-
-            # 4) Bulk metadata into SAME transaction
-            self.site.rinex_store.append_metadata_bulk_store(
-                receiver_name, metadata_records, store
-            )
-
-        # 5) committed on exit
-        log.info("Committed: %s", actions)
-
-    def _append_to_icechunk_coord_distrbtd(
-        self,
-        augmented_datasets: list[tuple[Path, xr.Dataset]],
-        receiver_name: str,
-        rinex_files: list[Path],
-    ) -> None:
-        """Cooperative distributed append with Icechunk.
-
-        - Uses cooperative_transaction so multiple workers can contribute.
-        - True parallel writes via Dask distributed (or ProcessPoolExecutor fallback).
-        - Produces a single commit at the end.
-        """
-        _ = rinex_files
-        log = self._logger
-        version = get_version_from_pyproject()
-
-        t_start = time.time()
-
-        # STEP 1: Batch check which files exist
-        log.info("Batch checking %s files...", len(augmented_datasets))
-        t1 = time.time()
-
-        file_hash_map = {
-            fname: ds.attrs.get("File Hash") for fname, ds in augmented_datasets
-        }
-
-        existing_hashes = self._check_existing_with_temporal_overlap(
-            receiver_name, augmented_datasets, file_hash_map
-        )
-
-        t2 = time.time()
-        log.info(
-            "Batch check complete in %.2fs: %s/%s existing",
-            t2 - t1,
-            len(existing_hashes),
-            len(augmented_datasets),
-        )
-
-        # STEP 2: Branch-stage-promote for overwrite; direct main for others
-        is_overwrite = self._rinex_store_strategy == "overwrite"
-        temp_branch = None
-
-        if is_overwrite:
-            yyyydoy = self.matched_data_dirs.yyyydoy.to_str()
-            temp_branch = f"overwrite_{receiver_name}_{yyyydoy}"
-            current_snapshot = next(
-                self.site.rinex_store.repo.ancestry(branch="main")
-            ).id
-            try:
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            except Exception:
-                self.site.rinex_store.repo.delete_branch(temp_branch)
-                self.site.rinex_store.repo.create_branch(temp_branch, current_snapshot)
-            log.info(
-                "Created temp branch '%s' for overwrite (snapshot: %s...)",
-                temp_branch,
-                current_snapshot[:8],
-            )
-            branch = temp_branch
-        else:
-            branch = "main"
-
-        log.info("Opening Icechunk session...")
-        t3 = time.time()
-        session = self.site.rinex_store.repo.writable_session(branch=branch)
-        groups = self.site.rinex_store.list_groups() or []
-        t4 = time.time()
-        log.info("Session opened in %.2fs", t4 - t3)
-
-        # Prepare store for overwrite (remove old epochs, drop stale vars)
-        if is_overwrite and receiver_name in groups:
-            self._prepare_store_for_overwrite(
-                session,
-                receiver_name,
-                augmented_datasets,
-                existing_hashes,
-                file_hash_map,
-            )
-
-        actions = {
-            "initial": 0,
-            "skipped": 0,
-            "appended": 0,
-            "written": 0,
-            "overwritten": 0,
-        }
-        metadata_records = []  # Collect metadata to write after commit
-
-        try:
-            # STEP 3: Process all datasets using ONLY to_icechunk()
-            log.info(
-                "Processing %s datasets...",
-                len(augmented_datasets),
-            )
-            t5 = time.time()
-
-            for idx, (fname, ds) in enumerate(augmented_datasets):
-                # Progress logging
-                if idx % 20 == 0 and idx > 0:
-                    elapsed = time.time() - t5
-                    rate = idx / elapsed if elapsed > 0 else 0
-                    log.info(
-                        "  Progress: %s/%s (%.1f files/s)",
-                        idx,
-                        len(augmented_datasets),
-                        rate,
-                    )
-
-                try:
-                    rel_path = self.site.rinex_store.rel_path_for_commit(fname)
-                    rinex_hash = file_hash_map[fname]
-
-                    if not rinex_hash:
-                        log.debug("No hash for %s, skipping", fname)
-                        continue
-
-                    # Get time range for metadata
-                    start_epoch = np.datetime64(ds.epoch.min().values)
-                    end_epoch = np.datetime64(ds.epoch.max().values)
-
-                    # Fast hash check
-                    exists = rinex_hash in existing_hashes
-
-                    # Cleanse dataset
-                    ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
-                        ds,
-                    )
-
-                    # Collect metadata for ALL files (write later)
-                    metadata_records.append(
-                        {
-                            "fname": fname,
-                            "rinex_hash": rinex_hash,
-                            "start": start_epoch,
-                            "end": end_epoch,
-                            "dataset_attrs": ds.attrs.copy(),
-                            "exists": exists,
-                            "rel_path": rel_path,
-                        }
-                    )
-
-                    # Handle data writes using ONLY to_icechunk() with our session
-                    match (exists, self._rinex_store_strategy):
-                        case (False, _) if receiver_name not in groups:
-                            # Initial group creation
-                            to_icechunk(ds_clean, session, group=receiver_name)
-                            groups.append(receiver_name)
-                            actions["initial"] += 1
-                            log.debug("Initial: %s", rel_path)
-
-                        case (True, "skip"):
-                            # File exists, skip writing data
-                            actions["skipped"] += 1
-                            log.debug("Skipped: %s", rel_path)
-
-                        case (True, "append"):
-                            # File exists but append anyway
-                            to_icechunk(
-                                ds_clean,
-                                session,
-                                group=receiver_name,
-                                append_dim="epoch",
-                            )
-                            actions["appended"] += 1
-                            log.debug("Appended: %s", rel_path)
-
-                        case (False, _):
-                            # New file, write it
-                            to_icechunk(
-                                ds_clean,
-                                session,
-                                group=receiver_name,
-                                append_dim="epoch",
-                            )
-                            actions["written"] += 1
-                            log.debug("Wrote: %s", rel_path)
-
-                        case (True, "overwrite"):
-                            # Old data already removed by _prepare_store_for_overwrite
-                            to_icechunk(
-                                ds_clean,
-                                session,
-                                group=receiver_name,
-                                append_dim="epoch",
-                            )
-                            actions["overwritten"] += 1
-                            log.debug("Overwrote: %s", rel_path)
-
-                        case _:
-                            log.warning(
-                                "Unhandled strategy: exists=%s, strategy=%s for %s",
-                                exists,
-                                self._rinex_store_strategy,
-                                rel_path,
-                            )
-
-                except (OSError, RuntimeError, ValueError):
-                    log.exception("Failed to process %s", fname.name)
-
-            t6 = time.time()
-            log.info("Dataset processing complete in %.2fs", t6 - t5)
-
-            # STEP 4: Single commit for all data
-            summary = ", ".join(f"{k}={v}" for k, v in actions.items() if v > 0)
-            commit_msg = (
-                f"[v{version}] {receiver_name} "
-                f"{self.matched_data_dirs.yyyydoy}: {summary}"
-            )
-
-            # STEP 5: Write metadata (separate transactions after data commit)
-            log.info(
-                "Writing metadata for %s files...",
-                len(metadata_records),
-            )
-            t9 = time.time()
-
-            self.site.rinex_store.append_metadata_bulk(
-                group_name=receiver_name,
-                rows=metadata_records,
-                session=session,
-            )
-
-            t10 = time.time()
-            log.info("Metadata written in %.2fs", t10 - t9)
-
-            log.info("Committing: %s", summary)
-            t7 = time.time()
-            try:
-                snapshot_id = session.commit(commit_msg)
-                t8 = time.time()
-                log.info(
-                    "Commit complete in %.2fs (snapshot: %s...)",
-                    t8 - t7,
-                    snapshot_id[:8],
-                )
-            except Exception as e:
-                t8 = time.time()
-                if "no changes" in str(e).lower():
-                    log.info(
-                        "no_changes_to_commit (all files already ingested): %.2fs",
-                        t8 - t7,
-                    )
-                else:
-                    raise
-
-            # Timing summary
-            t_end = time.time()
-            log.info("\nTIMING BREAKDOWN:")
-            log.info("  Batch check:    %.2fs", t2 - t1)
-            log.info("  Open session:   %.2fs", t4 - t3)
-            log.info("  Process data:   %.2fs", t6 - t5)
-            log.info("  Commit:         %.2fs", t8 - t7)
-            log.info("  Metadata:       %.2fs", t10 - t9)
-            log.info("  TOTAL:          %.2fs", t_end - t_start)
-
-            log.info(
-                "Successfully processed %s files for '%s'",
-                len(augmented_datasets),
-                receiver_name,
-            )
-
-        except (OSError, RuntimeError, ValueError):
-            log.exception("Batch append failed")
-            raise
-
-        # Promote temp branch to main after successful commit
-        if is_overwrite and temp_branch:
-            try:
-                new_tip = next(
-                    self.site.rinex_store.repo.ancestry(branch=temp_branch)
-                ).id
-                self.site.rinex_store.repo.reset_branch("main", new_tip)
-                log.info(
-                    "Promoted %s to main (snapshot: %s...)",
-                    temp_branch,
-                    new_tip[:8],
-                )
-            finally:
-                with contextlib.suppress(Exception):
-                    self.site.rinex_store.repo.delete_branch(temp_branch)
+        return [f.name for f in rinex_files_sorted]  # ty: ignore[invalid-return-type]
 
     def parsed_rinex_data_gen_parallel(
         self,
@@ -4591,6 +3313,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             # 3e. Yield final daily dataset
             # Read back from store to get complete daily dataset
             date_obj = self.matched_data_dirs.yyyydoy.date
+            assert date_obj is not None, "yyyydoy.date must not be None"
             start_time = datetime.combine(date_obj, datetime.min.time())
             end_time = datetime.combine(date_obj, datetime.max.time())
             time_range = (start_time, end_time)
@@ -4613,8 +3336,9 @@ if __name__ == "__main__":
     print(f"stared main block at {datetime.now(UTC)}")
 
     matcher = DataDirMatcher(
-        sky_dir_pattern=Path("01_reference/01_GNSS/01_raw"),
-        canopy_dir_pattern=Path("02_canopy/01_GNSS/01_raw"),
+        root=Path("."),
+        reference_pattern=Path("01_reference/01_GNSS/01_raw"),
+        canopy_pattern=Path("02_canopy/01_GNSS/01_raw"),
     )
 
     site = GnssResearchSite(site_name="Rosalia")

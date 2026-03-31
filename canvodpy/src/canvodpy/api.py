@@ -340,6 +340,8 @@ class Pipeline:
             cpu_affinity=cpu_affinity,
             nice_priority=nice_priority,
             threads_per_worker=threads_per_worker,
+            parallelization_strategy=proc.parallelization_strategy,
+            scheduler_address=proc.scheduler_address,
         )
 
         self.log.info(
@@ -480,20 +482,35 @@ class Pipeline:
         log.info("vod_calculation_started")
 
         try:
+            # Convert YYYYDOY string to a one-day time_slice for read_group
+            import datetime
+
+            from canvod.utils.tools.date_utils import YYYYDOY
+
+            _d = YYYYDOY.from_str(date).date
+            if _d is None:
+                raise ValueError(f"Could not parse date from {date!r}")
+            _time_slice = slice(str(_d), str(_d + datetime.timedelta(days=1)))
             # Load processed data from stores
-            canopy_data = self.site.rinex_store.read_group(canopy, date=date)
-            ref_data = self.site.rinex_store.read_group(reference, date=date)
+            # canopy_data = self.site.rinex_store.read_group(canopy, date=date)
+            # ref_data = self.site.rinex_store.read_group(reference, date=date)
+            canopy_data = self.site.rinex_store.read_group(
+                canopy, time_slice=_time_slice
+            )
+            ref_data = self.site.rinex_store.read_group(
+                reference, time_slice=_time_slice
+            )
 
             # Lazy import to avoid circular dependency
             from canvod.vod import VODCalculator
 
             # Use proven VOD calculator
-            calculator = VODCalculator()
-            vod_results = calculator.compute(canopy_data, ref_data)
+            calculator = VODCalculator(canopy_ds=canopy_data, sky_ds=ref_data)
+            vod_results = calculator.calculate_vod()
 
             # Store results
             analysis_name = f"{canopy}_vs_{reference}"
-            self.site.vod_store.write_group(analysis_name, vod_results)
+            self.site.vod_store.write_or_append_group(vod_results, analysis_name)
 
             log.info(
                 "vod_calculation_complete",
@@ -674,5 +691,5 @@ def preview_processing(site: str) -> dict:
     Total files: 8640
 
     """
-    pipeline = Pipeline(site, dry_run=True)
-    return pipeline.preview()
+    with Pipeline(site, dry_run=True) as pipeline:
+        return pipeline.preview()

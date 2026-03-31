@@ -73,7 +73,7 @@ class AuxFile(ABC):
         ftp_server: str,
         local_dir: Path,
         **kwargs: Any,
-    ) -> "AuxFile":
+    ) -> AuxFile:
         """Create an AuxFile instance from a datetime.date.
 
         Parameters
@@ -107,7 +107,7 @@ class AuxFile(ABC):
         )
 
     @classmethod
-    def from_file(cls, fpath: Path, **kwargs: Any) -> "AuxFile":
+    def from_file(cls, fpath: Path | str, **kwargs: Any) -> AuxFile:
         """Create an AuxFile instance from an existing file path.
 
         Parameters
@@ -127,6 +127,7 @@ class AuxFile(ABC):
         FileNotFoundError
             If the specified file does not exist.
         """
+        fpath = Path(fpath)
         if not fpath.exists():
             raise FileNotFoundError(f"File not found: {fpath}")
 

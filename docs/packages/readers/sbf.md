@@ -125,12 +125,25 @@ under `{receiver}/metadata/sbf_obs` in the Icechunk store.
 
 | Variable | SBF Source | CF `units` | Description |
 | -------- | ---------- | ---------- | ----------- |
-| `theta` | SatVisibility | `degrees` | Polar angle (0 = overhead, 90 = horizon) |
-| `phi` | SatVisibility | `degrees` | Geographic azimuth (0 = North, clockwise) |
+| `broadcast_theta` | SatVisibility | `rad` | Polar angle θ (0 = overhead, π/2 = horizon) |
+| `broadcast_phi` | SatVisibility | `rad` | Geographic azimuth φ (0 = North, clockwise) |
 | `rise_set` | SatVisibility | `1` | 1 = rising, 0 = setting |
-| `mp_correction_m` | MeasExtra | `m` | Multipath path-delay correction |
-| `code_var` | MeasExtra | `cm^2` | Code-phase noise variance (1 count = 10⁻⁴ m²) |
+| `mp_correction_m` | MeasExtra | `m` | Pseudorange multipath correction |
+| `smoothing_corr_m` | MeasExtra | `m` | Hatch-filter smoothing correction on pseudorange |
+| `code_var` | MeasExtra | `m^2` | Code-phase noise variance |
 | `carrier_var` | MeasExtra | `mcycles^2` | Carrier-phase noise variance |
+| `lock_time_s` | MeasExtra | `s` | Continuous carrier tracking duration (reset at slip) |
+| `cum_loss_cont` | MeasExtra | `1` | Cycle-slip counter (modulo 256; Δ ≠ 0 → slip) |
+| `car_mp_corr_cycles` | MeasExtra | `cycles` | Carrier-phase multipath correction |
+| `cn0_highres_correction` | MeasExtra | `dB-Hz` | CN0HighRes sub-quantisation correction (applied to SNR automatically) |
+
+!!! tip "Field decoding formulas"
+
+    All transformations from raw SBF integers to physical units are documented
+    in detail — including the signal-dependent C/N₀ formula, the 40-bit
+    pseudorange reconstruction, and the carrier-phase wavelength conversion:
+
+    [:octicons-arrow-right-24: SBF Field Decoding Reference](sbf-decoding.md)
 
 ---
 
@@ -544,6 +557,8 @@ the file, before the receiver has broadcast the ChannelStatus block.
 ## References
 
 - Septentrio AsteRx SB3 ProBase Firmware v4.14.0 Reference Guide
+- Septentrio AsteRx SB3 ProBase Firmware v4.15.1 Reference Guide
 - IS-GPS-200 Rev. N, §20.3.3.5.2.4 (GPS time conversion)
 - CF Conventions v1.11 — `flag_masks`, `flag_meanings`, `flag_values`
 - RINEX 3.04 signal nomenclature (used verbatim for SID strings)
+- [:octicons-arrow-right-24: SBF Field Decoding Reference](sbf-decoding.md) — all formulas with firmware page citations

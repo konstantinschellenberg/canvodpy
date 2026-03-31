@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pint
 import xarray as xr
+from rich.progress import TaskID
 
 from canvod.readers import MatchedDirs, PairDataDirMatcher
 from canvod.readers.gnss_specs.constants import UREG
@@ -26,7 +27,7 @@ try:
     _HAS_DISTRIBUTED = True
 except ImportError:
     _HAS_DISTRIBUTED = False
-    dask_as_completed = None  # type: ignore[assignment]
+    dask_as_completed = None  # ty: ignore[invalid-assignment]
 
 from canvodpy.logging import get_logger
 from canvodpy.orchestrator.processor import (
@@ -62,6 +63,11 @@ class PipelineOrchestrator:
         Process nice value (0=normal, 19=lowest)
     threads_per_worker : int | None
         Threads per Dask worker process. None defaults to 1.
+    scheduler_address : str | None
+        Address of an existing Dask scheduler (e.g. ``'tcp://host:8786'``).
+        When set a LocalCluster is NOT created — the client connects to the
+        remote scheduler instead.  Ignored when parallelization_strategy is
+        ``'processpool'``.
 
     """
 
@@ -75,6 +81,8 @@ class PipelineOrchestrator:
         cpu_affinity: list[int] | None = None,
         nice_priority: int = 0,
         threads_per_worker: int | None = None,
+        parallelization_strategy: str = "dask",
+        scheduler_address: str | None = None,
     ) -> None:
         self.site = site
         self.n_max_workers = n_max_workers
@@ -122,7 +130,9 @@ class PipelineOrchestrator:
             "cpu_affinity": cpu_affinity,
             "nice_priority": nice_priority,
             "threads_per_worker": threads_per_worker,
+            "scheduler_address": scheduler_address,
         }
+        self._use_processpool = parallelization_strategy == "processpool"
         self._cluster_manager: DaskClusterManager | None = None
         self._cluster_creation_attempted = False
 
@@ -147,10 +157,12 @@ class PipelineOrchestrator:
     @property
     def cluster_manager(self) -> DaskClusterManager | None:
         """Lazily create the Dask cluster on first access."""
+        if self._use_processpool:
+            return None
         if not self._cluster_creation_attempted:
             self._cluster_creation_attempted = True
             try:
-                self._cluster_manager = DaskClusterManager(**self._cluster_config)
+                self._cluster_manager = DaskClusterManager(**self._cluster_config)  # ty: ignore[invalid-argument-type]
             except ImportError:
                 self._logger.warning(
                     "dask_distributed_unavailable",
@@ -255,10 +267,15 @@ class PipelineOrchestrator:
                         # Get canopy data dir for position computation
                         canopy_cfg = site_config.receivers.get(canopy_name)
                         if canopy_cfg:
+                            _yydoy = pair_dirs.yyyydoy.yydoy
                             canopy_position_dir = (
-                                site_config.get_base_path()
-                                / canopy_cfg.directory
-                                / pair_dirs.yyyydoy.yydoy
+                                (
+                                    site_config.get_base_path()
+                                    / canopy_cfg.directory
+                                    / _yydoy
+                                )
+                                if _yydoy is not None
+                                else None
                             )
                         else:
                             canopy_position_dir = None
@@ -802,6 +819,7 @@ class PipelineOrchestrator:
                     reader_format_lookup[(date_key, store_group)] = fmt
 
             # Submit all tasks
+            assert dask_client is not None, "dask_client must be set in Dask path"
             t_submit_start = _time.monotonic()
             future_to_meta: dict = {}
             for date_key, task_args in all_tasks:
@@ -848,7 +866,7 @@ class PipelineOrchestrator:
                     total=len(future_to_meta),
                 )
                 # Per-group sub-bars
-                group_tasks: dict[tuple[str, str], int] = {}
+                group_tasks: dict[tuple[str, str], TaskID] = {}
                 for gk, exp in sorted(expected_counts.items()):
                     dk, rn = gk
                     mb = file_sizes_mb.get(gk, 0)
@@ -940,7 +958,7 @@ class PipelineOrchestrator:
                             aux_datasets=group_aux or None,
                             reader_format=group_fmt,
                         )
-                    except (OSError, RuntimeError, ValueError):
+                    except OSError, RuntimeError, ValueError:
                         self._logger.exception(
                             "icechunk_write_failed",
                             date=date_key,
@@ -951,6 +969,7 @@ class PipelineOrchestrator:
 
                     # Read back daily dataset
                     date_obj = processor.matched_data_dirs.yyyydoy.date
+                    assert date_obj is not None, "yyyydoy.date must not be None"
                     time_range = (
                         datetime.combine(date_obj, datetime.min.time()),
                         datetime.combine(date_obj, datetime.max.time()),
@@ -960,7 +979,7 @@ class PipelineOrchestrator:
                             receiver_name=receiver_name,
                             time_range=time_range,
                         )
-                    except (ValueError, OSError, RuntimeError):
+                    except ValueError, OSError, RuntimeError:
                         self._logger.exception(
                             "read_back_failed",
                             date=date_key,
@@ -1223,7 +1242,7 @@ class SingleReceiverProcessor:
         self.site = site
         self.n_max_workers = n_max_workers
         self.reader_name = reader_name
-        self._logger = get_logger().bind(
+        self._logger = get_logger(__name__).bind(
             receiver=receiver_name,
             date=yyyydoy.to_str(),
         )
@@ -1289,7 +1308,7 @@ class SingleReceiverProcessor:
 
         # Process with actual receiver name (NOT type)
         # This requires modifying RinexDataProcessor to accept receiver_name parameter
-        return processor._process_receiver(
+        return processor._process_receiver(  # ty: ignore[unresolved-attribute]
             rinex_files=rinex_files,
             receiver_name=self.receiver_name,  # Use actual name as group
             receiver_type=self.receiver_type,

@@ -167,6 +167,21 @@ class ProcessingParams(BaseModel):
         False,
         description="Store radial distance (r) in the output store",
     )
+    store_delta_snr: bool = Field(
+        False,
+        description=(
+            "Store delta SNR (SNR_canopy − SNR_reference, dB) in the VOD store. "
+            "Useful for diagnosing canopy attenuation without the angular correction."
+        ),
+    )
+    store_radial_diff: bool = Field(
+        False,
+        description=(
+            "Store radial distance difference (r_canopy − r_reference, m) in the "
+            "VOD store. Requires store_radial_distance=true at ingest time so that "
+            "r is available in both receiver datasets."
+        ),
+    )
     receiver_position_mode: Literal["shared", "per_receiver"] = Field(
         "shared",
         description=(
@@ -225,9 +240,38 @@ class ProcessingParams(BaseModel):
             "download). Broadcast is faster but less accurate (~1-2 m orbit)."
         ),
     )
+    parallelization_strategy: Literal["dask", "processpool"] = Field(
+        "dask",
+        description=(
+            "'dask': use Dask distributed LocalCluster for parallel RINEX "
+            "processing (default). 'processpool': use ProcessPoolExecutor "
+            "directly, skipping Dask overhead — faster for small datasets or "
+            "when Dask startup latency dominates."
+        ),
+    )
+    scheduler_address: str | None = Field(
+        None,
+        description=(
+            "Address of an existing Dask scheduler to connect to instead of "
+            "spinning up a LocalCluster (e.g. 'tcp://192.168.1.100:8786'). "
+            "When set, parallelization_strategy must be 'dask'. "
+            "Useful on shared clusters where one scheduler serves all workers."
+        ),
+    )
+    store_sbf_raw_observables: bool = Field(
+        True,
+        description=(
+            "When reading SBF files, include the pre-correction 'raw' observable "
+            "variables in obs_ds: SNR_raw (before CN0HighRes), "
+            "Pseudorange_unsmoothed (before Hatch filter), "
+            "Pseudorange_raw (before Hatch + multipath filters), and "
+            "Phase_raw (before carrier multipath correction). "
+            "Set to False to reduce dataset size when raw quantities are not needed."
+        ),
+    )
 
     @model_validator(mode="after")
-    def validate_resource_mode(self) -> "ProcessingParams":
+    def validate_resource_mode(self) -> ProcessingParams:
         """Validate resource_mode constraints.
 
         In 'manual' mode, ``n_max_threads`` must be set.
@@ -365,6 +409,10 @@ class StorageConfig(BaseModel):
         "vod",
         description="Name of the VOD Icechunk store directory",
     )
+    statistics_store_name: str = Field(
+        "statistics",
+        description="Name of the statistics Zarr store directory",
+    )
     aux_data_dir: Path | None = Field(
         None,
         description=(
@@ -443,6 +491,21 @@ class StorageConfig(BaseModel):
             Path to the site's VOD store.
         """
         return self.stores_root_dir / site_name / self.vod_store_name
+
+    def get_statistics_store_path(self, site_name: str) -> Path:
+        """Get the statistics store path for a site.
+
+        Parameters
+        ----------
+        site_name : str
+            Site name.
+
+        Returns
+        -------
+        Path
+            Path to the site's statistics store.
+        """
+        return self.stores_root_dir / site_name / self.statistics_store_name
 
     def get_aux_data_dir(self) -> Path:
         """Get the directory for auxiliary data files.
@@ -533,6 +596,47 @@ class GridAssignmentConfig(BaseModel):
     )
 
 
+class HistogramBinsConfig(BaseModel):
+    """Custom histogram bin specification for a variable."""
+
+    low: float = Field(..., description="Lower edge of the first bin")
+    high: float = Field(..., description="Upper edge of the last bin")
+    n_bins: int = Field(..., ge=1, description="Number of bins")
+
+
+class StatisticsConfig(BaseModel):
+    """Streaming statistics configuration."""
+
+    enabled: bool = Field(False, description="Enable streaming statistics collection")
+    variables: list[str] = Field(
+        default_factory=lambda: ["SNR"],
+        description="Variables to profile",
+    )
+    gk_epsilon: float = Field(
+        0.01, gt=0, lt=1, description="GK sketch approximation parameter"
+    )
+    quantile_probs: list[float] = Field(
+        default_factory=lambda: [
+            0.001,
+            0.01,
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            0.9,
+            0.95,
+            0.99,
+            0.999,
+        ],
+        description="Quantile probabilities to compute",
+    )
+    custom_histogram_bins: dict[str, HistogramBinsConfig] = Field(
+        default_factory=dict,
+        description="Per-variable histogram bin overrides",
+    )
+
+
 class PreprocessingConfig(BaseModel):
     """Preprocessing pipeline configuration."""
 
@@ -541,6 +645,9 @@ class PreprocessingConfig(BaseModel):
     )
     grid_assignment: GridAssignmentConfig = Field(
         default_factory=GridAssignmentConfig,
+    )
+    statistics: StatisticsConfig = Field(
+        default_factory=StatisticsConfig,
     )
 
 
@@ -643,7 +750,7 @@ class ReceiverConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_scs_from(self) -> "ReceiverConfig":
+    def validate_scs_from(self) -> ReceiverConfig:
         """Validate scs_from is required for reference, forbidden for canopy."""
         if self.type == "reference" and self.scs_from is None:
             msg = "scs_from is required for reference receivers"
@@ -684,7 +791,7 @@ class SiteConfig(BaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_scs_from_targets(self) -> "SiteConfig":
+    def validate_scs_from_targets(self) -> SiteConfig:
         """Validate that scs_from entries reference existing canopy receivers."""
         canopy_names = self.get_canopy_receiver_names()
         for name, cfg in self.receivers.items():
@@ -745,6 +852,9 @@ class SiteConfig(BaseModel):
         if isinstance(cfg.scs_from, list):
             return cfg.scs_from
         # Single canopy name as string
+        if cfg.scs_from is None:
+            msg = f"Receiver '{receiver_name}' has no scs_from configured"
+            raise ValueError(msg)
         return [cfg.scs_from]
 
     def get_reference_canopy_pairs(self) -> list[tuple[str, str]]:
@@ -773,8 +883,8 @@ class SitesConfig(BaseModel):
     @classmethod
     def validate_at_least_one_site(
         cls,
-        v: dict[str, "SiteConfig"],
-    ) -> dict[str, "SiteConfig"]:
+        v: dict[str, SiteConfig],
+    ) -> dict[str, SiteConfig]:
         """Warn if no sites are defined.
 
         Parameters

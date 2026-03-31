@@ -135,7 +135,7 @@ class AugmentationStep(ABC):
     def augment(
         self,
         ds: xr.Dataset,
-        aux_pipeline: "AuxDataPipeline",
+        aux_pipeline: AuxDataPipeline,
         context: AugmentationContext,
     ) -> xr.Dataset:
         """Augment the dataset with computed values.
@@ -193,7 +193,7 @@ class SphericalCoordinateAugmentation(AugmentationStep):
     def augment(
         self,
         ds: xr.Dataset,
-        aux_pipeline: "AuxDataPipeline",
+        aux_pipeline: AuxDataPipeline,
         context: AugmentationContext,
     ) -> xr.Dataset:
         """Compute and add spherical coordinates using shared utility."""
@@ -248,7 +248,7 @@ class ClockCorrectionAugmentation(AugmentationStep):
     def augment(
         self,
         ds: xr.Dataset,
-        aux_pipeline: "AuxDataPipeline",
+        aux_pipeline: AuxDataPipeline,
         context: AugmentationContext,
     ) -> xr.Dataset:
         """Apply clock corrections (placeholder implementation).
@@ -319,7 +319,7 @@ class AuxDataAugmenter:
 
     def __init__(
         self,
-        aux_pipeline: "AuxDataPipeline",
+        aux_pipeline: AuxDataPipeline,
         steps: list[AugmentationStep] | None = None,
     ) -> None:
         self.aux_pipeline = aux_pipeline
@@ -498,7 +498,7 @@ def example_basic_augmentation():
     )
 
     # Create and load auxiliary data pipeline
-    aux_pipeline = AuxDataPipeline.create_standard(md)
+    aux_pipeline = AuxDataPipeline.create_standard(md, Path("/path/to/site/root"))
     aux_pipeline.load_all()
 
     # Create augmenter with default steps
@@ -594,7 +594,7 @@ def example_augmentation_pipeline():
     )
 
     # Setup auxiliary data
-    aux_pipeline = AuxDataPipeline.create_standard(md)
+    aux_pipeline = AuxDataPipeline.create_standard(md, Path("/path/to/site/root"))
     aux_pipeline.load_all()
 
     # Create augmenter
@@ -708,7 +708,7 @@ def example_adding_custom_steps():
         yyyydoy=YYYYDOY.from_str("2024302"),
     )
 
-    aux_pipeline = AuxDataPipeline.create_standard(md)
+    aux_pipeline = AuxDataPipeline.create_standard(md, Path("/path/to/site/root"))
     aux_pipeline.load_all()
 
     # Start with default steps

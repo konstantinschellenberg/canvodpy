@@ -27,12 +27,20 @@ def test_perturbed_datasets_fail_exact(
     assert not result.passed
 
 
-def test_perturbed_datasets_pass_numerical(
+def test_perturbed_datasets_numerical_annotation(
     synthetic_ds: xr.Dataset, perturbed_ds: xr.Dataset
 ):
-    """Numerical noise (1e-10) should pass at NUMERICAL tier."""
+    """Numerical noise (1e-10): within NUMERICAL tolerance → passed=True, no failures.
+
+    exact_match is False (values differ), but passed reflects tolerance outcome
+    not bit-identity. exact_match is still recorded per-variable for information.
+    """
     result = compare_datasets(synthetic_ds, perturbed_ds, tier=ToleranceTier.NUMERICAL)
+    # Within NUMERICAL tolerance → passed
     assert result.passed
+    assert len(result.failures) == 0
+    # exact_match is False because values differ (even if only by 1e-10)
+    assert all(not vs.exact_match for vs in result.variable_stats.values())
 
 
 def test_nan_disagreement_detected(synthetic_ds: xr.Dataset, damaged_ds: xr.Dataset):

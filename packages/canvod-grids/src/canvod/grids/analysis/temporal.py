@@ -25,7 +25,7 @@ Notes
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -122,7 +122,9 @@ class TemporalAnalysis:
 
         # Validate dataset
         if self.cell_id_var not in vod_ds:
-            available = [v for v in vod_ds.data_vars if v.startswith("cell_id_")]
+            available = [
+                str(v) for v in vod_ds.data_vars if str(v).startswith("cell_id_")
+            ]
             raise ValueError(
                 f"Cell ID variable '{self.cell_id_var}' not found in dataset. "
                 f"Available: {available}"
@@ -492,7 +494,10 @@ class TemporalAnalysis:
 
         # Hour of day (fractional)
         times = pd.to_datetime(var_data["epoch"].values)
-        hours = times.hour + times.minute / 60.0
+        hours = (
+            pd.Series(times).dt.hour.to_numpy()
+            + pd.Series(times).dt.minute.to_numpy() / 60.0
+        )
 
         n_sid = var_data.sizes.get("sid", 1)
         hour_edges = np.linspace(0, 24, hour_bins + 1)
@@ -789,7 +794,7 @@ class TemporalAnalysis:
             figsize = style_kwargs.pop("figsize", (12, 6))
             fig, ax = plt.subplots(figsize=figsize)
         else:
-            fig = ax.figure
+            fig = cast(plt.Figure, ax.figure)
 
         time = timeseries["epoch"].values
         mean = timeseries["mean"].values
@@ -887,7 +892,7 @@ class TemporalAnalysis:
             figsize = style_kwargs.pop("figsize", (10, 6))
             fig, ax = plt.subplots(figsize=figsize)
         else:
-            fig = ax.figure
+            fig = cast(plt.Figure, ax.figure)
 
         hours = diurnal["hour"].values
         mean = diurnal["mean"].values

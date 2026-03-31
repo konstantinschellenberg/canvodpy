@@ -218,10 +218,6 @@ class TauOmegaZerothOrder(VODCalculator):
         if not _lazy and (canopy_transmissivity <= 0).any():
             n_invalid = int((canopy_transmissivity <= 0).sum())
             total = canopy_transmissivity.size
-            print(
-                f"Warning: {n_invalid}/{total} transmissivity values <= 0 "
-                "(will produce NaN)"
-            )
             log.warning(
                 "invalid_transmissivity",
                 invalid_count=n_invalid,
@@ -235,6 +231,7 @@ class TauOmegaZerothOrder(VODCalculator):
         vod_ds = xr.Dataset(
             {
                 "VOD": vod,
+                "delta_snr": delta_snr,
                 "phi": self.canopy_ds["phi"],
                 "theta": self.canopy_ds["theta"],
             },

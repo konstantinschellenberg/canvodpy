@@ -2,7 +2,6 @@
 
 import datetime
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import xarray as xr
@@ -48,7 +47,7 @@ class Sp3Parser:
             raise FileNotFoundError(f"SP3 file not found: {self.fpath}")
 
         epochs: list[datetime.datetime] = []
-        epoch_data: list[tuple[Any]] = []
+        epoch_data: list[tuple[int, str, float, float, float]] = []
         svs: set[str] = set()
         current_epoch_idx: int = -1
 

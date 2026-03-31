@@ -1,4 +1,13 @@
 repos:
+  - repo: local
+    hooks:
+      - id: ty-check-budget
+        name: ty check budget
+        entry: just check-types-budget
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.3
     hooks:

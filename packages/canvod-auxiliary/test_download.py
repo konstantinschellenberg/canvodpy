@@ -26,7 +26,9 @@ def main():
 
         print("✓ Success!")
         print(f"  File: {sp3_file.fpath}")
-        print(f"  Size: {sp3_file.fpath.stat().st_size / 1024:.1f} KB")
+        file_path = sp3_file.fpath
+        if file_path is not None:
+            print(f"  Size: {file_path.stat().st_size / 1024:.1f} KB")
 
         # Test data access
         ds = sp3_file.data

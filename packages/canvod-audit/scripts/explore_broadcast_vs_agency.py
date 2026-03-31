@@ -32,7 +32,7 @@ def _():
     import numpy as np
     import plotly.graph_objects as go
     import xarray as xr
-    from scipy.spatial import cKDTree
+    from scipy.spatial import cKDTree  # type: ignore[unresolved-import]
 
     return cKDTree, go, np, xr
 

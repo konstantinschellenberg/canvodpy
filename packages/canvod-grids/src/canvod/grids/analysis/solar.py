@@ -88,7 +88,7 @@ class SolarPositionCalculator:
 
         if use_pvlib:
             try:
-                import pvlib
+                import pvlib  # type: ignore[unresolved-import]
 
                 self.pvlib = pvlib
                 logger.info("Using pvlib for solar position calculations")
@@ -132,7 +132,7 @@ class SolarPositionCalculator:
         self, times: pd.DatetimeIndex
     ) -> tuple[np.ndarray, np.ndarray]:
         """Compute solar position using pvlib (high accuracy)."""
-        location = self.pvlib.location.Location(
+        location = self.pvlib.location.Location(  # ty: ignore[unresolved-attribute]
             latitude=self.lat,
             longitude=self.lon,
             altitude=self.elevation,
@@ -217,7 +217,7 @@ class SolarPositionCalculator:
 
         # True solar time (minutes)
         time_offset = eq_of_time + 4 * self.lon
-        hour = times.hour + times.minute / 60.0 + times.second / 3600.0
+        hour = times.hour + times.minute / 60.0 + times.second / 3600.0  # ty: ignore[unresolved-attribute]
         true_solar_time = (hour * 60 + time_offset) % 1440
 
         # Hour angle (degrees)
@@ -252,12 +252,12 @@ class SolarPositionCalculator:
     def _datetime_to_julian_day(times: pd.DatetimeIndex) -> np.ndarray:
         """Convert datetime to Julian Day Number."""
         dt = pd.to_datetime(times)
-        year = dt.year
-        month = dt.month
-        day = dt.day
-        hour = dt.hour
-        minute = dt.minute
-        second = dt.second
+        year = dt.year  # ty: ignore[unresolved-attribute]
+        month = dt.month  # ty: ignore[unresolved-attribute]
+        day = dt.day  # ty: ignore[unresolved-attribute]
+        hour = dt.hour  # ty: ignore[unresolved-attribute]
+        minute = dt.minute  # ty: ignore[unresolved-attribute]
+        second = dt.second  # ty: ignore[unresolved-attribute]
 
         a = (14 - month) // 12
         y = year + 4800 - a
@@ -378,7 +378,7 @@ class SolarPositionCalculator:
             corrected.attrs["solar_correction"] = "cos_correction"
 
         elif method == "residual":
-            hour = times.hour + times.minute / 60.0
+            hour = times.hour + times.minute / 60.0  # ty: ignore[unresolved-attribute]
 
             if len(data.dims) == 1:
                 valid = np.isfinite(data.values)

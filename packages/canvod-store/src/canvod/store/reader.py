@@ -6,6 +6,7 @@ from collections.abc import Generator
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import xarray as xr
@@ -52,7 +53,11 @@ def _process_single_rinex(
         if keep_vars:
             available_vars = [var for var in keep_vars if var in ds.data_vars]
             if available_vars:
-                ds = ds[available_vars]
+                ds_subset = ds[available_vars]
+                if isinstance(ds_subset, xr.DataArray):
+                    ds = ds_subset.to_dataset(name=ds_subset.name or "value")
+                else:
+                    ds = ds_subset
 
         log.info("rinex_processing_complete")
         return rnx_file, ds
@@ -96,7 +101,11 @@ def preprocess_rnx(
         if keep_vars:
             available_vars = [var for var in keep_vars if var in ds.data_vars]
             if available_vars:
-                ds = ds[available_vars]
+                ds_subset = ds[available_vars]
+                if isinstance(ds_subset, xr.DataArray):
+                    ds = ds_subset.to_dataset(name=ds_subset.name or "value")
+                else:
+                    ds = ds_subset
 
         log.info("preprocessing_complete")
         return rnx_file, ds
@@ -169,6 +178,12 @@ class IcechunkDataReader:
         self._site = GnssResearchSite(site_name)
 
         date_obj = self.matched_dirs.yyyydoy.date
+        if date_obj is None:
+            msg = (
+                f"Matched date is missing for {self.matched_dirs.yyyydoy.to_str()} "
+                f"at site {site_name}"
+            )
+            raise ValueError(msg)
         self._start_time = datetime.combine(date_obj, datetime.min.time())
         self._end_time = datetime.combine(date_obj, datetime.max.time())
         self._time_range = (self._start_time, self._end_time)
@@ -252,7 +267,8 @@ class IcechunkDataReader:
         # --- 1) Cache auxiliaries once per day ---
         from canvodpy.orchestrator import RinexDataProcessor
 
-        processor = RinexDataProcessor(
+        processor_cls = cast(Any, RinexDataProcessor)
+        processor: Any = processor_cls(
             matched_data_dirs=self.matched_dirs, icechunk_reader=self
         )
 
@@ -336,6 +352,12 @@ class IcechunkDataReader:
                     # --- 3) Augment with φ, θ, r ---
                     matched = processor.match_datasets(ds, **aux_ds_dict)
                     ephem_matched = matched["ephem"]
+                    if approx_pos is None:
+                        msg = (
+                            "Approximate receiver position is required before "
+                            "azimuth/elevation augmentation."
+                        )
+                        raise RuntimeError(msg)
                     ds = processor.add_azi_ele(
                         rnx_obs_ds=ds,
                         ephem_ds=ephem_matched,
@@ -659,7 +681,9 @@ class IcechunkDataReader:
         receiver_type: str,
     ) -> None:
         """Append dataset to the appropriate Icechunk store."""
-        from gnssvodpy.utils.tools import get_version_from_pyproject
+        from gnssvodpy.utils.tools import (
+            get_version_from_pyproject,  # type: ignore[unresolved-import]
+        )
 
         try:
             version = get_version_from_pyproject()

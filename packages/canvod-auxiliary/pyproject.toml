@@ -9,14 +9,14 @@ maintainers = [
     {name = "Climate and Environmental Remote Sensing (CLIMERS)", email = "nicolas.bader@geo.tuwien.ac.at"}
 ]
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 keywords = ["GNSS", "VOD", "auxiliary", "SP3", "CLK", "ephemeris", "clock"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 dependencies = [
@@ -61,7 +61,7 @@ module-name = "canvod.auxiliary"
 
 [tool.ruff]
 line-length = 88
-target-version = "py313"
+target-version = "py314"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
