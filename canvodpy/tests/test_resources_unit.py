@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import unittest.mock
 
 import pytest
@@ -78,22 +77,34 @@ class TestResourceInitPlugin:
     def test_setup_nice_calls_setpriority(self):
         plugin = ResourceInitPlugin(nice_value=5)
         worker = unittest.mock.MagicMock()
-        with unittest.mock.patch("os.setpriority") as mock_sp:
+        # os.setpriority / os.PRIO_PROCESS don't exist on Windows — create=True
+        with (
+            unittest.mock.patch("os.setpriority", create=True) as mock_sp,
+            unittest.mock.patch("os.PRIO_PROCESS", 0, create=True),
+        ):
             plugin.setup(worker)
-        mock_sp.assert_called_once_with(os.PRIO_PROCESS, 0, 5)
+        mock_sp.assert_called_once_with(0, 0, 5)
 
     def test_setup_nice_permission_error_does_not_raise(self):
         plugin = ResourceInitPlugin(nice_value=10)
         worker = unittest.mock.MagicMock()
-        with unittest.mock.patch(
-            "os.setpriority", side_effect=PermissionError("denied")
+        with (
+            unittest.mock.patch(
+                "os.setpriority", side_effect=PermissionError("denied"), create=True
+            ),
+            unittest.mock.patch("os.PRIO_PROCESS", 0, create=True),
         ):
             plugin.setup(worker)  # must not propagate
 
     def test_setup_nice_os_error_does_not_raise(self):
         plugin = ResourceInitPlugin(nice_value=10)
         worker = unittest.mock.MagicMock()
-        with unittest.mock.patch("os.setpriority", side_effect=OSError("nope")):
+        with (
+            unittest.mock.patch(
+                "os.setpriority", side_effect=OSError("nope"), create=True
+            ),
+            unittest.mock.patch("os.PRIO_PROCESS", 0, create=True),
+        ):
             plugin.setup(worker)  # must not propagate
 
     def test_setup_affinity_linux_calls_sched_setaffinity(self):
