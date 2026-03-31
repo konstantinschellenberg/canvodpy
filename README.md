@@ -49,20 +49,156 @@ An open Python ecosystem for GNSS-Transmissometry (GNSS-T) canopy VOD retrievals
 
 canVODpy is organized as a monorepo with independent, composable packages:
 
-| Package                     | Description                                                                  |
-| --------------------------- | ---------------------------------------------------------------------------- |
-| **canvod-readers**          | RINEX v3.04 and SBF binary file readers                                      |
-| **canvod-auxiliary**        | SP3/CLK ephemeris download, interpolation, coordinate transforms             |
-| **canvod-grids**            | 7 hemispheric grid types (equal-area, geodesic, HTM, ...)                    |
-| **canvod-vod**              | Tau-omega VOD retrieval algorithms                                           |
-| **canvod-store**            | Versioned storage via Icechunk (Zarr v3)                                     |
-| **canvod-store-metadata**   | Store-level provenance (DataCite, ACDD, STAC)                                |
-| **canvod-viz**              | Hemispheric and time-series visualisation                                    |
-| **canvod-ops**              | Configurable preprocessing pipeline                                          |
-| **canvod-utils**            | Configuration, date utilities, shared tooling                                |
-| **canvod-virtualiconvname** | Filename mapping and pre-flight validation                                   |
-| **canvod-audit**            | Three-tier verification suite (internal consistency, regression, vs gnssvod) |
-| **canvodpy**                | Umbrella package — 4 API levels, factory system, orchestrator                |
+```mermaid
+graph TB
+    subgraph UI[User Interface]
+        Config["🔧 Configuration<br/>YAML files"]
+    end
+
+    subgraph Umbrella[Umbrella Package]
+        Canvodpy["📦 canvodpy<br/>Orchestrator & API"]
+    end
+
+    subgraph CorePkg[Core Processing Packages]
+        Readers["📖 canvod-readers<br/>RINEX & SBF Parsing"]
+        Aux["📡 canvod-auxiliary<br/>SP3/CLK/Position"]
+        Store["💾 canvod-store<br/>Icechunk Storage"]
+        StoreMeta["📋 canvod-store-metadata<br/>Provenance & Standards"]
+        Utils["🛠️ canvod-utils<br/>Config & Tools"]
+    end
+
+    subgraph AnalysisPkg[Analysis and Output Packages]
+        VOD["🌳 canvod-vod<br/>VOD Calculator"]
+        Grids["🔲 canvod-grids<br/>Hemisphere Grids"]
+        Viz["📊 canvod-viz<br/>2D/3D Visualization"]
+    end
+
+    subgraph InfraPkg[Infrastructure Packages]
+        Ops["⚙️ canvod-ops<br/>Preprocessing Pipeline"]
+        Naming["🏷️ canvod-virtualiconvname<br/>File Naming & Discovery"]
+        Audit["🔍 canvod-audit<br/>Verification Suite"]
+    end
+
+    Config --> Canvodpy
+    Canvodpy --> Readers
+    Canvodpy --> Aux
+    Canvodpy --> Store
+    Canvodpy --> StoreMeta
+    Canvodpy --> VOD
+    Canvodpy --> Grids
+    Canvodpy --> Viz
+    Canvodpy --> Ops
+    Canvodpy --> Naming
+    Canvodpy --> Audit
+
+    Aux --> Readers
+    Store --> Grids
+    StoreMeta --> Utils
+    Viz --> Grids
+    Ops --> Grids
+    Ops --> Utils
+
+    style Canvodpy fill:#e1f5ff,stroke:#01579b,stroke-width:3px
+    style Readers fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Aux fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Store fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style StoreMeta fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style VOD fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style Grids fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
+    style Viz fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+    style Utils fill:#fce4ec,stroke:#880e4f,stroke-width:2px
+    style Ops fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+    style Naming fill:#e0f2f1,stroke:#004d40,stroke-width:2px
+    style Audit fill:#fff8e1,stroke:#f57f17,stroke-width:2px
+```
+
+## How it works
+
+```mermaid
+flowchart TD
+    Start([🚀 Start Processing]) --> Input
+
+    subgraph Input[📥 Data Ingestion]
+        RINEX["📄 RINEX OBS Files<br/>(.rnx)"]
+        SBF["📦 SBF Binary Files<br/>(.sbf)"]
+    end
+
+    subgraph Ephemeris[🛰️ Ephemeris Sources]
+        SP3["🏛️ Agency Final<br/>SP3 + CLK<br/>(12-18 day latency)"]
+        SBFVIS["📡 SBF Broadcast<br/>SatVisibility block<br/>(immediate)"]
+        NAV["📄 RINEX NAV 🚧<br/>.YYp / .YYn<br/>(planned)"]
+    end
+
+    subgraph Reading[🔍 Reading and Parsing]
+        RinexReader["Rnxv3Obs<br/>Parse RINEX v3.04"]
+        SbfReader["SbfReader<br/>Parse Septentrio Binary"]
+        AuxReader["SP3/CLK Parsers<br/>Load Auxiliary Data"]
+    end
+
+    subgraph Processing[⚙️ Geometry Augmentation]
+        Interp["Hermite Interpolation<br/>Orbits/clocks → obs epochs"]
+        Position["Coordinate Transform<br/>ECEF → spherical (r, θ, φ)"]
+        DirectGeom["Direct θ, φ<br/>From receiver firmware"]
+        Augment["Dataset Augmentation<br/>Merge observations + geometry"]
+    end
+
+    subgraph Storage[💾 Versioned Storage - Icechunk]
+        Dedup["3-Layer Deduplication<br/>Hash · Temporal · Intra-batch"]
+        Icechunk["Observations Store<br/>(epoch × sid)"]
+        Meta["Metadata Table<br/>File provenance"]
+    end
+
+    subgraph Analysis[📊 Analysis]
+        VODCalc["VodComputer<br/>Tau-Omega model · canopy vs reference"]
+        GridAssign["Hemispheric Grid Assignment<br/>Equal-area / HEALPix / geodesic"]
+        Aggregate["Aggregation<br/>Per-cell statistics"]
+    end
+
+    subgraph Output[📈 Output]
+        Viz2D["2D Hemisphere Plots<br/>Polar projection"]
+        Viz3D["3D Interactive Plots<br/>Plotly surface"]
+        Export["Data Export<br/>NetCDF / CSV"]
+    end
+
+    RINEX --> RinexReader
+    SBF --> SbfReader
+    SP3 --> AuxReader
+    SBFVIS -.-> DirectGeom
+    NAV -.-> AuxReader
+
+    RinexReader --> Augment
+    SbfReader --> Augment
+    AuxReader --> Interp
+    Interp --> Position
+    Position --> Augment
+    DirectGeom --> Augment
+    Augment --> Dedup
+    Dedup --> Icechunk
+    Dedup --> Meta
+
+    Icechunk --> VODCalc
+    VODCalc --> GridAssign
+    GridAssign --> Aggregate
+
+    Aggregate --> Viz2D
+    Aggregate --> Viz3D
+    Aggregate --> Export
+
+    Viz2D --> End([✅ Complete])
+    Viz3D --> End
+    Export --> End
+
+    style Start fill:#4caf50,stroke:#1b5e20,stroke-width:3px,color:#fff
+    style End fill:#4caf50,stroke:#1b5e20,stroke-width:3px,color:#fff
+    style Input fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style Ephemeris fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style Reading fill:#ffecb3,stroke:#f57c00,stroke-width:2px
+    style Processing fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
+    style Storage fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    style Analysis fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style Output fill:#e0f2f1,stroke:#00695c,stroke-width:2px
+    style NAV fill:#fff9c4,stroke:#f9a825,stroke-width:2px,stroke-dasharray: 5 5
+```
 
 ## Installation
 
@@ -85,7 +221,79 @@ process_date("Rosalia", "2025001")
 vod = calculate_vod("Rosalia", "canopy_01", "reference_01", "2025001")
 ```
 
-Four API levels are available — from one-liners to Airflow-ready stateless functions.
+Four API levels are available — from one-liners to Airflow-ready stateless functions:
+
+```mermaid
+flowchart TD
+    subgraph L1["Level 1: Convenience"]
+        L1A["process_date('Rosalia', '2025001')"]
+        L1A --> L1B["Pipeline (internal)"]
+        L1B --> L1C["PipelineOrchestrator"]
+        L1C --> L1D["Dask Workers"]
+    end
+
+    subgraph L2["Level 2: Fluent"]
+        L2A[".workflow('Rosalia')"]
+        L2A --> L2B[".read('2025001')"]
+        L2B --> L2C[".augment(source='final')"]
+        L2C --> L2E[".grid(grid_type='equal_area')"]
+        L2E --> L2F[".vod(canopy, ref)"]
+        L2F --> L2D[".result()"]
+    end
+
+    subgraph L3["Level 3: Site + Pipeline"]
+        L3A["Site('Rosalia')"]
+        L3A --> L3B[".pipeline(n_workers=8)"]
+        L3B --> L3C[".process_range(...)"]
+        L3C --> L3D["Reusable Dask Cluster"]
+        L3A --> L3E["site.vod.compute_bulk(date_range)"]
+    end
+
+    subgraph L4["Level 4: Functional"]
+        L4A["read_rinex('file.rnx')"]
+        L4A --> L4B["augment_with_ephemeris(ds)"]
+        L4B --> L4G["assign_grid_cells(ds)"]
+        L4G --> L4C["calculate_vod(canopy, ref)"]
+        L4C --> L4H["write_to_store(ds, group)"]
+        L4H --> L4D["XCom / NetCDF path"]
+    end
+
+    subgraph Shared["Shared Components"]
+        FM["FilenameMapper"]
+        EP["EphemerisProvider"]
+        READER["GNSSDataReader"]
+        STORE["Icechunk Store"]
+        VOD["VodComputer"]
+    end
+
+    L1C --> FM
+    L1C --> EP
+    L1C --> READER
+    L1C --> STORE
+
+    L2B --> FM
+    L2B --> READER
+    L2C --> EP
+    L2F --> VOD
+    L2D --> STORE
+
+    L3C --> FM
+    L3C --> EP
+    L3C --> READER
+    L3C --> STORE
+    L3E --> VOD
+
+    L4A --> READER
+    L4B --> EP
+    L4H --> STORE
+
+    style L1 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    style L2 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
+    style L3 fill:#fff3e0,stroke:#e65100,stroke-width:2px
+    style L4 fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style Shared fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+```
+
 See the [API Levels guide](https://nfb2021.github.io/canvodpy/guides/api-levels/) for details.
 
 ## Development Setup
@@ -133,7 +341,10 @@ Key pages:
 
 ## Project Structure
 
-```
+<details>
+<summary>Directory layout</summary>
+
+```text
 canvodpy/                       # Monorepo root
 ├── packages/                   # Independent packages
 │   ├── canvod-readers/         #   RINEX & SBF parsing
@@ -146,7 +357,7 @@ canvodpy/                       # Monorepo root
 │   ├── canvod-ops/             #   Preprocessing pipeline
 │   ├── canvod-utils/           #   Configuration & utilities
 │   ├── canvod-virtualiconvname/#   Filename mapping
-│   └── canvod-audit/          #   Three-tier verification suite
+│   └── canvod-audit/           #   Three-tier verification suite
 ├── canvodpy/                   # Umbrella package + orchestrator
 ├── demo/                       # marimo notebooks (submodule)
 ├── config/                     # YAML configuration files
@@ -156,6 +367,8 @@ canvodpy/                       # Monorepo root
 ├── NOTICE                      # Apache 2.0 attribution
 └── LICENSE                     # Apache License 2.0
 ```
+
+</details>
 
 ## AI-Assisted Development
 
