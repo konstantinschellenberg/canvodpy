@@ -5,6 +5,7 @@
 # .claude/commands/ is tracked (slash commands ship with the repo)
 .claude/*
 !.claude/commands/
+!.claude/skills/
 
 # ============================================================================
 # Python

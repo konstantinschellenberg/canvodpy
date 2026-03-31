@@ -16,8 +16,10 @@ signal-to-noise ratio observations.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)
+[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
 [![OpenSSF Best Practices](https://bestpractices.coreinfrastructure.org/projects/12329/badge)](https://bestpractices.coreinfrastructure.org/projects/12329)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nfb2021/canvodpy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nfb2021/canvodpy)
+[![VODnet](https://img.shields.io/badge/VODnet-GNSS--T%20network-2d6a4f)](https://vodnet.netlify.app)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 

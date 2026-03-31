@@ -11,7 +11,7 @@ wait to be asked.
 |---|---|---|
 | `xarray` | Working with `xarray.Dataset` / `DataArray`, coordinates, dims, attrs | `npx skills add tondevrel/scientific-agent-skills@xarray -g -y` |
 | `zarr-python` | Working with Zarr stores, chunking, encoding | `npx skills add davila7/claude-code-templates@zarr-python -g -y` |
-| `icechunk` | Working with Icechunk stores, versioned storage, branching | Manual: copy `SKILL.md` to `~/.claude/skills/icechunk/` |
+| `icechunk` | Working with Icechunk stores, versioned storage, branching | `just install-skills` (bundled at `.claude/skills/icechunk/`) |
 | `pydantic` | Working with Pydantic models, validators, `BaseModel` | `npx skills add bobmatnyc/claude-mpm-skills@pydantic -g -y` |
 | `python-testing-patterns` | Writing or reviewing `pytest` tests | `npx skills add wshobson/agents@python-testing-patterns -g -y` |
 | `uv-package-manager` | Running `uv`, editing `pyproject.toml`, managing deps | `npx skills add wshobson/agents@uv-package-manager -g -y` |
@@ -19,6 +19,7 @@ wait to be asked.
 | `beautiful-mermaid` | Rendering Mermaid diagrams to SVG/PNG from `.mmd` sources | `npx skills add intellectronica/agent-skills@beautiful-mermaid -g -y` |
 | `mermaid-diagrams` | Creating software diagrams (architecture, flows, ERDs) | `npx skills add softaworks/agent-toolkit@mermaid-diagrams -g -y` |
 | `scientific-writing` | Writing scientific manuscripts (IMRAD structure, citations) | `npx skills add davila7/claude-code-templates@scientific-writing -g -y` |
+| `docs-as-code` | Documentation pipeline automation, MkDocs/Zensical workflows | Custom (contact maintainer) |
 | `context-mode` | Large command outputs, log analysis, data processing | MCP plugin (see context-mode docs) |
 | `notebooklm` | Generating podcasts, reports, quizzes from project sources | `pip install notebooklm-py && notebooklm skill install` |
 | `simplify` | Reviewing changed code for reuse, quality, and efficiency | Built-in Claude Code skill |

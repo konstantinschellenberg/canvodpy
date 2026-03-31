@@ -72,7 +72,7 @@ re-explain conventions each session.
 |---|---|---|
 | `xarray` | Dims, coords, attrs, `.sel()`, `.where()`, Dask chunking | `npx skills add tondevrel/scientific-agent-skills@xarray -g -y` |
 | `zarr-python` | Zarr v3 stores, encoding, compression, parallel I/O | `npx skills add davila7/claude-code-templates@zarr-python -g -y` |
-| `icechunk` | Icechunk transactions, branching, time travel, xarray integration | Manual: copy `SKILL.md` to `~/.claude/skills/icechunk/` |
+| `icechunk` | Icechunk transactions, branching, time travel, xarray integration | `just install-skills` (bundled in repo at `.claude/skills/icechunk/`) |
 | `pydantic` | BaseModel patterns, validators, `ConfigDict`, frozen models | `npx skills add bobmatnyc/claude-mpm-skills@pydantic -g -y` |
 | `python-testing-patterns` | pytest fixtures, parametrize, mocking, assertion patterns | `npx skills add wshobson/agents@python-testing-patterns -g -y` |
 | `uv-package-manager` | `uv run`, `uv add`, workspace management, `pyproject.toml` | `npx skills add wshobson/agents@uv-package-manager -g -y` |
@@ -80,6 +80,9 @@ re-explain conventions each session.
 | `beautiful-mermaid` | Render `.mmd` diagrams to SVG/PNG with themed output | `npx skills add intellectronica/agent-skills@beautiful-mermaid -g -y` |
 | `mermaid-diagrams` | Architecture, flow, ERD, C4 diagrams in Mermaid syntax | `npx skills add softaworks/agent-toolkit@mermaid-diagrams -g -y` |
 | `scientific-writing` | IMRAD manuscripts, citations, reporting guidelines | `npx skills add davila7/claude-code-templates@scientific-writing -g -y` |
+| `airflow` | Airflow DAG operations, debugging, task logs, health checks | `npx skills add astronomer/agents@airflow -g -y` |
+| `airflow-dag-patterns` | DAG design patterns, TaskFlow API, dynamic DAGs, testing | `npx skills add wshobson/agents@airflow-dag-patterns -g -y` |
+| `docs-as-code` | Documentation pipeline automation, MkDocs, Zensical workflows | Custom (contact maintainer) |
 | `context-mode` | Large output handling, log analysis, data processing | MCP plugin (auto-configured) |
 | `notebooklm` | Generate podcasts, reports, quizzes from project sources | `pip install notebooklm-py && notebooklm skill install` |
 | `find-skills` | Discover and install new skills from the ecosystem | `npx skills add vercel-labs/skills@find-skills -g -y` |
@@ -99,10 +102,17 @@ npx skills add wshobson/agents@python-testing-patterns -g -y
 npx skills add wshobson/agents@uv-package-manager -g -y
 npx skills add marimo-team/skills@marimo-notebook -g -y
 
+# Orchestration
+npx skills add astronomer/agents@airflow -g -y
+npx skills add wshobson/agents@airflow-dag-patterns -g -y
+
 # Diagrams & documentation
 npx skills add intellectronica/agent-skills@beautiful-mermaid -g -y
 npx skills add softaworks/agent-toolkit@mermaid-diagrams -g -y
 npx skills add davila7/claude-code-templates@scientific-writing -g -y
+
+# Bundled (ships with this repo)
+just install-skills
 
 # Utilities
 npx skills add vercel-labs/skills@find-skills -g -y

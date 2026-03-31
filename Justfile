@@ -181,6 +181,12 @@ hooks:
     uvx pre-commit install
     uvx pre-commit install --hook-type commit-msg
 
+# install bundled Claude Code skills to ~/.claude/skills/
+install-skills:
+    @mkdir -p ~/.claude/skills/icechunk
+    @cp .claude/skills/icechunk/SKILL.md ~/.claude/skills/icechunk/SKILL.md
+    @echo "Installed: icechunk"
+
 # ============================================================================
 # uv venv and Dependency Management
 # ============================================================================
