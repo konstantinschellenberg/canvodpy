@@ -76,8 +76,11 @@ class TestAugmentWithEphemeris:
         mock_provider = unittest.mock.MagicMock()
         mock_provider.augment_dataset.return_value = ds
 
+        # AgencyEphemerisProvider is imported locally inside augment_with_ephemeris;
+        # patch at the source module so the local import picks up the mock.
         with unittest.mock.patch(
-            "canvodpy.functional.AgencyEphemerisProvider", return_value=mock_provider
+            "canvod.auxiliary.ephemeris.provider.AgencyEphemerisProvider",
+            return_value=mock_provider,
         ):
             result = augment_with_ephemeris(
                 ds, receiver_position=object(), source="final"
@@ -94,7 +97,8 @@ class TestAugmentWithEphemeris:
         mock_provider.augment_dataset.return_value = ds
 
         with unittest.mock.patch(
-            "canvodpy.functional.SbfBroadcastProvider", return_value=mock_provider
+            "canvod.auxiliary.ephemeris.provider.SbfBroadcastProvider",
+            return_value=mock_provider,
         ):
             result = augment_with_ephemeris(
                 ds, receiver_position=object(), source="broadcast"
@@ -118,7 +122,8 @@ class TestAugmentWithEphemeris:
         mock_provider.augment_dataset.return_value = ds
 
         with unittest.mock.patch(
-            "canvodpy.functional.AgencyEphemerisProvider", return_value=mock_provider
+            "canvod.auxiliary.ephemeris.provider.AgencyEphemerisProvider",
+            return_value=mock_provider,
         ):
             augment_with_ephemeris(
                 ds,
@@ -170,8 +175,10 @@ class TestAssignGridCells:
             cell=(["epoch", "sid"], np.zeros((5, 3), dtype=int))
         )
 
+        # add_cell_ids_to_ds_fast is imported locally inside assign_grid_cells;
+        # patch at the source module.
         with unittest.mock.patch(
-            "canvodpy.functional.add_cell_ids_to_ds_fast", return_value=expected
+            "canvod.grids.add_cell_ids_to_ds_fast", return_value=expected
         ) as mock_fn:
             result = assign_grid_cells(ds, mock_grid, grid_name="equal_area")
 
@@ -211,6 +218,12 @@ class TestCalculateVod:
 # ---------------------------------------------------------------------------
 
 
+class _PickleableGrid:
+    """Minimal pickleable grid substitute (MagicMock is not pickleable)."""
+
+    ncells = 100
+
+
 class TestFunctionalToFile:
     def test_read_rinex_to_file_writes_netcdf(self, tmp_path):
         from canvodpy.functional import read_rinex_to_file
@@ -229,27 +242,27 @@ class TestFunctionalToFile:
     def test_create_grid_to_file_pickles_grid(self, tmp_path):
         from canvodpy.functional import create_grid_to_file
 
-        mock_grid = unittest.mock.MagicMock()
-        mock_grid.ncells = 100
+        fake_grid = _PickleableGrid()
         out = tmp_path / "grid.pkl"
 
         with unittest.mock.patch(
-            "canvodpy.functional.create_grid", return_value=mock_grid
+            "canvodpy.functional.create_grid", return_value=fake_grid
         ):
-            result = create_grid_to_file("equal_area", str(out))
+            # signature: create_grid_to_file(output_path, grid_type, **grid_params)
+            result = create_grid_to_file(str(out), "equal_area")
 
         assert Path(result).exists()
         loaded = pickle.loads(Path(result).read_bytes())
-        assert loaded is mock_grid
+        assert loaded.ncells == 100
 
     def test_assign_grid_cells_to_file_round_trip(self, tmp_path):
         from canvodpy.functional import assign_grid_cells_to_file
 
         ds = _make_ds()
         ds.to_netcdf(tmp_path / "ds.nc")
-        mock_grid = unittest.mock.MagicMock()
+        fake_grid = _PickleableGrid()
         grid_out = tmp_path / "grid.pkl"
-        grid_out.write_bytes(pickle.dumps(mock_grid))
+        grid_out.write_bytes(pickle.dumps(fake_grid))
         expected = ds.assign_coords(
             cell=(["epoch", "sid"], np.zeros((5, 3), dtype=int))
         )
