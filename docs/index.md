@@ -16,11 +16,8 @@ signal-to-noise ratio observations.
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18636775.svg)](https://doi.org/10.5281/zenodo.18636775)
 [![PyPI](https://img.shields.io/pypi/v/canvodpy)](https://pypi.org/project/canvodpy/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F-green)](https://fair-software.eu)
-[![REUSE](https://img.shields.io/badge/REUSE-3.3-blue)](https://reuse.software/)
-[![ACDD 1.3](https://img.shields.io/badge/ACDD-1.3-4CAF50)](https://wiki.esipfed.org/Attribute_Convention_for_Data_Discovery_1-3)
-[![DataCite 4.5](https://img.shields.io/badge/DataCite-4.5-3F51B5)](https://schema.datacite.org/)
-[![STAC 1.1](https://img.shields.io/badge/STAC-1.1-FF9800)](https://stacspec.org/)
+[![fair-software.eu](https://img.shields.io/badge/fair--software.eu-%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8F%20%20%E2%97%8B-yellow)](https://fair-software.eu)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12329/badge)](https://www.bestpractices.dev/projects/12329)
 
 [Get started :fontawesome-solid-arrow-right:](guides/getting-started.md){ .md-button .md-button--primary }
 
