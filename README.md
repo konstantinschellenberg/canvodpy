@@ -3,7 +3,6 @@
 <!-- Build & Quality -->
 [![Platform Tests](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_platforms.yml)
 [![Code Coverage](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/test_coverage.yml)
-[![Audit](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/audit.yml)
 [![FAIR Software Check](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
