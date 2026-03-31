@@ -97,19 +97,6 @@ graph TB
     Viz --> Grids
     Ops --> Grids
     Ops --> Utils
-
-    style Canvodpy fill:#e1f5ff,stroke:#01579b,stroke-width:3px
-    style Readers fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Aux fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Store fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style StoreMeta fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style VOD fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    style Grids fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
-    style Viz fill:#e0f2f1,stroke:#004d40,stroke-width:2px
-    style Utils fill:#fce4ec,stroke:#880e4f,stroke-width:2px
-    style Ops fill:#e0f2f1,stroke:#004d40,stroke-width:2px
-    style Naming fill:#e0f2f1,stroke:#004d40,stroke-width:2px
-    style Audit fill:#fff8e1,stroke:#f57f17,stroke-width:2px
 ```
 
 ## How it works
@@ -187,17 +174,6 @@ flowchart TD
     Viz2D --> End([✅ Complete])
     Viz3D --> End
     Export --> End
-
-    style Start fill:#4caf50,stroke:#1b5e20,stroke-width:3px,color:#fff
-    style End fill:#4caf50,stroke:#1b5e20,stroke-width:3px,color:#fff
-    style Input fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style Ephemeris fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style Reading fill:#ffecb3,stroke:#f57c00,stroke-width:2px
-    style Processing fill:#e1f5fe,stroke:#0277bd,stroke-width:2px
-    style Storage fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
-    style Analysis fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style Output fill:#e0f2f1,stroke:#00695c,stroke-width:2px
-    style NAV fill:#fff9c4,stroke:#f9a825,stroke-width:2px,stroke-dasharray: 5 5
 ```
 
 ## Installation
@@ -286,12 +262,6 @@ flowchart TD
     L4A --> READER
     L4B --> EP
     L4H --> STORE
-
-    style L1 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    style L2 fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    style L3 fill:#fff3e0,stroke:#e65100,stroke-width:2px
-    style L4 fill:#fce4ec,stroke:#c62828,stroke-width:2px
-    style Shared fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
 ```
 
 See the [API Levels guide](https://nfb2021.github.io/canvodpy/guides/api-levels/) for details.
