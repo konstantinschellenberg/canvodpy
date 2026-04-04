@@ -6,7 +6,6 @@ initialization via a WorkerPlugin, and advisory memory monitoring.
 
 from __future__ import annotations
 
-import logging
 import os
 import platform
 from typing import TYPE_CHECKING, Any, cast
@@ -100,7 +99,9 @@ class ResourceInitPlugin:
 
     def setup(self, worker: object) -> None:
         """Called when a worker starts (or restarts after nanny kill)."""
-        log = logging.getLogger(__name__)
+        from canvodpy.logging import get_logger
+
+        log = get_logger(__name__)
 
         if self.cpu_affinity is not None:
             if platform.system() == "Linux":

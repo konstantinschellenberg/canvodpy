@@ -31,13 +31,13 @@ Or via ``af``::
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime, timedelta
 
+import structlog
 from airflow.decorators import dag, task  # type: ignore[unresolved-import]
 from airflow.models.param import Param  # type: ignore[unresolved-import]
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _task_failure_callback(context):

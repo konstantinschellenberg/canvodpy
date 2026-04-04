@@ -114,6 +114,7 @@ class FluentWorkflow:
         self._datasets: dict[str, xr.Dataset] = {}
         self._vod_result: xr.Dataset | None = None
         self._grid: Any = None
+        self._last_date: str | None = None
 
         # Configuration
         self._site = Site(site) if isinstance(site, str) else site
@@ -149,6 +150,7 @@ class FluentWorkflow:
             Receiver names to load.  If ``None``, all active receivers
             for the site are loaded.
         """
+        self._last_date = date
         receiver_list = receivers or list(self._site.active_receivers.keys())
         log = self.log.bind(date=date)
 
@@ -184,7 +186,7 @@ class FluentWorkflow:
             datasets_for_recv = []
             for fpath in rnx_files:
                 reader_obj = ReaderFactory.create(self._reader_name, fpath=fpath)
-                ds = reader_obj.to_ds()
+                ds = reader_obj.to_ds(write_global_attrs=True)
 
                 # Filter variables
                 if self._keep_vars:
@@ -339,8 +341,9 @@ class FluentWorkflow:
                 agency=agency,
                 product_type=source,
             )
-            if date:
-                provider.preprocess_day(date, site_cfg)
+            _date = date or self._last_date
+            if _date:
+                provider.preprocess_day(_date, site_cfg)
 
             from canvod.auxiliary.position.position import ECEFPosition
 

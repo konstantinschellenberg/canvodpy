@@ -21,18 +21,18 @@ Functions
 from __future__ import annotations
 
 import datetime
-import logging
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import pandas as pd
+import structlog
 import xarray as xr
 
 if TYPE_CHECKING:
     from canvod.store.store import MyIcechunkStore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

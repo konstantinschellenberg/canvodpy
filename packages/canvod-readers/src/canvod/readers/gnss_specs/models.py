@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, NoReturn, Self
 
 import pint
+import structlog
 import xarray as xr
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.dataclasses import dataclass
@@ -25,6 +26,8 @@ from canvod.readers.gnss_specs.constants import (
 )
 from canvod.readers.gnss_specs.constellations import SV_PATTERN
 from canvod.readers.gnss_specs.exceptions import IncompleteEpochError, MissingEpochError
+
+_log = structlog.get_logger(__name__)
 
 
 def _raise_value_error(message: str) -> NoReturn:
@@ -432,10 +435,10 @@ class Rnxv3ObsEpochRecordCompletenessModel(BaseModel):
         if not isinstance(value, pint.Quantity):
             value = UREG.Quantity(value).to(UREG.minutes)  # ty: ignore[invalid-assignment]
         if value not in IGS_RNX_DUMP_INTERVALS:
-            warnings.warn(
-                f"Unexpected dump interval: {value}. "
-                f"Expected one of: {[str(v) for v in IGS_RNX_DUMP_INTERVALS]}",
-                stacklevel=2,
+            _log.debug(
+                "Non-standard dump interval %s (expected one of %s) — processing continues normally.",
+                value,
+                [str(v) for v in IGS_RNX_DUMP_INTERVALS],
             )
         return value  # ty: ignore[invalid-return-type]
 

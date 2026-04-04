@@ -79,6 +79,21 @@ OBS_SLICE_DECIMAL_POS = -6
 LLI_SSI_PAIR_LEN = 2
 MIN_EPOCHS_FOR_INTERVAL = 2
 
+
+def _str_to_object(ds: xr.Dataset) -> xr.Dataset:
+    """Cast StringDType / fixed-width unicode coords and vars to object dtype.
+
+    NumPy 2.x introduces ``StringDType`` (kind ``"T"``) which Zarr V3 /
+    Icechunk cannot round-trip.  Fixed-width unicode (kind ``"U"``) also
+    causes dtype mismatches on store append.  Normalising to ``object``
+    keeps behaviour identical to NumPy 1.x.
+    """
+    for name in list(ds.coords) + list(ds.data_vars):
+        if ds[name].dtype.kind in ("U", "T"):
+            ds[name] = ds[name].astype(object)
+    return ds
+
+
 # --- Fast-path constants ---
 _EPOCH_RE = re.compile(
     r"^>\s*(\d{4})\s+(\d{2})\s+(\d{2})\s+(\d{2})\s+(\d{2})\s+(\d+\.\d+)\s+(\d+)\s+(\d+)"
@@ -1837,6 +1852,9 @@ class Rnxv3Obs(GNSSDataReader):
                 for var in ds.data_vars
             }
             ds.to_netcdf(str(outname), encoding=encoding)
+
+        # Normalise string dtypes for Icechunk / Zarr V3 compatibility
+        ds = _str_to_object(ds)
 
         # Validate output structure for pipeline compatibility
         validate_dataset(ds, required_vars=keep_data_vars)

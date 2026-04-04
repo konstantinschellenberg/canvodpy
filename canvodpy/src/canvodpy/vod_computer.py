@@ -55,7 +55,7 @@ class VodComputer:
     site : Site
         Site object providing access to stores and configuration.
     calculator : str
-        Registered VOD calculator name (default ``"tau_omega_zeroth"``).
+        Registered VOD calculator name (default ``"tau_omega"``).
         Future calculators register via ``VODFactory.register()``.
     rechunk : dict, optional
         Chunk specification for VOD output before writing.
@@ -65,7 +65,7 @@ class VodComputer:
     def __init__(
         self,
         site: Site,
-        calculator: str = "tau_omega_zeroth",
+        calculator: str = "tau_omega",
         rechunk: dict[str, int] | None = None,
     ) -> None:
         self._site = site

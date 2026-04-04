@@ -21,14 +21,14 @@ Convenience functions
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
 from typing import Any
 
 import numpy as np
+import structlog
 import xarray as xr
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ==============================================================================

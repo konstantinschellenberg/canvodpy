@@ -25,18 +25,18 @@ Notes
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import structlog
 import xarray as xr
 
 if TYPE_CHECKING:
     from canvod.grids.core.grid_data import GridData
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class VODSpatialAnalyzer:

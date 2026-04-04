@@ -23,17 +23,17 @@ Notes
 
 from __future__ import annotations
 
-import logging
 import time
 from multiprocessing import Pool, cpu_count
 from typing import Any, cast
 
 import numpy as np
+import structlog
 import xarray as xr
 
 from canvod.grids import add_cell_ids_to_vod_fast, create_hemigrid
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ----------------------------------------------------------------------

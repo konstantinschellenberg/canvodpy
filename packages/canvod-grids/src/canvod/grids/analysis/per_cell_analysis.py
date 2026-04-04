@@ -33,14 +33,14 @@ Notes
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import Literal
 
 import numpy as np
 import pandas as pd
+import structlog
 import xarray as xr
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ======================================================================

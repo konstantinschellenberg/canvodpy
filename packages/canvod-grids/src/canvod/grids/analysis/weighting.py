@@ -26,17 +26,17 @@ Notes
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any, Literal
 
 import dask.array as da
 import numpy as np
+import structlog
 import xarray as xr
 
 if TYPE_CHECKING:
     from canvod.grids.core.grid_data import GridData
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 class WeightCalculator:

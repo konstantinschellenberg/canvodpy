@@ -20,18 +20,18 @@ Classes
 
 from __future__ import annotations
 
-import logging
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 import numpy as np
+import structlog
 import xarray as xr
 
 if TYPE_CHECKING:
     from canvod.store.store import MyIcechunkStore
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _clean_attrs(attrs: dict) -> dict:

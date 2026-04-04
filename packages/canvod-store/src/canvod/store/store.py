@@ -184,6 +184,10 @@ class MyIcechunkStore:
         for v in ds.data_vars:
             if "dtype" in ds[v].encoding:
                 ds[v].encoding["dtype"] = np.dtype(ds[v].dtype)
+        # Cast StringDType / fixed-width unicode to object for Zarr V3
+        for name in list(ds.coords) + list(ds.data_vars):
+            if ds[name].dtype.kind in ("U", "T"):
+                ds[name] = ds[name].astype(object)
         return ds
 
     def _ensure_store_exists(self) -> None:

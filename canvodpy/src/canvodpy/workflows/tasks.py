@@ -16,12 +16,12 @@ Two DAG topologies (SBF and RINEX)::
 from __future__ import annotations
 
 import datetime
-import logging
 import shutil
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
+import structlog
 import xarray as xr
 
 from canvod.auxiliary.pipeline import AuxDataPipeline
@@ -36,7 +36,7 @@ from canvodpy.orchestrator.interpolator import (
     Sp3InterpolationStrategy,
 )
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def _cap_blas_threads(n: int = 1) -> None:

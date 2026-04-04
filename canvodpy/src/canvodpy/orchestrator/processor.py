@@ -1901,6 +1901,9 @@ class RinexDataProcessor:
                         ds_clean = self.site.rinex_store._cleanse_dataset_attrs(
                             ds,
                         )
+                        ds_clean = self.site.rinex_store._normalize_encodings(
+                            ds_clean,
+                        )
 
                         # Collect metadata for ALL files (write later)
                         metadata_records.append(
@@ -1974,7 +1977,7 @@ class RinexDataProcessor:
                                     rel_path,
                                 )
 
-                    except OSError, RuntimeError, ValueError:
+                    except (OSError, RuntimeError, ValueError):
                         log.exception("Failed to process %s", fname.name)
 
                 t6 = time.time()
@@ -1998,7 +2001,7 @@ class RinexDataProcessor:
                         rows=metadata_records,
                         session=session,
                     )
-                except OSError, RuntimeError, ValueError:
+                except (OSError, RuntimeError, ValueError):
                     log.warning("Metadata write failed, committing data only")
                 t10 = time.time()
                 log.info("Metadata write complete in %.2fs", t10 - t9)
@@ -2053,7 +2056,7 @@ class RinexDataProcessor:
                     receiver_name,
                 )
 
-            except OSError, RuntimeError, ValueError:
+            except (OSError, RuntimeError, ValueError):
                 log.exception("Batch append failed")
                 raise
 

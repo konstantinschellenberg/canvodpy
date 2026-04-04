@@ -32,11 +32,11 @@ Notes
 
 from __future__ import annotations
 
-import logging
 import time
 import warnings
 
 import numpy as np
+import structlog
 import xarray as xr
 from astropy.stats import mad_std, sigma_clip
 from numba import jit
@@ -44,7 +44,7 @@ from tqdm.auto import tqdm
 
 warnings.filterwarnings("ignore")
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 # ----------------------------------------------------------------------
