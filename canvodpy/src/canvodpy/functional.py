@@ -93,7 +93,7 @@ def read_rinex(
         **reader_kwargs,
     )
 
-    ds = reader_obj.to_ds()
+    ds = reader_obj.to_ds(write_global_attrs=True)
     log.info("read_rinex_complete", variables=len(ds.data_vars))
     return ds
 

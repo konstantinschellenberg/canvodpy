@@ -453,6 +453,7 @@ class Pipeline:
         canopy: str,
         reference: str,
         date: str,
+        write_to_store: bool = True,
     ) -> xr.Dataset:
         """Calculate VOD for a receiver pair.
 
@@ -497,20 +498,28 @@ class Pipeline:
             canopy_data = self.site.rinex_store.read_group(
                 canopy, time_slice=_time_slice
             )
-            ref_data = self.site.rinex_store.read_group(
-                reference, time_slice=_time_slice
-            )
+            try:
+                ref_data = self.site.rinex_store.read_group(
+                    reference, time_slice=_time_slice
+                )
+            except Exception:
+                paired_name = f"{reference}_{canopy}"
+                log.info("group_fallback", original=reference, paired=paired_name)
+                ref_data = self.site.rinex_store.read_group(
+                    paired_name, time_slice=_time_slice
+                )
 
             # Lazy import to avoid circular dependency
-            from canvod.vod import VODCalculator
+            from canvod.vod import TauOmegaZerothOrder
 
             # Use proven VOD calculator
-            calculator = VODCalculator(canopy_ds=canopy_data, sky_ds=ref_data)
+            calculator = TauOmegaZerothOrder(canopy_ds=canopy_data, sky_ds=ref_data)
             vod_results = calculator.calculate_vod()
 
             # Store results
             analysis_name = f"{canopy}_vs_{reference}"
-            self.site.vod_store.write_or_append_group(vod_results, analysis_name)
+            if write_to_store:
+                self.site.vod_store.write_or_append_group(vod_results, analysis_name)
 
             log.info(
                 "vod_calculation_complete",
@@ -622,6 +631,7 @@ def calculate_vod(
     date: str,
     keep_vars: list[str] | None = None,
     aux_agency: str | None = None,
+    write_to_store: bool = True,
 ) -> xr.Dataset:
     """Calculate VOD for a receiver pair (convenience function).
 
@@ -667,7 +677,9 @@ def calculate_vod(
         keep_vars=keep_vars,
         aux_agency=aux_agency,
     ) as pipeline:
-        return pipeline.calculate_vod(canopy, reference, date)
+        return pipeline.calculate_vod(
+            canopy, reference, date, write_to_store=write_to_store
+        )
 
 
 def preview_processing(site: str) -> dict:

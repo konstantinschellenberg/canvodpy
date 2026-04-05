@@ -288,10 +288,17 @@ class VodComputer:
                 f"Available: {list(datasets.keys())}"
             )
         if ref_name not in datasets:
-            raise KeyError(
-                f"Reference receiver '{ref_name}' not in datasets. "
-                f"Available: {list(datasets.keys())}"
-            )
+            paired_name = f"{ref_name}_{canopy_name}"
+            if paired_name in datasets:
+                self.log.info(
+                    "extract_pair_fallback", original=ref_name, paired=paired_name
+                )
+                ref_name = paired_name
+            else:
+                raise KeyError(
+                    f"Reference receiver '{ref_name}' (also tried '{paired_name}') "
+                    f"not in datasets. Available: {list(datasets.keys())}"
+                )
 
         return datasets[canopy_name], datasets[ref_name]
 
@@ -312,6 +319,14 @@ class VodComputer:
         end: datetime | None,
     ) -> xr.Dataset:
         """Filter dataset by epoch time range."""
+        import numpy as np
+        import pandas as pd
+
+        # When epoch is stored as int64 nanoseconds, convert bounds to match
+        if np.issubdtype(ds.epoch.dtype, np.integer):
+            start = pd.Timestamp(start).value if start else None
+            end = pd.Timestamp(end).value if end else None
+
         if start:
             ds = ds.sel(epoch=ds.epoch >= start)
         if end:

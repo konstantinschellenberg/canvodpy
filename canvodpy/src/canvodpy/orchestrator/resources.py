@@ -219,6 +219,7 @@ class DaskClusterManager:
                 if threads_per_worker is not None
                 else 1,
                 "memory_limit": memory_limit_per_worker,
+                "dashboard_address": ":0",
             }
             if n_workers is not None:
                 cluster_kwargs["n_workers"] = n_workers

@@ -210,7 +210,8 @@ class AgencyEphemerisProvider(EphemerisProvider):
 
         # Merge and write
         aux_processed = xr.merge([ephem_interp, clock_interp])
-        aux_processed.to_zarr(aux_zarr_path, mode="w")
+        aux_processed = aux_processed.dropna(dim="epoch", how="all")
+        aux_processed.to_zarr(aux_zarr_path, mode="w", consolidated=False)
 
         self._aux_zarr_path = aux_zarr_path
         return aux_zarr_path
@@ -253,7 +254,9 @@ class AgencyEphemerisProvider(EphemerisProvider):
             )
 
         # Open preprocessed aux data and align to observation epochs
-        aux_store = xr.open_zarr(self._aux_zarr_path, decode_timedelta=True)
+        aux_store = xr.open_zarr(
+            self._aux_zarr_path, decode_timedelta=False, consolidated=False
+        )
         aux_slice = aux_store.sel(epoch=ds.epoch, method="nearest").load()
 
         # Inner join on SIDs

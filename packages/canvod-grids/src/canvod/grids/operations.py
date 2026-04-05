@@ -303,19 +303,32 @@ def add_cell_ids_to_ds_fast(
 
         return cell_ids.reshape(phi_chunk.shape)
 
-    cell_ids_dask = da.map_blocks(
-        _assign_chunk,
-        ds["phi"].data,
-        ds["theta"].data,
-        dtype=np.float32,
-        drop_axis=[],
-    )
+    phi_data = ds["phi"].data
+    theta_data = ds["theta"].data
+
+    if isinstance(phi_data, da.Array):
+        cell_ids_arr = da.map_blocks(
+            _assign_chunk,
+            phi_data,
+            theta_data,
+            dtype=np.float32,
+            drop_axis=[],
+        )
+        lazy = True
+    else:
+        cell_ids_arr = _assign_chunk(np.asarray(phi_data), np.asarray(theta_data))
+        lazy = False
 
     coord_name = f"cell_id_{grid_name}"
-    ds[coord_name] = (("epoch", "sid"), cell_ids_dask)
+    ds[coord_name] = (("epoch", "sid"), cell_ids_arr)
 
-    print("  ✓ Cell IDs assigned as lazy dask array")
-    print("  ✓ Will compute on access/save")
+    print(
+        "  ✓ Cell IDs assigned as lazy dask array"
+        if lazy
+        else "  ✓ Cell IDs assigned eagerly"
+    )
+    if lazy:
+        print("  ✓ Will compute on access/save")
 
     return ds
 

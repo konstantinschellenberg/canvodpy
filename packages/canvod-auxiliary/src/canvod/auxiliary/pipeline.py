@@ -406,8 +406,9 @@ class AuxDataPipeline:
         # Use defaults from config if not provided
         agency = agency or aux_cfg.agency
         product_type = product_type or aux_cfg.product_type
+        user_email = user_email or cfg.nasa_earthdata_acc_mail
         if ftp_server is None:
-            servers = aux_cfg.get_ftp_servers(cfg.nasa_earthdata_acc_mail)
+            servers = aux_cfg.get_ftp_servers(user_email)
             ftp_server = servers[0][0]
 
         # Determine aux file paths

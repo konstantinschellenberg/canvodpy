@@ -188,6 +188,16 @@ class MyIcechunkStore:
         for name in list(ds.coords) + list(ds.data_vars):
             if ds[name].dtype.kind in ("U", "T"):
                 ds[name] = ds[name].astype(object)
+        # Eagerly compute Dask-backed object arrays to avoid SerializationWarning
+        # (rechunking after write can leave string coords as dask object arrays)
+        try:
+            import dask.array as da
+
+            for name in list(ds.coords) + list(ds.data_vars):
+                if ds[name].dtype == object and isinstance(ds[name].data, da.Array):
+                    ds[name] = ds[name].compute()
+        except ImportError:
+            pass
         return ds
 
     def _ensure_store_exists(self) -> None:
