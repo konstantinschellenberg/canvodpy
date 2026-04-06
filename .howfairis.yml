@@ -1,9 +1,6 @@
 # howfairis configuration
 # See: https://github.com/fair-software/howfairis
 
-# Temporarily skip registry checks until first PyPI release
-skip_registry_checks_reason: "Not published to PyPI yet; planned for v1.0.0. TestPyPI workflows are in place."
-
 # Checklist requirement now met with OpenSSF Best Practices badge!
 # Badge: https://www.bestpractices.dev/projects/12329
 # skip_checklist_checks_reason: "OpenSSF Best Practices badge obtained (project 12329)."
@@ -14,7 +11,7 @@ ignore_commented_badges: true
 # Current compliance status:
 # - ✓ Public GitHub repository
 # - ✓ Apache 2.0 license in LICENSE file
+# - ✓ Published to PyPI (canvodpy + 11 sub-packages, v0.2.0)
 # - ✓ CITATION.cff with Zenodo DOI (10.5281/zenodo.19445061)
 # - ✓ codemeta.json for machine-readable metadata
-# - ⏳ PyPI registry (pending v1.0.0 release)
 # - ✓ OpenSSF Best Practices badge (project 12329)
