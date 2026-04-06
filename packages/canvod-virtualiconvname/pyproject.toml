@@ -12,6 +12,12 @@ dependencies = [
     "natsort>=8.4.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/nfb2021/canvodpy"
+Documentation = "https://nfb2021.github.io/canvodpy/packages/naming/overview/"
+Repository = "https://github.com/nfb2021/canvodpy"
+Issues = "https://github.com/nfb2021/canvodpy/issues"
+
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
 build-backend = "uv_build"
