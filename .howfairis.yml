@@ -14,7 +14,7 @@ ignore_commented_badges: true
 # Current compliance status:
 # - ✓ Public GitHub repository
 # - ✓ Apache 2.0 license in LICENSE file
-# - ✓ CITATION.cff with Zenodo DOI (10.5281/zenodo.18636775)
+# - ✓ CITATION.cff with Zenodo DOI (10.5281/zenodo.19445061)
 # - ✓ codemeta.json for machine-readable metadata
 # - ⏳ PyPI registry (pending v1.0.0 release)
 # - ✓ OpenSSF Best Practices badge (project 12329)
