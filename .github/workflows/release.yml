@@ -12,13 +12,14 @@ on:
       - "v*.*.*-alpha.*"   # Alpha: v0.1.0-alpha.1
       - "v*.*.*-rc.*"      # Release candidate: v0.1.0-rc.1
 
-permissions:
-  contents: write  # Required to create releases
+permissions: read-all
 
 jobs:
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
 
     steps:
       - name: Checkout repository

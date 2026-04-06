@@ -7,6 +7,8 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   verify:
     name: "Check FAIR software compliance"

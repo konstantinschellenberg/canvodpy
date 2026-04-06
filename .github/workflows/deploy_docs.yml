@@ -5,14 +5,15 @@ on:
     types: [published]
   workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
+permissions: read-all
 
 jobs:
   deploy:
     name: Build & Deploy Docs
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
 
     steps:
       - uses: actions/checkout@v6
