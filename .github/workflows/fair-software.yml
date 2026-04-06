@@ -7,12 +7,14 @@ on:
     branches: [main, develop]
   workflow_dispatch:
 
+permissions: read-all
+
 jobs:
   verify:
     name: "Check FAIR software compliance"
     runs-on: ubuntu-latest
     steps:
-      - uses: fair-software/howfairis-github-action@main
+      - uses: fair-software/howfairis-github-action@4c11146488125aa6e1531184eed51d781bcd5871  # main
         name: Measure compliance with fair-software.eu recommendations
         env:
           PYCHARM_HOSTED: "Trick colorama into displaying colored output"
