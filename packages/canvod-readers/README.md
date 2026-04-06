@@ -75,7 +75,7 @@ just check
 ## Documentation
 
 - Interactive examples: `docs/examples.py` (marimo notebook)
-- [Centralized documentation](../../docs/packages/readers/overview.md)
+- [Full documentation](https://nfb2021.github.io/canvodpy/packages/readers/overview/)
 
 ## License
 

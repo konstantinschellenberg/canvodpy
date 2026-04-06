@@ -1,109 +1,136 @@
 # canvodpy
 
-Umbrella package for unified GNSS VOD analysis.
+Umbrella package for the canVODpy GNSS-Transmissometry ecosystem.
+
+Part of the [canVODpy](https://github.com/nfb2021/canvodpy) ecosystem.
 
 ## Overview
 
-`canvodpy` is the unified entry point for the canVOD ecosystem. It provides
-three levels of API:
+`canvodpy` is the unified entry point for deriving canopy Vegetation Optical Depth (VOD)
+from GNSS Signal-to-Noise Ratio (SNR) observations. It orchestrates the full pipeline
+from raw RINEX/SBF files through ephemeris augmentation, hemispheric gridding, and
+VOD retrieval via the Tau-Omega radiative transfer model.
 
-- **Level 1:** One-line convenience functions (fastest path to results)
-- **Level 2:** Object-oriented classes (structured workflows)
-- **Level 3:** Low-level components (full control)
+Four API levels are available to match your workflow:
+
+| Level | Style | Entry point | Use case |
+|---|---|---|---|
+| **L1** | Convenience | `process_date()`, `Site` | Quick exploration, notebooks |
+| **L2** | Fluent | `FluentWorkflow().read().augment().grid().vod()` | Scripted pipelines |
+| **L3** | Low-level | Direct subpackage access | Full control, custom integrations |
+| **L4** | Functional | `read_rinex()`, `augment_with_ephemeris()`, ... | Airflow / orchestrators |
 
 ## Installation
 
 ```bash
-# Installs canvodpy + all 7 sub-packages
+# Installs canvodpy + all 11 sub-packages
 uv pip install canvodpy
 ```
 
 ## Quick Start
 
-### Level 1: Simple (One-Liners)
+### L1: Convenience (fastest path)
 
 ```python
-from canvodpy import process_date, calculate_vod
+from canvodpy import Site
 
-# Process one day of data
-data = process_date("Rosalia", "2025001")
-
-# Calculate VOD
-vod = calculate_vod("Rosalia", "canopy_01", "reference_01", "2025001")
-```
-
-### Level 2: Object-Oriented (More Control)
-
-```python
-from canvodpy import Site, Pipeline
-
-# Create site and pipeline
 site = Site("Rosalia")
-pipeline = site.pipeline(aux_agency="ESA", n_workers=8)
-
-# Process data
-data = pipeline.process_date("2025001")
-
-# Or process multiple days
-for date, datasets in pipeline.process_range("2025001", "2025007"):
-    print(f"Processed {date}")
+result = site.process_date("2025001")
 ```
 
-### Level 3: Low-Level (Full Control)
+### L2: Fluent workflow
+
+```python
+import canvodpy
+
+result = (
+    canvodpy.workflow("Rosalia")
+    .read("2025001")
+    .augment()
+    .grid()
+    .vod("canopy_01", "reference_01")
+    .result()
+)
+```
+
+### L3: Direct subpackage access
 
 ```python
 from canvod.readers import Rnxv3Obs
-from canvod.auxiliary import Sp3File, ClkFile
+from canvod.auxiliary import AuxDataAugmenter
+from canvod.grids import create_hemigrid
+from canvod.vod import TauOmegaZerothOrder
 from canvod.store import GnssResearchSite
-from canvodpy.orchestrator import PipelineOrchestrator
+```
 
-# Direct access to all internals
-site = GnssResearchSite("Rosalia")
-orchestrator = PipelineOrchestrator(site, n_max_workers=12)
-# ... custom processing ...
+### L4: Functional API (Airflow-compatible)
+
+```python
+from canvodpy import read_rinex, augment_with_ephemeris, assign_grid_cells
+
+ds = read_rinex("path/to/ROSA01TUW_R_20250010000_01D_01S_AA.rnx")
+ds = augment_with_ephemeris(ds, agency="COD")
+ds = assign_grid_cells(ds, grid_type="equal_area", resolution=2.0)
 ```
 
 ## Included Packages
 
-Installing canvodpy provides access to all 7 packages:
+Installing `canvodpy` provides access to all 11 sub-packages:
 
-- **canvod.readers** -- RINEX file parsing (v3.04)
-- **canvod.auxiliary** -- Auxiliary data (SP3, CLK) handling
-- **canvod.grids** -- Hemisphere grid structures
-- **canvod.store** -- Icechunk data storage
-- **canvod.vod** -- VOD calculation algorithms
-- **canvod.viz** -- 2D/3D visualization
-- **canvod.utils** -- Shared utilities
+| Package | Namespace | Role |
+|---|---|---|
+| `canvod-readers` | `canvod.readers` | RINEX v2/v3 and SBF binary readers → `xarray.Dataset` |
+| `canvod-auxiliary` | `canvod.auxiliary` | Ephemeris augmentation (SP3/CLK and broadcast) |
+| `canvod-grids` | `canvod.grids` | Equal-area hemisphere grid operations |
+| `canvod-store` | `canvod.store` | Icechunk/Zarr versioned storage layer |
+| `canvod-store-metadata` | `canvod.store_metadata` | FAIR/DataCite/ACDD/STAC metadata lifecycle |
+| `canvod-vod` | `canvod.vod` | Tau-Omega VOD retrieval algorithms |
+| `canvod-viz` | `canvod.viz` | 2D polar and 3D interactive visualization |
+| `canvod-utils` | `canvod.utils` | Pydantic configuration models, shared utilities |
+| `canvod-ops` | `canvod.ops` | Composable preprocessing operations pipeline |
+| `canvod-virtualiconvname` | `canvod.virtualiconvname` | Canonical GNSS-T filename parser and validator |
+| `canvod-audit` | `canvod.audit` | Three-tier verification and regression suite |
 
 ## Platform Support
 
 | Platform | Status | Notes |
-|----------|--------|-------|
-| Linux | Full support | Recommended |
+|---|---|---|
+| Linux | Full support | Recommended for production |
 | macOS | Full support | Fully tested |
 | Windows | WSL only | Native not supported (reserved `aux` name) |
 
 ## Configuration
 
-Create a `.env` file in repository root (optional for NASA products):
+Site and processing configuration lives in YAML files (not committed):
 
 ```bash
-# NASA CDDIS credentials (optional)
-CDDIS_MAIL=your.email@example.com
-
-# Data root directory (required)
-GNSS_ROOT_DIR=/path/to/your/data
+just config-init      # create config/processing.yaml + sites.yaml + sids.yaml
+just config-validate  # validate against Pydantic models
 ```
 
-Without `.env`, canvodpy operates in ESA-only mode (COD, GFZ, ESA products).
+Optional NASA CDDIS access (for SP3/CLK ephemeris downloads):
+
+```bash
+# config/processing.yaml
+credentials:
+  nasa_earthdata_acc_mail: your.email@example.com
+```
+
+Without credentials, canvodpy uses ESA GSSC (no authentication required).
 
 ## Documentation
 
-[Centralized documentation](../docs/index.md)
+Full documentation: [nfb2021.github.io/canvodpy](https://nfb2021.github.io/canvodpy/)
 
 ## Development
 
-See the [main repository README](../README.md) for workspace development setup.
+See the [main repository](https://github.com/nfb2021/canvodpy) for workspace development setup.
+
+```bash
+uv sync                    # install all workspace deps
+just check                 # lint + format
+just test                  # run all tests
+```
 
 ## License
 

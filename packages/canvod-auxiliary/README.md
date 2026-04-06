@@ -39,12 +39,7 @@ Part of the [canVODpy](https://github.com/nfb2021/canvodpy) ecosystem.
 ## Installation
 
 ```bash
-# From PyPI (when published)
-pip install canvod-auxiliary
-
-# Development install
-cd canvodpy/packages/canvod-auxiliary
-uv pip install -e .
+uv pip install canvod-auxiliary
 ```
 
 ## Quick Start
@@ -105,7 +100,7 @@ interpolated = strategy.interpolate(sp3_dataset, target_epochs)
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/auxiliary/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/auxiliary/overview/)
 
 ## Package Structure
 
@@ -207,12 +202,12 @@ Apache License 2.0 - See LICENSE file
 
 Part of the canVODpy ecosystem:
 
-- **[canvod-readers](../canvod-readers/)** - RINEX data readers
-- **[canvod-grids](../canvod-grids/)** - Hemisphere grids
-- **[canvod-vod](../canvod-vod/)** - VOD calculations
-- **[canvod-store](../canvod-store/)** - Icechunk storage
-- **[canvod-viz](../canvod-viz/)** - Visualization
-- **[canvodpy](../../canvodpy/)** - Umbrella package
+- **[canvod-readers](https://pypi.org/project/canvod-readers/)** - GNSS data readers (RINEX/SBF)
+- **[canvod-grids](https://pypi.org/project/canvod-grids/)** - Equal-area hemisphere grids
+- **[canvod-vod](https://pypi.org/project/canvod-vod/)** - VOD calculations
+- **[canvod-store](https://pypi.org/project/canvod-store/)** - Icechunk storage
+- **[canvod-viz](https://pypi.org/project/canvod-viz/)** - Visualization
+- **[canvodpy](https://pypi.org/project/canvodpy/)** - Umbrella package
 
 ## Citation
 
