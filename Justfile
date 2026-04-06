@@ -242,21 +242,22 @@ release VERSION: test
 
 # Build all packages (outputs to workspace root dist/)
 build-all:
-    @echo "🔨 Building all 11 packages..."
+    @echo "🔨 Building all 12 packages..."
     @rm -rf dist/
     @mkdir -p dist/
-    cd packages/canvod-readers && uv build
-    cd packages/canvod-auxiliary && uv build
-    cd packages/canvod-grids && uv build
-    cd packages/canvod-store && uv build
-    cd packages/canvod-store-metadata && uv build
-    cd packages/canvod-utils && uv build
-    cd packages/canvod-viz && uv build
-    cd packages/canvod-virtualiconvname && uv build
-    cd packages/canvod-vod && uv build
-    cd packages/canvod-ops && uv build
-    cd canvodpy && uv build
-    @echo "✅ Built 11 packages to dist/"
+    uv build --package canvod-readers --out-dir dist/
+    uv build --package canvod-auxiliary --out-dir dist/
+    uv build --package canvod-grids --out-dir dist/
+    uv build --package canvod-store --out-dir dist/
+    uv build --package canvod-store-metadata --out-dir dist/
+    uv build --package canvod-utils --out-dir dist/
+    uv build --package canvod-viz --out-dir dist/
+    uv build --package canvod-virtualiconvname --out-dir dist/
+    uv build --package canvod-vod --out-dir dist/
+    uv build --package canvod-ops --out-dir dist/
+    uv build --package canvod-audit --out-dir dist/
+    uv build --package canvodpy --out-dir dist/
+    @echo "✅ Built 12 packages to dist/"
     @ls -lh dist/*.whl
 
 # Publish all packages to TestPyPI (requires credentials)
