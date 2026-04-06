@@ -1,7 +1,7 @@
 [project]
 name = "canvod-ops"
 version = "0.2.0"
-description = "Preprocessing operations pipeline for GNSS VOD data"
+description = "Operational data processing pipeline for GNSS-Transmissometry"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]

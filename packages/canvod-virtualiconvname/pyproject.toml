@@ -1,7 +1,7 @@
 [project]
 name = "canvod-virtualiconvname"
 version = "0.2.0"
-description = "Filename convention, mapping engine, and catalog for canVODpy"
+description = "Canonical GNSS-T filename parser and data directory validator"
 readme = "README.md"
 requires-python = ">=3.14"
 

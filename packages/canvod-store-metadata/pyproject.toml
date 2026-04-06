@@ -1,7 +1,7 @@
 [project]
 name = "canvod-store-metadata"
 version = "0.2.0"
-description = "Rich metadata lifecycle for canvod Icechunk stores"
+description = "FAIR-compliant metadata management for canVODpy stores"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]

@@ -1,7 +1,7 @@
 [project]
 name = "canvod-auxiliary"
 version = "0.2.0"
-description = "Auxiliary data augmentation for GNSS VOD analysis"
+description = "Ephemeris and auxiliary data handling for GNSS-Transmissometry"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"}
 ]
