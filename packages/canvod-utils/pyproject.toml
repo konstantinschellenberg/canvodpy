@@ -1,7 +1,7 @@
 [project]
 name = "canvod-utils"
 version = "0.2.0"
-description = "Utility functions and configuration management for canvodpy"
+description = "Configuration models and shared utilities for canVODpy"
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [

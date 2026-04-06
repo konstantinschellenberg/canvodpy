@@ -1,7 +1,7 @@
 [project]
 name = "canvodpy"
 version = "0.2.0"
-description = "Umbrella package for canVOD ecosystem"
+description = "Python ecosystem for GNSS-Transmissometry canopy VOD retrievals"
 readme = "README.md"
 requires-python = ">=3.14"
 authors = [

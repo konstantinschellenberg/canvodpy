@@ -1,7 +1,7 @@
 [project]
 name = "canvod-viz"
 version = "0.2.0"
-description = "Visualization and plotting utilities"
+description = "Basic visualization tools for GNSS-Transmissometry VOD data"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]

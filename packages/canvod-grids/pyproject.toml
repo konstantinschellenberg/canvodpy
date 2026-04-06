@@ -1,7 +1,7 @@
 [project]
 name = "canvod-grids"
 version = "0.2.0"
-description = "HEALPix and hemispheric grid operations"
+description = "Equal-area hemispheric grid operations for GNSS-Transmissometry"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]
