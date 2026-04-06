@@ -37,7 +37,7 @@ keywords:
 license: Apache-2.0
 version: 0.2.0
 date-released: "2026-04-06"
-doi: "10.5281/zenodo.18636775"
+doi: "10.5281/zenodo.19445061"
 references:
   - type: software
     title: "canvodpy-test-data: Reference GNSS observations for canVODpy testing"
