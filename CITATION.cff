@@ -3,13 +3,13 @@ message: "If you use this software, please cite it as below."
 type: software
 title: "canVODpy: An Open Python Ecosystem for GNSS-Transmissometry Canopy VOD Retrievals"
 abstract: >
-  canvodpy aims to be the central community-driven software suite for GNSS-Transmissometry
+  canVODpy is the central community-driven software suite for GNSS-Transmissometry
   (GNSS-T), providing the core ecosystem for deriving and analyzing canopy Vegetation
   Optical Depth (VOD) from GNSS signal-to-noise ratio (SNR) observations. It provides
-  modular packages for RINEX data reading, auxiliary data handling, hemispheric
-  grid operations, Icechunk-based versioned storage, visualization, and VOD
-  calculation algorithms, all tied together by Pydantic-validated configuration
-  and a pipeline orchestrator.
+  modular packages for RINEX and SBF data reading, auxiliary data handling (SP3/CLK
+  and broadcast ephemeris), hemispheric grid operations, Icechunk-based versioned
+  storage, visualization, and VOD calculation algorithms, all tied together by
+  Pydantic-validated configuration and a pipeline orchestrator.
 authors:
   - family-names: Bader
     given-names: Nicolas François
@@ -26,12 +26,42 @@ keywords:
   - signal-to-noise ratio
   - SNR
   - RINEX
+  - SBF
   - GNSS
   - remote sensing
   - geodesy
   - hemispheric grids
   - canopy
+  - L-band
+  - biomass
 license: Apache-2.0
-version: 0.1.0
-date-released: "2026-02-13"
+version: 0.2.0
+date-released: "2026-04-06"
 doi: "10.5281/zenodo.18636775"
+references:
+  - type: software
+    title: "canvodpy-test-data: Reference GNSS observations for canVODpy testing"
+    authors:
+      - family-names: Bader
+        given-names: Nicolas François
+        orcid: "https://orcid.org/0000-0002-9932-1925"
+    repository-code: "https://github.com/nfb2021/canvodpy-test-data"
+    url: "https://github.com/nfb2021/canvodpy-test-data"
+    abstract: >
+      Real GNSS observations from Rosalia, Austria (DOY 2025-001) in RINEX v3.04
+      and SBF format, together with precise SP3/CLK ephemerides and Icechunk store
+      snapshots. Used as the reference dataset for canVODpy unit and integration tests.
+    license: Apache-2.0
+  - type: software
+    title: "canvodpy-demo: Interactive marimo notebooks for canVODpy"
+    authors:
+      - family-names: Bader
+        given-names: Nicolas François
+        orcid: "https://orcid.org/0000-0002-9932-1925"
+    repository-code: "https://github.com/nfb2021/canvodpy-demo"
+    url: "https://github.com/nfb2021/canvodpy-demo"
+    abstract: >
+      A collection of interactive marimo notebooks covering the full canVODpy
+      pipeline from raw GNSS data ingestion through VOD retrieval and visualization.
+      Runnable locally or in the browser via marimo molab.
+    license: Apache-2.0
