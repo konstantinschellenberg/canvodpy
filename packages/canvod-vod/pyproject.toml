@@ -1,6 +1,6 @@
 [project]
 name = "canvod-vod"
-version = "0.1.0"
+version = "0.2.0"
 description = "VOD calculation for GNSS vegetation analysis"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},

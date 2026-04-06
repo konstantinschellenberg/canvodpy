@@ -1,6 +1,6 @@
 [project]
 name = "canvod-readers"
-version = "0.1.0"
+version = "0.2.0"
 description = "GNSS data format readers for canVODpy"
 readme = "README.md"
 requires-python = ">=3.14"

@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 <!-- insertion marker -->
+## [0.2.0](https://github.com/nfb2021/canvodpy/releases/tag/v0.2.0) - 2026-04-06
+
+<small>[Compare with 0.1.0](https://github.com/nfb2021/canvodpy/compare/0.1.0...v0.2.0)</small>
+
+### Features
+
+- First public release — removes pre-release access restriction.
+- Add `canvod-store-metadata`, `canvod-virtualiconvname`, `canvod-ops`, `canvod-audit` to PyPI publish workflows (previously unpublished packages).
+- Enrich Zenodo and CITATION.cff metadata: aligned titles/dates, added `related_identifiers` for `canvodpy-test-data` and `canvodpy-demo` sub-repos, extended keyword list.
+
+### Bug Fixes
+
+- Fix PyPI publish workflow: `uv build` in sub-directories was writing wheels to per-package `dist/` instead of the root `dist/` consumed by `gh-action-pypi-publish`.
+- Add missing Dependabot labels (`dependencies`, `ci`, `python`) to repository.
+
+### Chores
+
+- Bump all package versions `0.1.0` → `0.2.0`.
+- Remove confidential pre-release CAUTION banner from README.
+
 ## [0.1.0](https://github.com/nfb2021/canvodpy/releases/tag/0.1.0) - 2026-02-04
 
 <small>[Compare with first commit](https://github.com/nfb2021/canvodpy/compare/96138d31f317198083a65199572cd23366b8b9b3...0.1.0)</small>

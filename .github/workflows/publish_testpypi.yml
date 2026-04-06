@@ -38,35 +38,28 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Build all 8 packages
+      - name: Build all packages
         run: |
           rm -rf dist/
           mkdir -p dist/
 
-          # Build each package
-          echo "Building canvod-readers..."
-          cd packages/canvod-readers && uv build && cd ../..
-
-          echo "Building canvod-auxiliary..."
-          cd packages/canvod-auxiliary && uv build && cd ../..
-
-          echo "Building canvod-grids..."
-          cd packages/canvod-grids && uv build && cd ../..
-
-          echo "Building canvod-store..."
-          cd packages/canvod-store && uv build && cd ../..
-
-          echo "Building canvod-utils..."
-          cd packages/canvod-utils && uv build && cd ../..
-
-          echo "Building canvod-viz..."
-          cd packages/canvod-viz && uv build && cd ../..
-
-          echo "Building canvod-vod..."
-          cd packages/canvod-vod && uv build && cd ../..
-
-          echo "Building canvodpy..."
-          cd canvodpy && uv build && cd ..
+          # Build each package, collecting output into root dist/
+          for pkg in \
+            packages/canvod-readers \
+            packages/canvod-auxiliary \
+            packages/canvod-grids \
+            packages/canvod-store \
+            packages/canvod-store-metadata \
+            packages/canvod-utils \
+            packages/canvod-viz \
+            packages/canvod-vod \
+            packages/canvod-ops \
+            packages/canvod-virtualiconvname \
+            packages/canvod-audit \
+            canvodpy; do
+            echo "Building $pkg..."
+            uv build --package "$(basename $pkg)" --out-dir dist/
+          done
 
           echo "Built packages:"
           ls -lh dist/*.whl

@@ -1,6 +1,6 @@
 [project]
 name = "canvod-grids"
-version = "0.1.0"
+version = "0.2.0"
 description = "HEALPix and hemispheric grid operations"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
