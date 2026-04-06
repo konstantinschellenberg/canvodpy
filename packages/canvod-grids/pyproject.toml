@@ -2,6 +2,7 @@
 name = "canvod-grids"
 version = "0.2.0"
 description = "Equal-area hemispheric grid operations for GNSS-Transmissometry"
+readme = "README.md"
 authors = [
     {name = "Nicolas François Bader", email = "nicolas.bader@geo.tuwien.ac.at"},
 ]
@@ -38,6 +39,12 @@ dev = [
 optional = [
     "healpy>=1.16.0",  # For HEALPix grid
 ]
+
+[project.urls]
+Homepage = "https://github.com/nfb2021/canvodpy"
+Documentation = "https://nfb2021.github.io/canvodpy/packages/grids/overview/"
+Repository = "https://github.com/nfb2021/canvodpy"
+Issues = "https://github.com/nfb2021/canvodpy/issues"
 
 [build-system]
 requires = ["uv_build>=0.9.17,<0.10.0"]
