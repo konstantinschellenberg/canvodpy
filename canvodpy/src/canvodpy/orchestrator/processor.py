@@ -1977,7 +1977,7 @@ class RinexDataProcessor:
                                     rel_path,
                                 )
 
-                    except (OSError, RuntimeError, ValueError):
+                    except (OSError, RuntimeError, ValueError):  # fmt: skip
                         log.exception("Failed to process %s", fname.name)
 
                 t6 = time.time()
@@ -2001,7 +2001,7 @@ class RinexDataProcessor:
                         rows=metadata_records,
                         session=session,
                     )
-                except (OSError, RuntimeError, ValueError):
+                except (OSError, RuntimeError, ValueError):  # fmt: skip
                     log.warning("Metadata write failed, committing data only")
                 t10 = time.time()
                 log.info("Metadata write complete in %.2fs", t10 - t9)
@@ -2056,7 +2056,7 @@ class RinexDataProcessor:
                     receiver_name,
                 )
 
-            except (OSError, RuntimeError, ValueError):
+            except (OSError, RuntimeError, ValueError):  # fmt: skip
                 log.exception("Batch append failed")
                 raise
 
