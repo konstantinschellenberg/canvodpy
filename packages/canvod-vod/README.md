@@ -13,7 +13,7 @@ This package provides VOD (Vegetation Optical Depth) calculation algorithms base
 ## Installation
 
 ```bash
-pip install canvod-vod
+uv pip install canvod-vod
 ```
 
 ## Quick Start
@@ -43,11 +43,8 @@ vod_ds = TauOmegaZerothOrder.from_datasets(
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/vod/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/vod/overview/)
 
-## Reference
-
-Based on Humphrey, V., & Frankenberg, C. (2022). SMAP L-band microwave radiation helps capture GPP variability across different ecosystems.
 
 ## License
 

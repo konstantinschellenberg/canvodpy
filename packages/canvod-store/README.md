@@ -14,7 +14,7 @@ This package provides versioned storage for GNSS data using Icechunk, managing:
 ## Installation
 
 ```bash
-pip install canvod-store
+uv pip install canvod-store
 ```
 
 ## Quick Start
@@ -41,7 +41,7 @@ site = GnssResearchSite(site_name="Rosalia")
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/store/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/store/overview/)
 
 ## License
 

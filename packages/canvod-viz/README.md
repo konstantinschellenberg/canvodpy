@@ -290,7 +290,7 @@ Unified styling for both 2D and 3D.
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/viz/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/viz/overview/)
 
 ## Examples
 
@@ -361,9 +361,9 @@ If you use this package in your research, please cite:
 ## Related Packages
 
 Part of the [canVODpy](https://github.com/nfb2021/canvodpy) ecosystem:
-- `canvod-readers`: RINEX file parsing
-- `canvod-auxiliary`: Auxiliary GNSS data
-- `canvod-grids`: Hemisphere grid generation
-- `canvod-vod`: VOD calculations
-- `canvod-store`: Icechunk storage
-- `canvodpy`: Umbrella package
+- [`canvod-readers`](https://pypi.org/project/canvod-readers/): GNSS data readers (RINEX/SBF)
+- [`canvod-auxiliary`](https://pypi.org/project/canvod-auxiliary/): Ephemeris augmentation
+- [`canvod-grids`](https://pypi.org/project/canvod-grids/): Equal-area hemisphere grids
+- [`canvod-vod`](https://pypi.org/project/canvod-vod/): VOD calculations
+- [`canvod-store`](https://pypi.org/project/canvod-store/): Icechunk storage
+- [`canvodpy`](https://pypi.org/project/canvodpy/): Umbrella package

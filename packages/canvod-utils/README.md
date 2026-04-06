@@ -157,18 +157,13 @@ def process(config: CanvodConfig):
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/utils/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/utils/overview/)
 
 ## Development
 
 ```bash
-# Install dev dependencies
-uv pip install -e "packages/canvod-utils[dev]"
-
-# Run tests
-pytest packages/canvod-utils/tests
-
-# Lint and format
-ruff check packages/canvod-utils
-ruff format packages/canvod-utils
+# From repo root
+uv sync
+uv run pytest packages/canvod-utils/tests
+just check
 ```

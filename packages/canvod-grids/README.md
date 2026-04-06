@@ -1,8 +1,19 @@
 # canvod-grids
 
-HEALPix and hemispheric grid operations
+Equal-area hemisphere grid operations for GNSS-Transmissometry.
 
 Part of the [canVODpy](https://github.com/nfb2021/canvodpy) ecosystem.
+
+## Overview
+
+`canvod-grids` provides the spatial discretization layer for GNSS-T. Satellite
+signal paths are assigned to equal-area grid cells on the hemisphere above the
+receiver based on their polar angle (θ) and azimuth (φ). The primary grid type
+for GNSS-T is the **equal-area** grid, where each 2° band is divided into cells
+of equal solid angle.
+
+Seven grid types are available: `equal_area`, `equal_angle`, `equirectangular`,
+`htm`, `geodesic`, `healpix`, and `fibonacci`.
 
 ## Installation
 
@@ -10,19 +21,28 @@ Part of the [canVODpy](https://github.com/nfb2021/canvodpy) ecosystem.
 uv pip install canvod-grids
 ```
 
-## Usage
+## Quick Start
 
 ```python
-from canvod.grids import ...
+from canvod.grids import create_hemigrid, GridType
+
+# Create a 2° equal-area hemisphere grid
+grid = create_hemigrid(grid_type=GridType.EQUAL_AREA, resolution=2.0)
+print(grid.ncells)  # number of grid cells
+
+# Assign satellite observations to cells
+from canvod.grids import CellAggregator
+agg = CellAggregator(grid)
+per_cell = agg.aggregate(ds, variable="vod", method="median")
 ```
 
 ## Documentation
 
-[Centralized documentation](../../docs/packages/grids/overview.md)
+[Full documentation](https://nfb2021.github.io/canvodpy/packages/grids/overview/)
 
 ## Development
 
-See the [main repository README](../../README.md) for workspace development setup.
+See the [main repository](https://github.com/nfb2021/canvodpy) for workspace development setup.
 
 ## License
 
