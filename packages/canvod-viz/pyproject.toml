@@ -1,6 +1,6 @@
 [project]
 name = "canvod-viz"
-version = "0.2.0"
+version = "0.2.1"
 description = "Basic visualization tools for GNSS-Transmissometry VOD data"
 readme = "README.md"
 authors = [
