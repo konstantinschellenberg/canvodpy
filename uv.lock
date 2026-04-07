@@ -327,6 +327,7 @@ version = "0.2.2"
 source = { editable = "packages/canvod-grids" }
 dependencies = [
     { name = "astropy" },
+    { name = "canvod-store" },
     { name = "dask" },
     { name = "loguru" },
     { name = "matplotlib" },
@@ -352,6 +353,7 @@ optional = [
 [package.metadata]
 requires-dist = [
     { name = "astropy", specifier = ">=6.0.0" },
+    { name = "canvod-store", editable = "packages/canvod-store" },
     { name = "dask", specifier = ">=2024.1.0" },
     { name = "loguru", specifier = ">=0.7.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },
@@ -476,7 +478,9 @@ name = "canvod-store"
 version = "0.2.2"
 source = { editable = "packages/canvod-store" }
 dependencies = [
+    { name = "canvod-auxiliary" },
     { name = "canvod-grids" },
+    { name = "canvod-readers" },
     { name = "canvod-utils" },
     { name = "canvod-vod" },
     { name = "icechunk" },
@@ -497,7 +501,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "canvod-auxiliary", editable = "packages/canvod-auxiliary" },
     { name = "canvod-grids", editable = "packages/canvod-grids" },
+    { name = "canvod-readers", editable = "packages/canvod-readers" },
     { name = "canvod-utils", editable = "packages/canvod-utils" },
     { name = "canvod-vod", editable = "packages/canvod-vod" },
     { name = "icechunk", specifier = ">=1.1.5" },
