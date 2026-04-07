@@ -1,8 +1,8 @@
 # FAIR Compliance Setup - Implementation Summary
 
-**Date:** March 30, 2026
+**Date:** April 7, 2026
 **Repository:** nfb2021/canvodpy
-**Status:** ✅ Complete
+**Status:** ✅ Complete — 5/5 green
 
 ## What Was Implemented
 
@@ -16,7 +16,7 @@ Automatically checks FAIR software compliance on every push and pull request:
 
 **Badge Added to README:**
 ```markdown
-[![FAIR Software](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml/badge.svg)](...)
+[![FAIR Software](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml/badge.svg)](https://github.com/nfb2021/canvodpy/actions/workflows/fair-software.yml)
 ```
 
 ### 2. ✅ OpenSSF Scorecard Workflow
@@ -31,7 +31,7 @@ Automated security best practices scanning:
 
 **Badge Added to README:**
 ```markdown
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nfb2021/canvodpy/badge)](...)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/nfb2021/canvodpy/badge)](https://securityscorecards.dev/viewer/?uri=github.com/nfb2021/canvodpy)
 ```
 
 ### 3. ✅ Security Policy
@@ -52,7 +52,6 @@ Comprehensive security documentation including:
 
 Enhanced with:
 - Clear explanations for why checks are skipped
-- References to ongoing work (PyPI planned for v1.0.0)
 - Comments documenting what checks already pass
 - Links to relevant URLs
 
@@ -81,11 +80,11 @@ Added new "Security & FAIR" section with:
 |---|----------------|--------|----------|
 | 1 | **Repository** | ✅ Pass | Public GitHub repo with version control |
 | 2 | **License** | ✅ Pass | Apache 2.0 in LICENSE file |
-| 3 | **Registry** | ⏳ Pending | TestPyPI workflows ready, PyPI planned for v1.0 |
+| 3 | **Registry** | ✅ Pass | Published to PyPI ([canvodpy](https://pypi.org/project/canvodpy/) + 11 sub-packages, v0.2.1+) |
 | 4 | **Citation** | ✅ Pass | CITATION.cff + Zenodo DOI (10.5281/zenodo.19445061) |
 | 5 | **Checklist** | ✅ Pass | **OpenSSF Best Practices badge obtained!** ([Project 12329](https://www.bestpractices.dev/projects/12329)) |
 
-**Overall:** 🟢 **4/5 complete**, 1/5 pending (PyPI for v1.0)
+**Overall:** 🟢 **5/5 complete**
 
 ## File Changes Summary
 
@@ -108,31 +107,13 @@ Modified:
 - ✅ Scorecard results will appear in Security tab after first run
 - ✅ FAIR compliance is monitored on every PR
 
-### Short Term (1-2 weeks)
-1. **Apply for OpenSSF Best Practices badge**
-   - Go to https://bestpractices.coreinfrastructure.org/
-   - Follow `docs/OPENSSF_BADGE_GUIDE.md`
-   - Estimated time: 2-3 hours to complete questionnaire
-
-2. **Enable GitHub Security Features**
-   - Settings → Security → Enable secret scanning
-   - Settings → Security → Enable private vulnerability reporting (already done!)
-
-3. **Address Quick Wins from Badge Guide**
-   - Add security section to CONTRIBUTING.md
-   - Document secure coding practices
-   - Verify REUSE compliance with `uv run reuse lint`
+### Completed (Short Term)
+- ✅ OpenSSF Best Practices badge obtained ([Project 12329](https://www.bestpractices.dev/projects/12329))
+- ✅ GitHub Security Features enabled (secret scanning, private vulnerability reporting)
+- ✅ REUSE 3.3 compliant (`uv run reuse lint` passes)
 
 ### Medium Term (Before v1.0.0)
-1. **Publish to PyPI**
-   - Will automatically satisfy FAIR recommendation #3
-   - TestPyPI workflows already in place
-
-2. **Complete OpenSSF Badge**
-   - Work through remaining criteria
-   - Add badge to README once approved
-
-3. **Consider Additional Security Enhancements**
+1. **Consider Additional Security Enhancements**
    - Signed releases (GPG or Sigstore)
    - Release checksums (SHA256)
    - Supply chain security (SLSA provenance)
