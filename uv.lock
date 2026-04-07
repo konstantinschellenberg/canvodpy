@@ -220,7 +220,7 @@ wheels = [
 
 [[package]]
 name = "canvod-audit"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-audit" }
 dependencies = [
     { name = "canvod-readers" },
@@ -256,7 +256,7 @@ provides-extras = ["external"]
 
 [[package]]
 name = "canvod-auxiliary"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-auxiliary" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -319,7 +319,7 @@ dev = [
 
 [[package]]
 name = "canvod-grids"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-grids" }
 dependencies = [
     { name = "astropy" },
@@ -368,7 +368,7 @@ optional = [{ name = "healpy", specifier = ">=1.16.0" }]
 
 [[package]]
 name = "canvod-ops"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-ops" }
 dependencies = [
     { name = "canvod-grids" },
@@ -407,7 +407,7 @@ dev = [
 
 [[package]]
 name = "canvod-readers"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-readers" }
 dependencies = [
     { name = "georinex" },
@@ -461,7 +461,7 @@ dev = [
 
 [[package]]
 name = "canvod-store"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-store" }
 dependencies = [
     { name = "canvod-grids" },
@@ -502,7 +502,7 @@ dev = [
 
 [[package]]
 name = "canvod-store-metadata"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-store-metadata" }
 dependencies = [
     { name = "canvod-utils" },
@@ -539,7 +539,7 @@ dev = [
 
 [[package]]
 name = "canvod-utils"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-utils" }
 dependencies = [
     { name = "email-validator" },
@@ -564,7 +564,7 @@ requires-dist = [
 
 [[package]]
 name = "canvod-virtualiconvname"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-virtualiconvname" }
 dependencies = [
     { name = "duckdb" },
@@ -583,7 +583,7 @@ requires-dist = [
 
 [[package]]
 name = "canvod-viz"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-viz" }
 dependencies = [
     { name = "canvod-grids" },
@@ -602,7 +602,7 @@ requires-dist = [
 
 [[package]]
 name = "canvod-vod"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "packages/canvod-vod" }
 dependencies = [
     { name = "numpy" },
@@ -635,7 +635,7 @@ dev = [
 
 [[package]]
 name = "canvodpy"
-version = "0.2.1"
+version = "0.2.2"
 source = { editable = "canvodpy" }
 dependencies = [
     { name = "altair" },
