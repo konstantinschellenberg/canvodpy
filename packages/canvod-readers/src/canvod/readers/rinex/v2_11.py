@@ -78,37 +78,18 @@ V2_EPOCH_FLAG_EXTERNAL_EVENT = 5
 V2_EPOCH_FLAG_CYCLE_SLIP = 6
 V2_YEAR_PIVOT = 80  # Two-digit year pivot: >= 80 → 19xx, < 80 → 20xx
 
-# RINEX v2 observation code → v3 equivalent mapping.
-# v2 uses 2-char codes (type+freq), v3 uses 3-char (type+freq+attribute).
-# We map to a generic attribute since v2 doesn't distinguish tracking modes.
-V2_TO_V3_OBS_CODE: dict[str, str] = {
-    "C1": "C1C",  # C/A code pseudorange on L1
-    "C2": "C2C",  # L2C pseudorange
-    "C5": "C5X",  # L5 pseudorange
-    "C6": "C6X",  # E6 pseudorange (Galileo)
-    "C7": "C7X",  # E5b pseudorange (Galileo)
-    "C8": "C8X",  # E5a+b pseudorange (Galileo)
-    "P1": "C1P",  # P-code pseudorange on L1
-    "P2": "C2P",  # P-code pseudorange on L2
-    "L1": "L1C",  # Carrier phase on L1
-    "L2": "L2P",  # Carrier phase on L2
-    "L5": "L5X",  # Carrier phase on L5
-    "L6": "L6X",  # Carrier phase on E6
-    "L7": "L7X",  # Carrier phase on E5b
-    "L8": "L8X",  # Carrier phase on E5a+b
-    "D1": "D1C",  # Doppler on L1
-    "D2": "D2P",  # Doppler on L2
-    "D5": "D5X",  # Doppler on L5
-    "D6": "D6X",  # Doppler on E6
-    "D7": "D7X",  # Doppler on E5b
-    "D8": "D8X",  # Doppler on E5a+b
-    "S1": "S1C",  # Signal strength on L1
-    "S2": "S2P",  # Signal strength on L2
-    "S5": "S5X",  # Signal strength on L5
-    "S6": "S6X",  # Signal strength on E6
-    "S7": "S7X",  # Signal strength on E5b
-    "S8": "S8X",  # Signal strength on E5a+b
+# RINEX v2 tracking-code map.
+# Only C1, P1, C2, P2 transmit an explicit ranging code.
+# All other v2 obs codes do not specify the ranging code → "X".
+_V2_TRACKING_CODE: dict[str, str] = {
+    "C1": "C",  # C/A code pseudorange on L1
+    "P1": "P",  # P-code pseudorange on L1
+    "C2": "C",  # L2C civil code pseudorange
+    "P2": "P",  # P-code pseudorange on L2
 }
+
+# v2 pseudorange codes P1/P2 map to obs-type "C" (pseudorange) in v3.
+_V2_OBS_TYPE_REMAP: dict[str, str] = {"P": "C"}
 
 # System identifiers recognized in RINEX v2.11
 V2_SYSTEM_CODES = {"G", "R", "S", "E", " "}
@@ -124,9 +105,27 @@ def _expand_v2_year(yy: int) -> int:
     return 2000 + yy
 
 
-def _v2_obs_code_to_v3(obs_code_v2: str) -> str:
-    """Map a RINEX v2 2-char observation code to v3 3-char equivalent."""
-    return V2_TO_V3_OBS_CODE.get(obs_code_v2, obs_code_v2)
+def _parse_v2_obs_code(obs_code_v2: str) -> tuple[str, str, str]:
+    """Parse a RINEX v2 2-char obs code into (obs_type, freq_num, tracking_code).
+
+    Parameters
+    ----------
+    obs_code_v2 : str
+        Two-character RINEX v2 observation code (e.g. "L1", "P2", "C5").
+
+    Returns
+    -------
+    tuple[str, str, str]
+        (obs_type, freq_num, tracking_code) where:
+        - obs_type: v3 observation type character ("C", "L", "D", "S")
+        - freq_num: frequency number as string ("1", "2", "5", "6", "7", "8")
+        - tracking_code: "C" for C1/C2, "P" for P1/P2, "X" otherwise
+    """
+    raw_type = obs_code_v2[0]  # C, P, L, D, S
+    freq_num = obs_code_v2[1]  # 1, 2, 5, 6, 7, 8
+    obs_type = _V2_OBS_TYPE_REMAP.get(raw_type, raw_type)
+    tracking_code = _V2_TRACKING_CODE.get(obs_code_v2, "X")
+    return obs_type, freq_num, tracking_code
 
 
 # --------------------------------------------------------------------------- #
@@ -392,8 +391,11 @@ class Rnxv2Header(BaseModel):
         else:
             systems_present = [system_char]
 
-        v3_codes = [_v2_obs_code_to_v3(ot) for ot in obs_types]
-        data["obs_codes_per_system"] = dict.fromkeys(systems_present, v3_codes)
+        # Store parsed v2 obs codes per system (type+freq_num+tracking_code)
+        v3_style_codes = [
+            f"{t}{f}{c}" for t, f, c in (_parse_v2_obs_code(ot) for ot in obs_types)
+        ]
+        data["obs_codes_per_system"] = dict.fromkeys(systems_present, v3_style_codes)
 
         return data
 
@@ -848,8 +850,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
                 value, lli, ssi = self._parse_observation_value(field)
 
                 obs_code_v2 = obs_types_v2[obs_idx]
-                obs_code_v3 = _v2_obs_code_to_v3(obs_code_v2)
-                obs_type_char = obs_code_v3[0]  # C, L, D, S, P
+                obs_type_char, _freq_num, _tracking = _parse_v2_obs_code(obs_code_v2)
 
                 observation = Observation(
                     obs_type=obs_type_char,
@@ -1029,25 +1030,31 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
         1. First pass: discover all signal IDs and collect timestamps.
         2. Second pass: fill data arrays.
         """
-        # Pre-compute v3 obs codes from header obs types
+        # Pre-parse v2 obs codes → (obs_type, freq_num, tracking_code)
         obs_types_v2 = self.header.obs_types
-        obs_codes_v3 = [_v2_obs_code_to_v3(ot) for ot in obs_types_v2]
+        parsed_obs_codes = [_parse_v2_obs_code(ot) for ot in obs_types_v2]
 
-        # Pre-compute band frequency properties cache
+        # Band frequency properties cache
         band_freq_cache: dict[str, tuple[float, float, float, float]] = {}
         mapper = self._signal_mapper
+        system_bands = mapper.SYSTEM_BANDS
 
         signal_ids: set[str] = set()
         signal_id_to_properties: dict[str, dict[str, object]] = {}
         timestamps: list[np.datetime64] = []
 
-        def _build_sid(sv: str, obs_code_v3: str) -> str | None:
-            """Build SID from SV and v3 obs code (e.g. 'L1C' → 'G01|L1|C')."""
-            if len(obs_code_v3) < 3:
+        def _build_sid(sv: str, freq_num: str, tracking_code: str) -> str | None:
+            """Build SID from SV, freq number, and tracking code.
+
+            Uses SignalIDMapper.SYSTEM_BANDS to resolve the system-specific
+            band name (e.g. GPS freq "1" → "L1", Galileo freq "1" → "E1",
+            GLONASS freq "1" → "G1").
+            """
+            system = sv[0] if sv else "G"
+            band_name = system_bands.get(system, {}).get(freq_num)
+            if band_name is None:
                 return None
-            band = obs_code_v3[0] + obs_code_v3[1]
-            code = obs_code_v3[2]
-            return f"{sv}|{band}|{code}"
+            return f"{sv}|{band_name}|{tracking_code}"
 
         def _cache_band_freq(band: str) -> tuple[float, float, float, float]:
             if band not in band_freq_cache:
@@ -1084,26 +1091,28 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
             for sat in epoch.satellites:
                 sv = sat.sv
                 for i, obs in enumerate(sat.observations):
-                    if i >= len(obs_codes_v3):
+                    if i >= len(parsed_obs_codes):
                         break
-                    sid = _build_sid(sv, obs_codes_v3[i])
+                    _obs_type, freq_num, tracking_code = parsed_obs_codes[i]
+                    sid = _build_sid(sv, freq_num, tracking_code)
                     if sid is None:
                         continue
 
                     signal_ids.add(sid)
 
                     if sid not in signal_id_to_properties:
-                        band = obs_codes_v3[i][0] + obs_codes_v3[i][1]
-                        code = obs_codes_v3[i][2]
                         system = sv[0] if sv != "nan" else "?"
-                        overlapping_group = mapper.get_overlapping_group(band)
-                        freq_center, freq_min, freq_max, bw = _cache_band_freq(band)
+                        band_name = system_bands.get(system, {}).get(freq_num, "?")
+                        overlapping_group = mapper.get_overlapping_group(band_name)
+                        freq_center, freq_min, freq_max, bw = _cache_band_freq(
+                            band_name
+                        )
 
                         signal_id_to_properties[sid] = {
                             "sv": sv,
                             "system": system,
-                            "band": band,
-                            "code": code,
+                            "band": band_name,
+                            "code": tracking_code,
                             "freq_center": freq_center,
                             "freq_min": freq_min,
                             "freq_max": freq_max,
@@ -1153,9 +1162,10 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
             for sat in epoch.satellites:
                 sv = sat.sv
                 for i, obs in enumerate(sat.observations):
-                    if obs.value is None or i >= len(obs_codes_v3):
+                    if obs.value is None or i >= len(parsed_obs_codes):
                         continue
-                    sid = _build_sid(sv, obs_codes_v3[i])
+                    _ot, fn, tc = parsed_obs_codes[i]
+                    sid = _build_sid(sv, fn, tc)
                     if sid is None or sid not in sid_to_idx:
                         continue
                     s_idx = sid_to_idx[sid]
@@ -1320,6 +1330,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
             from canvod.auxiliary.preprocessing import pad_to_global_sid
 
             ds = pad_to_global_sid(ds, keep_sids=keep_sids)
+            print(ds.SNR.mean().values)
 
         if strip_fillval:
             from canvod.auxiliary.preprocessing import strip_fillvalue
@@ -1331,7 +1342,6 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
 
         if write_global_attrs:
             ds.attrs.update(self._create_comprehensive_attrs())
-
         ds.attrs.update(self._build_attrs())
 
         # Normalise string dtypes for Icechunk / Zarr V3 compatibility
@@ -1484,26 +1494,6 @@ def _normalize_sv(sv_str: str) -> str:
 
     # Fallback
     return f"G{sv_str[-2:].zfill(2)}" if len(sv_str) >= 2 else f"G{sv_str.zfill(2)}"
-
-
-def _obs_freq_tag_to_sid(obs_freq_tag: str) -> str | None:
-    """Convert observation frequency tag to signal ID.
-
-    The obs_freq_tag is ``"SV|OBS_CODE"`` where OBS_CODE is a 3-char v3 code
-    like ``"L1C"``.  The SID is ``"SV|band|code"`` like ``"G01|L1|C"``.
-
-    Returns None for unrecognizable tags.
-    """
-    parts = obs_freq_tag.split("|")
-    if len(parts) != 2:
-        return None
-    sv, obs_code = parts
-    if len(obs_code) < 3:
-        return None
-    # obs_code e.g. "L1C" → type=L, freq=1, attr=C → band="L1", code="C"
-    band = obs_code[0] + obs_code[1]  # e.g. "L1"
-    code = obs_code[2]  # e.g. "C"
-    return f"{sv}|{band}|{code}"
 
 
 # --------------------------------------------------------------------------- #
