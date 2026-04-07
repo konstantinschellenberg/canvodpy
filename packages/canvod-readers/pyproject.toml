@@ -33,6 +33,7 @@ dependencies = [
     "plotly>=6.5.1",
     "marimo>=0.19.7",
     "sbf-parser>=1.0.3",
+    "structlog>=24.1.0",
 ]
 
 [dependency-groups]
