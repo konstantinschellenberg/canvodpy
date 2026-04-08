@@ -10,7 +10,8 @@ from canvod.readers.rinex.v2_11 import Rnxv2Header, Rnxv2Obs
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
 RINEX_V2_FILE = (
-    TEST_DATA_DIR / "valid/rinex_v2_11/02_Moflux/01_reference/25001/SEPT001a.25.obs"
+    TEST_DATA_DIR
+    / "valid/rinex_v2_11/02_Moflux/01_reference/25001/MOZR01CAL_R_20250010000_01H_15S_AA.rnx"
 )
 
 
@@ -302,7 +303,7 @@ class TestRnxv2MultipleFiles:
 
     def test_read_canopy_file(self):
         """Test reading a canopy receiver file."""
-        canopy_file = self.CANOPY_DIR / "SEPT001a.25.obs"
+        canopy_file = self.CANOPY_DIR / "MOZA01CAL_R_20250010000_01H_15S_AA.rnx"
         if not canopy_file.exists():
             pytest.skip(f"Test file not found: {canopy_file}")
 
@@ -315,7 +316,7 @@ class TestRnxv2MultipleFiles:
 
     def test_read_reference_file(self):
         """Test reading a reference receiver file."""
-        ref_file = self.REFERENCE_DIR / "SEPT001a.25.obs"
+        ref_file = self.REFERENCE_DIR / "MOZR01CAL_R_20250010000_01H_15S_AA.rnx"
         if not ref_file.exists():
             pytest.skip(f"Test file not found: {ref_file}")
 
@@ -328,8 +329,8 @@ class TestRnxv2MultipleFiles:
 
     def test_reference_and_canopy_share_sids(self):
         """Test that reference and canopy files share common signal IDs."""
-        ref_file = self.REFERENCE_DIR / "SEPT001a.25.obs"
-        canopy_file = self.CANOPY_DIR / "SEPT001a.25.obs"
+        ref_file = self.REFERENCE_DIR / "MOZR01CAL_R_20250010000_01H_15S_AA.rnx"
+        canopy_file = self.CANOPY_DIR / "MOZA01CAL_R_20250010000_01H_15S_AA.rnx"
 
         if not ref_file.exists() or not canopy_file.exists():
             pytest.skip("Test files not found")
@@ -349,8 +350,8 @@ class TestRnxv2MultipleFiles:
 
     def test_file_hashes_differ(self):
         """Test that different files produce different hashes."""
-        ref_file = self.REFERENCE_DIR / "SEPT001a.25.obs"
-        canopy_file = self.CANOPY_DIR / "SEPT001a.25.obs"
+        ref_file = self.REFERENCE_DIR / "MOZR01CAL_R_20250010000_01H_15S_AA.rnx"
+        canopy_file = self.CANOPY_DIR / "MOZA01CAL_R_20250010000_01H_15S_AA.rnx"
 
         if not ref_file.exists() or not canopy_file.exists():
             pytest.skip("Test files not found")

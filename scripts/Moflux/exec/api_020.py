@@ -23,12 +23,12 @@ def run_functional():
 
 def run_pipeline():
     # Stage 1: nightly ingestion (runs via cron or Airflow)
-    with site.pipeline(n_workers=1) as pipe:
-        data = pipe.process_date("2024005")
+    # with site.pipeline(n_workers=1) as pipe:
+    #     data = pipe.process_date("2024005")
 
     # Stage 2: weekly VOD computation (triggered separately)
     result = site.vod.compute_bulk(
-        "main",
+        "canopy_01_vs_reference_01",
         start=datetime(2025, 1, 4),
         end=datetime(2025, 2, 6),
         write=True,  # Write to VOD store
