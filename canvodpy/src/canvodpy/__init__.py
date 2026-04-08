@@ -264,6 +264,13 @@ def _register_builtin_components() -> None:
         log.debug("Rnxv2Obs reader not available, skipping rinex2 reader registration")
 
     try:
+        from canvod.readers.nmea import NmeaObs
+
+        ReaderFactory.register("nmea", NmeaObs)
+    except ImportError:
+        log.debug("NmeaObs reader not available, skipping nmea reader registration")
+
+    try:
         from canvod.grids import EqualAreaBuilder
 
         GridFactory.register("equal_area", EqualAreaBuilder)
