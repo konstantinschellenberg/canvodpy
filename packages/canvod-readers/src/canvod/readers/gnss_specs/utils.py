@@ -1,40 +1,29 @@
 """Utility functions for RINEX readers."""
 
 import hashlib
-import tomllib
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 
 def get_version_from_pyproject(pyproject_path: Path | None = None) -> str:
-    """Get package version from pyproject.toml.
+    """Get the installed version of canvod-readers.
 
     Parameters
     ----------
     pyproject_path : Path, optional
-        Path to pyproject.toml. If None, auto-detects by traversing up
-        from current file location.
+        Ignored. Kept for backwards compatibility.
 
     Returns
     -------
     str
-        Version string from project metadata.
-
-    Raises
-    ------
-    FileNotFoundError
-        If pyproject.toml cannot be found.
-    KeyError
-        If version field is missing from pyproject.toml.
+        Version string from installed package metadata, or ``"unknown"``
+        if the package is not installed in the active environment.
 
     """
-    if pyproject_path is None:
-        # Auto-find pyproject.toml (3 levels up from this file)
-        pyproject_path = Path(__file__).resolve().parents[4] / "pyproject.toml"
-
-    with pyproject_path.open("rb") as f:
-        data = tomllib.load(f)
-
-    return data["project"]["version"]
+    try:
+        return version("canvod-readers")
+    except PackageNotFoundError:
+        return "unknown"
 
 
 def file_hash(path: Path, chunk_size: int = 8192) -> str:
