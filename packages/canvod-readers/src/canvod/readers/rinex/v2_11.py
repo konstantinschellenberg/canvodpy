@@ -1330,7 +1330,6 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
             from canvod.auxiliary.preprocessing import pad_to_global_sid
 
             ds = pad_to_global_sid(ds, keep_sids=keep_sids)
-            print(ds.SNR.mean().values)
 
         if strip_fillval:
             from canvod.auxiliary.preprocessing import strip_fillvalue

@@ -104,7 +104,11 @@ def compute_spherical_coordinates(
 
     # Compute theta: polar angle from +z (Up) axis
     # Clamp u/r to [-1, 1] to handle numerical errors
-    cos_theta = np.clip(u / r, -1.0, 1.0)
+    cos_theta = np.clip(
+        np.divide(u, r, out=np.full_like(r, np.nan, dtype=float), where=r != 0),
+        -1.0,
+        1.0,
+    )
     theta = np.arccos(cos_theta)
 
     # Mask satellites below horizon (u < 0 means below horizon)

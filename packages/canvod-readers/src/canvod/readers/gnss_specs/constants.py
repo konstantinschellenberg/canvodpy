@@ -29,6 +29,7 @@ if "dBHz" not in UREG:
 # These are kept only for backward compatibility with DataDirMatcher.
 FORMAT_GLOB_PATTERNS: dict[str, tuple[str, ...]] = {
     "rinex3": ("*.[0-9][0-9]o", "*.O", "*.rnx"),
+    "rinex2": ("*.[0-9][0-9]o", "*.O", "*.rnx", "*.obs"),
     "sbf": ("*.[0-9][0-9]_",),
 }
 
@@ -37,6 +38,7 @@ RINEX_OBS_GLOB_PATTERNS: tuple[str, ...] = (
     "*.O",
     "*.rnx",
     "*.[0-9][0-9]_",
+    "*.obs",
 )
 
 # Regex pattern for validating a single RINEX observation file suffix
