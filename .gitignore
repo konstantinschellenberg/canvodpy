@@ -336,9 +336,9 @@ celerybeat.pid
 # ============================================================================
 
 # User configuration files (NEVER commit!)
-config/processing.yaml
-config/sites.yaml
-config/sids.yaml
+config/backup/processing.yaml
+config/backup/sites.yaml
+config/backup/sids.yaml
 
 # Templates (DO commit!)
 !config/*.example
