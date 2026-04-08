@@ -1178,13 +1178,9 @@ class PipelineOrchestrator:
         _first_date_key, first_receivers = filtered_dates[0]
         first_receiver_info = next(iter(first_receivers.values()))
         first_data_dir = first_receiver_info[0]
-
-        # find nfiles by searching BUILTIN_PATTERNS globs in the first_data_dir
-        n_files = 0
-        for name in auto_match_order():
-            for g in BUILTIN_PATTERNS[name].file_globs:
-                n_files += len(list(first_data_dir.glob(g)))
-
+        n_files = len(
+            list(first_data_dir.glob("*.2*o")) or list(first_data_dir.glob("*.??o"))
+        )
         if n_files > 0:
             self._validate_batch_floor(n_files)
 
