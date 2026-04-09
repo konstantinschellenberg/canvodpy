@@ -21,6 +21,7 @@ classifiers = [
 
 dependencies = [
     "canvod-readers>=0.1.0",
+    "canvod-utils>=0.1.0",
     "scipy>=1.15.0",
     "numpy>=1.24.0",
     "xarray>=2023.12.0",
@@ -32,6 +33,7 @@ dependencies = [
     "lxml>=5.3.0",
     "pint>=0.23",
     "pymap3d>=3.0.0",
+    "structlog>=24.1.0",
     "tqdm>=4.67.1",
     "hvplot>=0.12.2",
     "plotly>=6.5.1",
@@ -51,6 +53,7 @@ dev = [
 
 [tool.uv.sources]
 canvod-readers = { workspace = true }
+canvod-utils = { workspace = true }
 
 [project.urls]
 Homepage = "https://github.com/nfb2021/canvodpy"

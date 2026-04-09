@@ -458,7 +458,7 @@ def _safe_float(s: str, default: float = 0.0) -> float:
     """Safely convert string to float."""
     try:
         return float(s.strip())
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return default
 
 
@@ -897,7 +897,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
                     sat_list,
                     rcv_clock,
                 ) = self._parse_epoch_line(line)
-            except (InvalidEpochError, ValueError):
+            except InvalidEpochError, ValueError:
                 idx += 1
                 continue
 
@@ -938,7 +938,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
                         sat_sv,
                     )
                     satellites.append(satellite)
-                except (InvalidEpochError, IncompleteEpochError, ValueError):
+                except InvalidEpochError, IncompleteEpochError, ValueError:
                     # Skip malformed satellite data, advance to expected position
                     n_obs = len(self.header.obs_types)
                     n_lines_per_sat = (
