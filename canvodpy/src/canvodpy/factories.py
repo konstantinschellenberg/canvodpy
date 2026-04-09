@@ -194,6 +194,7 @@ class ReaderFactory(ComponentFactory):
     _format_aliases: ClassVar[dict[str, str]] = {
         "rinex_v3": "rinex3",
         "rinex_v2": "rinex2",
+        "nmea": "nmea",
     }
 
     @classmethod
@@ -273,8 +274,17 @@ class ReaderFactory(ComponentFactory):
         from pathlib import Path
 
         fpath = Path(fpath)
+
+        # Detect NMEA by extension before attempting RINEX header parse
+        if fpath.suffix.lower() == ".nmea":
+            return "nmea"
+
         with fpath.open() as f:
             first_line = f.readline()
+
+        # NMEA sentences start with '$'
+        if first_line.startswith("$"):
+            return "nmea"
 
         try:
             version_str = first_line[:9].strip()

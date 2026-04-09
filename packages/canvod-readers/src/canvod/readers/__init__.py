@@ -55,6 +55,7 @@ from canvod.readers.matching import (
     PairDataDirMatcher,
     PairMatchedDirs,
 )
+from canvod.readers.nmea.v4_00 import NmeaObs
 from canvod.readers.rinex.v2_11 import Rnxv2Obs
 from canvod.readers.rinex.v3_04 import Rnxv3Obs
 from canvod.readers.sbf import SbfEpoch, SbfHeader, SbfReader, SbfSignalObs
@@ -73,6 +74,7 @@ __all__ = [
     "DatasetStructureValidator",
     "GNSSDataReader",
     "MatchedDirs",
+    "NmeaObs",
     "PairDataDirMatcher",
     "PairMatchedDirs",
     "Rnxv2Obs",

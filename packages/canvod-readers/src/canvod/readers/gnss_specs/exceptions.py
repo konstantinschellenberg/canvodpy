@@ -1,4 +1,4 @@
-"""Custom exceptions for RINEX readers.
+"""Custom exceptions for GNSS readers.
 
 Exception Hierarchy
 -------------------
@@ -10,8 +10,13 @@ RinexError
     ├── InvalidEpochError
     └── FileNotExistError
 
-All exceptions inherit from RinexError, allowing for broad exception
-handling when needed while preserving specific error types.
+NmeaError
+    ├── NmeaChecksumError
+    ├── NmeaMissingSentenceError
+    └── NmeaInvalidSentenceError
+
+All exceptions inherit from RinexError or NmeaError, allowing for broad
+exception handling when needed while preserving specific error types.
 """
 
 
@@ -160,3 +165,11 @@ class FileNotExistError(RinexError):
     def __init__(self, message: str) -> None:
         """Initialize with a descriptive message."""
         super().__init__(message)
+
+
+class NmeaError(Exception):
+    """Base exception for NMEA reader errors.
+
+    All NMEA-specific exceptions inherit from this class, allowing
+    applications to catch all NMEA reader errors with a single except clause.
+    """
