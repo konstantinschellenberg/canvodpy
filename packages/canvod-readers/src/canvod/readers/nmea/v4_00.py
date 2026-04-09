@@ -106,6 +106,38 @@ DEFAULT_NMEA_BAND_MAP: Final[dict[str, tuple[str, str]]] = {
     "S": ("L1", "C"),  # SBAS L1
 }
 
+# u-blox NMEA 4.11 signal ID mapping (Table 4, section 1.5.4).
+# Key: (system_letter, signal_id_hex_digit) → (band, tracking_code)
+# The signal ID is the 1-digit hex field after the last satellite block
+# in a GSV sentence, right before *checksum.
+UBLOX_SIGNAL_ID_MAP: Final[dict[str, dict[str, tuple[str, str]]]] = {
+    "G": {  # GPS (NMEA system ID 1)
+        "1": ("L1", "C"),  # L1 C/A
+        "5": ("L2", "M"),  # L2 CM
+        "6": ("L2", "L"),  # L2 CL
+        "7": ("L5", "I"),  # L5 I
+        "8": ("L5", "Q"),  # L5 Q
+    },
+    "S": {  # SBAS (NMEA system ID 1, same as GPS)
+        "1": ("L1", "C"),  # L1 C/A
+    },
+    "E": {  # Galileo (NMEA system ID 3)
+        "1": ("E5a", "X"),  # E5 aI + aQ
+        "2": ("E5b", "X"),  # E5 bI + bQ
+        "7": ("E1", "X"),  # E1 C + B
+    },
+    "R": {  # GLONASS (NMEA system ID 2)
+        "1": ("G1", "C"),  # L1 OF
+        "3": ("G2", "C"),  # L2 OF
+    },
+    "C": {  # BeiDou (NMEA system ID 4)
+        "1": ("B1I", "I"),  # B1I D1/D2
+        "3": ("B1C", "X"),  # B1C
+        "5": ("B2a", "X"),  # B2a
+        "B": ("B2I", "I"),  # B2I D1/D2
+    },
+}
+
 _GPS_PRN_MAX = 32
 _SBAS_PRN_MAX = 64
 
@@ -154,10 +186,27 @@ def prn_to_sv(talker: str, prn: int) -> str | None:
     return None
 
 
-def _sv_to_sid(sv: str) -> str:
-    """Build the signal ID string for a given SV using DEFAULT_NMEA_BAND_MAP."""
+def _sv_to_sid(sv: str, signal_id: str | None = None) -> str:
+    """Build the signal ID string for a given SV.
+
+    Parameters
+    ----------
+    sv : str
+        RINEX-style SV identifier (e.g. ``"G01"``).
+    signal_id : str or None
+        Single hex digit from the GSV ``signalId`` field (u-blox NMEA 4.11).
+        If provided, uses :data:`UBLOX_SIGNAL_ID_MAP` for band/code resolution.
+        If ``None`` or not found, falls back to :data:`DEFAULT_NMEA_BAND_MAP`.
+    """
     system = sv[0]
-    band, code = DEFAULT_NMEA_BAND_MAP.get(system, ("L1", "C"))
+    if signal_id is not None:
+        sig_map = UBLOX_SIGNAL_ID_MAP.get(system, {})
+        band_code = sig_map.get(signal_id.upper())
+        if band_code is not None:
+            band, code = band_code
+            return f"{sv}|{band}|{code}"
+    # Fallback: default L/G/E/B1 band with X code when no signal ID
+    band, code = DEFAULT_NMEA_BAND_MAP.get(system, ("L1", "X"))
     return f"{sv}|{band}|{code}"
 
 
@@ -210,20 +259,48 @@ def _parse_gga_time(fields: list[str]) -> tuple[int, int, float] | None:
 # ---------------------------------------------------------------------------
 
 
+def _extract_gsv_signal_id(fields: list[str]) -> str | None:
+    """Extract the u-blox signal ID from a GSV sentence's fields.
+
+    The signal ID is the last field before ``*checksum``, present only
+    when the number of fields after ``numSV`` (index 2) is not a multiple
+    of 4 (i.e. there is one extra field beyond the satellite blocks).
+
+    Rules (per user spec / u-blox convention):
+    - 1 digit  → u-blox signal ID (hex), use :data:`UBLOX_SIGNAL_ID_MAP`
+    - 2 digits → last satellite's SNR, no signal ID
+    - absent   → no signal ID, use :data:`DEFAULT_NMEA_BAND_MAP`
+    """
+    # fields[0]=numMsg, [1]=msgNum, [2]=numSV, then 4-field sat blocks
+    n_after_header = len(fields) - 3
+    if n_after_header <= 0:
+        return None
+    extra = n_after_header % 4
+    if extra == 1:
+        candidate = fields[-1].strip()
+        if len(candidate) == 1:
+            return candidate
+    return None
+
+
 def _parse_gsv_satellites(
     talker: str,
     fields: list[str],
+    signal_id: str | None = None,
 ) -> list[tuple[str, float | None]]:
     """Parse satellite entries from a single GSV sentence.
 
-    Returns list of ``(sv, snr)`` pairs.
+    Returns list of ``(sid, snr)`` pairs where *sid* is the full
+    signal identifier (e.g. ``"G01|L1|C"``).
     """
     results: list[tuple[str, float | None]] = []
     # Satellite blocks start at index 3 and repeat every 4 fields
     sat_start = 3
-    while sat_start < len(fields):
-        prn_str = fields[sat_start] if sat_start < len(fields) else ""
-        snr_str = fields[sat_start + 3] if sat_start + 3 < len(fields) else ""
+    # Stop before the signal_id field if present
+    end = len(fields) - 1 if signal_id is not None else len(fields)
+    while sat_start < end:
+        prn_str = fields[sat_start] if sat_start < end else ""
+        snr_str = fields[sat_start + 3] if sat_start + 3 < end else ""
 
         if not prn_str:
             sat_start += 4
@@ -245,7 +322,8 @@ def _parse_gsv_satellites(
             with contextlib.suppress(ValueError):
                 snr = float(snr_str)
 
-        results.append((sv, snr))
+        sid = _sv_to_sid(sv, signal_id)
+        results.append((sid, snr))
         sat_start += 4
 
     return results
@@ -267,7 +345,7 @@ class _ParsedEpoch:
         satellites: dict[str, float | None],
     ) -> None:
         self.timestamp = timestamp
-        self.satellites = satellites  # sv → snr (None = not tracked)
+        self.satellites = satellites  # sid → snr (None = not tracked)
 
 
 # ---------------------------------------------------------------------------
@@ -336,8 +414,8 @@ class NmeaObs(GNSSDataReader, BaseModel):
     def systems(self) -> list[str]:
         sys_set: set[str] = set()
         for ep in self._parsed_epochs:
-            for sv in ep.satellites:
-                sys_set.add(sv[0])
+            for sid in ep.satellites:
+                sys_set.add(sid.split("|")[0][0])
         return sorted(sys_set)
 
     @property
@@ -348,7 +426,8 @@ class NmeaObs(GNSSDataReader, BaseModel):
     def num_satellites(self) -> int:
         svs: set[str] = set()
         for ep in self._parsed_epochs:
-            svs.update(ep.satellites.keys())
+            for sid in ep.satellites:
+                svs.add(sid.split("|")[0])
         return len(svs)
 
     # ---- iter_epochs ---- #
@@ -384,11 +463,10 @@ class NmeaObs(GNSSDataReader, BaseModel):
 
         mapper = SignalIDMapper()
 
-        # Collect all unique signal IDs
+        # Collect all unique signal IDs (satellites already keyed by SID)
         all_sids: set[str] = set()
         for ep in epochs:
-            for sv in ep.satellites:
-                all_sids.add(_sv_to_sid(sv))
+            all_sids.update(ep.satellites.keys())
 
         sorted_sids = sorted(all_sids)
         sid_to_idx = {sid: i for i, sid in enumerate(sorted_sids)}
@@ -402,10 +480,9 @@ class NmeaObs(GNSSDataReader, BaseModel):
         timestamps: list[np.datetime64] = []
         for t_idx, ep in enumerate(epochs):
             timestamps.append(np.datetime64(ep.timestamp.replace(tzinfo=None), "ns"))
-            for sv, snr in ep.satellites.items():
+            for sid, snr in ep.satellites.items():
                 if snr is None:
                     continue
-                sid = _sv_to_sid(sv)
                 s_idx = sid_to_idx[sid]
                 snr_data[t_idx, s_idx] = snr
 
@@ -574,13 +651,14 @@ class NmeaObs(GNSSDataReader, BaseModel):
 
             elif sentence_type == "GSV":
                 talker = _talker_id(msg_id)
-                sat_entries = _parse_gsv_satellites(talker, fields)
-                for sv, snr in sat_entries:
-                    existing = current_sats.get(sv)
+                signal_id = _extract_gsv_signal_id(fields)
+                sat_entries = _parse_gsv_satellites(talker, fields, signal_id)
+                for sid, snr in sat_entries:
+                    existing = current_sats.get(sid)
                     if existing is None or (
                         snr is not None and (existing is None or snr > existing)
                     ):
-                        current_sats[sv] = snr
+                        current_sats[sid] = snr
 
         # Flush last epoch
         _flush_epoch()

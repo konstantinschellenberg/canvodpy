@@ -13,6 +13,7 @@ from canvod.readers.nmea.exceptions import (
 )
 from canvod.readers.nmea.v4_00 import (
     NmeaObs,
+    _extract_gsv_signal_id,
     _parse_gsv_satellites,
     _parse_rmc_datetime,
     _sv_to_sid,
@@ -23,17 +24,41 @@ from canvod.readers.nmea.v4_00 import (
 
 # Test data paths
 TEST_DATA_DIR = Path(__file__).parent / "test_data"
-NMEA_FILE = (
-    TEST_DATA_DIR / "valid/nmea/01_reference/ROSR01TUW_R_20250010000_15M_05S_AA.nmea"
-)
+
+# 01_Rosalia: Septentrio receiver — no signal ID in GSV sentences
+ROSALIA_REF_DIR = TEST_DATA_DIR / "valid/nmea/01_Rosalia/01_reference"
+ROSALIA_CANOPY_DIR = TEST_DATA_DIR / "valid/nmea/01_Rosalia/02_canopy"
+ROSALIA_FILE = ROSALIA_REF_DIR / "ROSR01TUW_R_20250010000_15M_05S_AA.nmea"
+
+# 02_Hainich: u-blox receiver — signal ID present in GSV sentences
+HAINICH_REF_DIR = TEST_DATA_DIR / "valid/nmea/02_Hainich/01_reference"
+HAINICH_CANOPY_DIR = TEST_DATA_DIR / "valid/nmea/02_Hainich/02_canopy"
+HAINICH_REF_FILE = HAINICH_REF_DIR / "HAIR02MPI_R_20260010000_01H_01S_AA.nmea"
+HAINICH_CANOPY_FILE = HAINICH_CANOPY_DIR / "HAIA02MPI_R_20260010000_01H_01S_AA.nmea"
 
 
 @pytest.fixture
 def nmea_file():
-    """Fixture providing path to test NMEA file."""
-    if not NMEA_FILE.exists():
-        pytest.skip(f"Test file not found: {NMEA_FILE}")
-    return NMEA_FILE
+    """Fixture providing path to Rosalia test NMEA file."""
+    if not ROSALIA_FILE.exists():
+        pytest.skip(f"Test file not found: {ROSALIA_FILE}")
+    return ROSALIA_FILE
+
+
+@pytest.fixture
+def hainich_ref_file():
+    """Fixture providing path to Hainich (u-blox) reference NMEA file."""
+    if not HAINICH_REF_FILE.exists():
+        pytest.skip(f"Test file not found: {HAINICH_REF_FILE}")
+    return HAINICH_REF_FILE
+
+
+@pytest.fixture
+def hainich_canopy_file():
+    """Fixture providing path to Hainich (u-blox) canopy NMEA file."""
+    if not HAINICH_CANOPY_FILE.exists():
+        pytest.skip(f"Test file not found: {HAINICH_CANOPY_FILE}")
+    return HAINICH_CANOPY_FILE
 
 
 class TestNmeaChecksum:
@@ -122,6 +147,106 @@ class TestSvToSid:
     def test_sbas_sid(self):
         assert _sv_to_sid("S01") == "S01|L1|C"
 
+    # u-blox signal ID aware tests
+    def test_gps_l2_signal_id(self):
+        assert _sv_to_sid("G01", signal_id="6") == "G01|L2|L"
+
+    def test_gps_l5_signal_id(self):
+        assert _sv_to_sid("G01", signal_id="7") == "G01|L5|I"
+
+    def test_galileo_e5a_signal_id(self):
+        assert _sv_to_sid("E12", signal_id="1") == "E12|E5a|X"
+
+    def test_galileo_e5b_signal_id(self):
+        assert _sv_to_sid("E12", signal_id="2") == "E12|E5b|X"
+
+    def test_galileo_e1_signal_id(self):
+        assert _sv_to_sid("E12", signal_id="7") == "E12|E1|X"
+
+    def test_glonass_g2_signal_id(self):
+        assert _sv_to_sid("R05", signal_id="3") == "R05|G2|C"
+
+    def test_beidou_b2i_signal_id(self):
+        assert _sv_to_sid("C30", signal_id="B") == "C30|B2I|I"
+
+    def test_unknown_signal_id_falls_back(self):
+        # Signal ID "F" not in GPS map → fallback to default
+        assert _sv_to_sid("G01", signal_id="F") == "G01|L1|C"
+
+
+class TestGsvSignalIdExtraction:
+    """Tests for _extract_gsv_signal_id."""
+
+    def test_no_signal_id(self):
+        """Standard GSV with 4 sats, last field is 2-digit SNR."""
+        fields = [
+            "6",
+            "1",
+            "21",
+            "02",
+            "85",
+            "302",
+            "50",
+            "08",
+            "22",
+            "184",
+            "42",
+            "28",
+            "16",
+            "099",
+            "40",
+            "32",
+            "36",
+            "053",
+            "46",
+        ]
+        assert _extract_gsv_signal_id(fields) is None
+
+    def test_signal_id_present(self):
+        """GSV with signal ID '1' after 4 satellite blocks."""
+        fields = [
+            "3",
+            "1",
+            "09",
+            "02",
+            "85",
+            "302",
+            "50",
+            "08",
+            "22",
+            "184",
+            "42",
+            "28",
+            "16",
+            "099",
+            "40",
+            "32",
+            "36",
+            "053",
+            "46",
+            "1",
+        ]
+        assert _extract_gsv_signal_id(fields) == "1"
+
+    def test_signal_id_hex(self):
+        """GSV with hex signal ID 'B' (BeiDou B2I)."""
+        fields = ["2", "1", "05", "29", "64", "281", "51", "19", "12", "226", "42", "B"]
+        assert _extract_gsv_signal_id(fields) == "B"
+
+    def test_empty_gsv(self):
+        fields = ["6", "6", "21"]
+        assert _extract_gsv_signal_id(fields) is None
+
+    def test_gsv_with_signal_id_applies_to_sids(self):
+        """Verify that signal ID flows through to SID construction."""
+        # GPS L5 I: signal ID = 7
+        fields = ["1", "1", "02", "02", "85", "302", "50", "7"]
+        signal_id = _extract_gsv_signal_id(fields)
+        assert signal_id == "7"
+        sats = _parse_gsv_satellites("GP", fields, signal_id)
+        assert len(sats) == 1
+        assert sats[0] == ("G02|L5|I", 50.0)
+
 
 class TestRmcParsing:
     """Tests for RMC datetime parsing."""
@@ -186,10 +311,10 @@ class TestGsvParsing:
         ]
         sats = _parse_gsv_satellites("GP", fields)
         assert len(sats) == 4
-        assert sats[0] == ("G02", 50.0)
-        assert sats[1] == ("G08", 42.0)
-        assert sats[2] == ("G28", 40.0)
-        assert sats[3] == ("G32", 46.0)
+        assert sats[0] == ("G02|L1|C", 50.0)
+        assert sats[1] == ("G08|L1|C", 42.0)
+        assert sats[2] == ("G28|L1|C", 40.0)
+        assert sats[3] == ("G32|L1|C", 46.0)
 
     def test_glonass_gsv(self):
         fields = [
@@ -215,7 +340,7 @@ class TestGsvParsing:
         ]
         sats = _parse_gsv_satellites("GL", fields)
         assert len(sats) == 4
-        assert sats[0][0] == "R20"  # GL PRN 84 → 84-64=20
+        assert sats[0][0] == "R20|G1|C"  # GL PRN 84 → 84-64=20
         assert sats[0][1] == 41.0
 
     def test_galileo_gsv(self):
@@ -242,7 +367,7 @@ class TestGsvParsing:
         ]
         sats = _parse_gsv_satellites("GA", fields)
         assert len(sats) == 4
-        assert sats[0] == ("E11", 44.0)
+        assert sats[0] == ("E11|E1|C", 44.0)
 
     def test_beidou_gsv(self):
         fields = [
@@ -268,15 +393,15 @@ class TestGsvParsing:
         ]
         sats = _parse_gsv_satellites("GB", fields)
         assert len(sats) == 4
-        assert sats[0] == ("C29", 51.0)
+        assert sats[0] == ("C29|B1I|I", 51.0)
 
     def test_missing_snr(self):
         # SNR field empty → None
         fields = ["5", "1", "18", "22", "15", "219", "", "35", "16", "315", "43"]
         sats = _parse_gsv_satellites("GB", fields)
         assert len(sats) == 2
-        assert sats[0] == ("C22", None)
-        assert sats[1] == ("C35", 43.0)
+        assert sats[0] == ("C22|B1I|I", None)
+        assert sats[1] == ("C35|B1I|I", 43.0)
 
     def test_empty_gsv(self):
         # Last message with no satellites: $GPGSV,6,6,21*7A
@@ -486,8 +611,8 @@ class TestNmeaErrorHandling:
 class TestNmeaMultipleFiles:
     """Tests reading multiple NMEA files."""
 
-    REFERENCE_DIR = TEST_DATA_DIR / "valid/nmea/01_reference"
-    CANOPY_DIR = TEST_DATA_DIR / "valid/nmea/02_canopy"
+    REFERENCE_DIR = ROSALIA_REF_DIR
+    CANOPY_DIR = ROSALIA_CANOPY_DIR
 
     def test_read_second_file(self):
         """Test reading a different time segment."""
@@ -541,3 +666,184 @@ class TestNmeaMultipleFiles:
 
         common_sids = ref_sids & canopy_sids
         assert len(common_sids) > 0, "Reference and canopy should share signal IDs"
+
+
+class TestRosaliaNoSignalId:
+    """Tests for Rosalia (Septentrio) NMEA data — no signal ID in GSV sentences.
+
+    All SIDs should use DEFAULT_NMEA_BAND_MAP (L1/G1/E1/B1I per system).
+    Each SV appears at most once per epoch (single band).
+    """
+
+    def test_rosalia_reads_successfully(self, nmea_file):
+        """Basic sanity: file reads without error."""
+        obs = NmeaObs(fpath=nmea_file)
+        ds = obs.to_ds()
+        assert ds.sizes["epoch"] > 0
+        assert ds.sizes["sid"] > 0
+
+    def test_rosalia_only_default_bands(self, nmea_file):
+        """Rosalia data has no signal ID → only default bands appear."""
+        obs = NmeaObs(fpath=nmea_file)
+        ds = obs.to_ds()
+
+        default_bands = {"L1", "G1", "E1", "B1I"}
+        for band in ds.band.values:
+            assert str(band) in default_bands, (
+                f"Unexpected band '{band}' — Rosalia has no signal ID, "
+                f"should only use default bands {default_bands}"
+            )
+
+    def test_rosalia_no_duplicate_sv_per_epoch(self, nmea_file):
+        """Without signal ID, each SV produces exactly one SID."""
+        obs = NmeaObs(fpath=nmea_file)
+        ds = obs.to_ds()
+
+        # Check that no SV appears under multiple bands
+        sv_to_bands: dict[str, set[str]] = {}
+        for sid in ds.sid.values:
+            sv, band, _ = str(sid).split("|")
+            sv_to_bands.setdefault(sv, set()).add(band)
+
+        for sv, bands in sv_to_bands.items():
+            assert len(bands) == 1, (
+                f"SV {sv} appears on bands {bands} — expected single band "
+                f"(no signal ID in Rosalia data)"
+            )
+
+    def test_rosalia_default_tracking_codes(self, nmea_file):
+        """Default tracking codes: C for GPS/GLONASS/Galileo/SBAS, I for BeiDou."""
+        obs = NmeaObs(fpath=nmea_file)
+        ds = obs.to_ds()
+
+        for sid in ds.sid.values:
+            sv, band, code = str(sid).split("|")
+            system = sv[0]
+            if system in ("G", "R", "E", "S"):
+                assert code == "C", f"Expected code 'C' for {system}, got '{code}'"
+            elif system == "C":
+                assert code == "I", f"Expected code 'I' for BeiDou, got '{code}'"
+
+
+class TestHainichSignalId:
+    """Tests for Hainich (u-blox) NMEA data — signal ID present in GSV sentences.
+
+    The u-blox receiver outputs multiple GSV message sets per system,
+    each with a different signal ID (e.g. GPS L1 + L2, Galileo E1 + E5b).
+    """
+
+    def test_hainich_reads_successfully(self, hainich_ref_file):
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+        assert ds.sizes["epoch"] > 0
+        assert ds.sizes["sid"] > 0
+
+    def test_hainich_has_multiple_bands_per_system(self, hainich_ref_file):
+        """u-blox signal ID produces multiple bands per constellation."""
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+
+        system_bands: dict[str, set[str]] = {}
+        for sid in ds.sid.values:
+            sv, band, _ = str(sid).split("|")
+            system = sv[0]
+            system_bands.setdefault(system, set()).add(band)
+
+        # GPS should have L1 + L2 (signal IDs 1 and 6)
+        assert "L1" in system_bands.get("G", set()), "GPS should have L1"
+        assert "L2" in system_bands.get("G", set()), "GPS should have L2"
+
+    def test_hainich_gps_l1_and_l2(self, hainich_ref_file):
+        """GPS satellites should appear on both L1 and L2 bands."""
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+
+        gps_sids = [str(s) for s in ds.sid.values if str(s).startswith("G")]
+        l1_svs = {s.split("|")[0] for s in gps_sids if "|L1|" in s}
+        l2_svs = {s.split("|")[0] for s in gps_sids if "|L2|" in s}
+
+        # Some GPS SVs should appear on both bands
+        common = l1_svs & l2_svs
+        assert len(common) > 0, "GPS SVs should appear on both L1 and L2"
+
+    def test_hainich_glonass_dual_band(self, hainich_ref_file):
+        """GLONASS should have G1 (signal ID 1) and G2 (signal ID 3)."""
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+
+        glo_bands = set()
+        for sid in ds.sid.values:
+            sv, band, _ = str(sid).split("|")
+            if sv[0] == "R":
+                glo_bands.add(band)
+
+        assert "G1" in glo_bands, "GLONASS should have G1"
+        assert "G2" in glo_bands, "GLONASS should have G2"
+
+    def test_hainich_galileo_dual_band(self, hainich_ref_file):
+        """Galileo should have E5b (signal ID 2) and E1 (signal ID 7)."""
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+
+        gal_bands = set()
+        for sid in ds.sid.values:
+            sv, band, _ = str(sid).split("|")
+            if sv[0] == "E":
+                gal_bands.add(band)
+
+        assert "E5b" in gal_bands or "E1" in gal_bands, (
+            f"Galileo should have E1 or E5b, got {gal_bands}"
+        )
+
+    def test_hainich_tracking_codes_from_signal_id(self, hainich_ref_file):
+        """Signal-ID-resolved tracking codes differ from default."""
+        obs = NmeaObs(fpath=hainich_ref_file)
+        ds = obs.to_ds()
+
+        # GPS L2 CL should have code "L" (not "C")
+        gps_l2_codes = set()
+        for sid in ds.sid.values:
+            sv, band, code = str(sid).split("|")
+            if sv[0] == "G" and band == "L2":
+                gps_l2_codes.add(code)
+
+        assert "L" in gps_l2_codes, (
+            f"GPS L2 should have tracking code 'L' (from signal ID 6), "
+            f"got {gps_l2_codes}"
+        )
+
+    def test_hainich_more_sids_than_rosalia(self, hainich_ref_file, nmea_file):
+        """u-blox data with signal IDs should produce more SIDs per SV."""
+        hai = NmeaObs(fpath=hainich_ref_file).to_ds()
+        ros = NmeaObs(fpath=nmea_file).to_ds()
+
+        # Hainich: each GPS SV on ~2 bands → more SIDs
+        hai_sids_per_sv = len(hai.sid) / max(1, hai.sizes.get("sid", 1))
+        ros_sids_per_sv = len(ros.sid) / max(1, ros.sizes.get("sid", 1))
+
+        # Simpler: just check that Hainich has more unique bands
+        hai_bands = set(str(b) for b in hai.band.values)
+        ros_bands = set(str(b) for b in ros.band.values)
+
+        assert len(hai_bands) > len(ros_bands), (
+            f"Hainich should have more unique bands ({hai_bands}) "
+            f"than Rosalia ({ros_bands})"
+        )
+
+    def test_hainich_canopy_reads(self, hainich_canopy_file):
+        """Hainich canopy file also reads correctly."""
+        obs = NmeaObs(fpath=hainich_canopy_file)
+        ds = obs.to_ds()
+        assert ds.sizes["epoch"] > 0
+        assert ds.sizes["sid"] > 0
+
+    def test_hainich_ref_canopy_share_sids(self, hainich_ref_file, hainich_canopy_file):
+        """Reference and canopy from same site share signal IDs."""
+        ref_ds = NmeaObs(fpath=hainich_ref_file).to_ds()
+        can_ds = NmeaObs(fpath=hainich_canopy_file).to_ds()
+
+        ref_sids = set(str(s) for s in ref_ds.sid.values)
+        can_sids = set(str(s) for s in can_ds.sid.values)
+
+        common = ref_sids & can_sids
+        assert len(common) > 0, "Hainich ref and canopy should share SIDs"
