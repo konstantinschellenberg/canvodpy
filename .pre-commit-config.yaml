@@ -8,15 +8,20 @@ repos:
   #       pass_filenames: false
   #       stages: [pre-push]
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.3
+  - repo: local
     hooks:
-      # Run the linter
+      # Use uv-managed ruff so local hooks and CI always use the same version
       - id: ruff-check
-        args: [--fix]
+        name: ruff lint
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
         stages: [pre-commit]
-      # Run the formatter
       - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
+        language: system
+        types: [python]
         stages: [pre-commit]
 
   - repo: https://github.com/astral-sh/uv-pre-commit
@@ -43,3 +48,18 @@ repos:
     hooks:
       - id: commitizen
         stages: [commit-msg]
+
+  - repo: local
+    hooks:
+      - id: ty-check
+        name: ty type check
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+      - id: update-submodules
+        name: update submodules
+        entry: just update-submodules
+        language: system
+        pass_filenames: false
+        stages: [post-merge]

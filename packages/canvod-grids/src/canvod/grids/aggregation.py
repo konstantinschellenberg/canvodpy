@@ -300,7 +300,7 @@ def compute_percell_timeseries(
                 cell_weights,
                 cell_counts,
                 cell_to_idx,
-                time_to_idx,
+                time_to_idx,  # ty: ignore[invalid-argument-type]
             )
 
         del chunk_data

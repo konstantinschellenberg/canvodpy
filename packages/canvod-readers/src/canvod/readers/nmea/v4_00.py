@@ -236,7 +236,7 @@ def _parse_rmc_datetime(fields: list[str]) -> datetime | None:
         year = year_2d + 2000 if year_2d < 80 else year_2d + 1900
 
         return datetime(year, month, day, hour, minute, second, microsecond, tzinfo=UTC)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 
@@ -250,7 +250,7 @@ def _parse_gga_time(fields: list[str]) -> tuple[int, int, float] | None:
         minute = int(utc_time[2:4])
         seconds = float(utc_time[4:])
         return hour, minute, seconds
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 
@@ -598,7 +598,7 @@ class NmeaObs(GNSSDataReader, BaseModel):
                 if line.startswith(prefix):
                     try:
                         validate_nmea_checksum(line)
-                    except (NmeaChecksumError, NmeaInvalidSentenceError):
+                    except NmeaChecksumError, NmeaInvalidSentenceError:
                         break
                     relevant_lines.append(line)
                     break

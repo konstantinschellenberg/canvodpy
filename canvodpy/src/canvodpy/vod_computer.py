@@ -324,8 +324,8 @@ class VodComputer:
 
         # When epoch is stored as int64 nanoseconds, convert bounds to match
         if np.issubdtype(ds.epoch.dtype, np.integer):
-            start = pd.Timestamp(start).value if start else None
-            end = pd.Timestamp(end).value if end else None
+            start = pd.Timestamp(start).value if start else None  # ty: ignore[invalid-assignment]
+            end = pd.Timestamp(end).value if end else None  # ty: ignore[invalid-assignment]
 
         if start:
             ds = ds.sel(epoch=ds.epoch >= start)

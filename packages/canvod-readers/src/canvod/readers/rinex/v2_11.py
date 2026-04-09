@@ -1069,10 +1069,10 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
                     freq_min = center_frequency - (bw / 2.0)
                     freq_max = center_frequency + (bw / 2.0)
                     band_freq_cache[band] = (
-                        float(center_frequency.m_as(UREG.MHz)),
-                        float(freq_min.m_as(UREG.MHz)),
-                        float(freq_max.m_as(UREG.MHz)),
-                        float(bw.m_as(UREG.MHz)),
+                        float(center_frequency.m_as(UREG.MHz)),  # ty: ignore[call-non-callable]
+                        float(freq_min.m_as(UREG.MHz)),  # ty: ignore[unresolved-attribute]
+                        float(freq_max.m_as(UREG.MHz)),  # ty: ignore[unresolved-attribute]
+                        float(bw.m_as(UREG.MHz)),  # ty: ignore[call-non-callable]
                     )
                 else:
                     band_freq_cache[band] = (np.nan, np.nan, np.nan, np.nan)
@@ -1324,7 +1324,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
         # Drop unwanted vars
         for var in list(ds.data_vars):
             if var not in keep_data_vars:
-                ds = ds.drop_vars(var)
+                ds = ds.drop_vars([var])
 
         if pad_global_sid:
             from canvod.auxiliary.preprocessing import pad_to_global_sid
@@ -1377,7 +1377,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
 
         keep = []
         for sid in ds.sid.values:
-            _sv, band, _code = self._signal_mapper.parse_signal_id(str(sid))
+            _sv, band, _code = str(sid).split("|")
             group = self._signal_mapper.get_overlapping_group(band)
             if group and group in group_preference:
                 if band == group_preference[group]:
@@ -1388,7 +1388,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
 
     # ---- Attribute helpers ------------------------------------------------ #
 
-    def _create_basic_attrs(self) -> dict[str, object]:
+    def _create_basic_attrs(self) -> dict[str, str]:
         attrs = get_global_attrs()
         attrs["Created"] = datetime.now(UTC).isoformat()
         attrs["Software"] = (
@@ -1396,7 +1396,7 @@ class Rnxv2Obs(GNSSDataReader, BaseModel):
         )
         return attrs
 
-    def _create_comprehensive_attrs(self) -> dict[str, object]:
+    def _create_comprehensive_attrs(self) -> dict[str, str | int | float | None]:
         attrs = {
             "File Path": str(self.fpath),
             "File Type": self.header.filetype,

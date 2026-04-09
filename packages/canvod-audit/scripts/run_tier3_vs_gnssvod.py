@@ -319,8 +319,8 @@ def _run_gnssvod_vod(
         raise RuntimeError("Cannot find Epoch in gnssvod canopy output")
 
     time_intervals = pd.interval_range(
-        start=pd.Timestamp(epochs.min()).normalize(),
-        end=pd.Timestamp(epochs.max()).normalize() + pd.Timedelta("1D"),
+        start=pd.Timestamp(epochs.min()).normalize(),  # ty: ignore[unresolved-attribute]
+        end=pd.Timestamp(epochs.max()).normalize() + pd.Timedelta("1D"),  # ty: ignore[unresolved-attribute]
         freq="1D",
     )
 

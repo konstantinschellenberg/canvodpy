@@ -47,23 +47,11 @@ check-format:
 check-format-only:
     uv run ruff format --check . --exclude "*.ipynb"
 
-# run the type checker ty (informational only - not enforced)
+# run the type checker ty (config lives in [tool.ty] in pyproject.toml)
 check-types:
-    @echo "⚠️  Type checking with ty (informational only - errors allowed)"
-    @echo "   Type hints are being added progressively. CI allows failures."
-    @echo "   Suppressing: unresolved-import (optional deps), **/tests/**, demo/, dags/"
-    @echo "   Phase 2 excludes: grid_storage.py and store.py (temporary)"
-    @echo "   See: .github/workflows/code_quality.yml"
-    @echo ""
-    -uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
+    uv run ty check
 
-# enforce ty progress against a diagnostics budget (fails when regressions exceed budget)
-check-types-budget:
-    @echo "🔒 Enforcing ty diagnostics budget (set TY_MAX_DIAGNOSTICS to adjust)"
-    ./scripts/check_ty_budget.sh
-
-# lint, format with ruff (all packages)
-# Note: type checking not included - run 'just check-types' separately if needed
+# lint, format and type-check (all packages)
 check: check-lint check-format check-types
 
 # ============================================================================
@@ -313,9 +301,17 @@ clean-test:
     rm -fr htmlcov/
     rm -fr .pytest_cache
 
-# install all packages in workspace
+# install all packages in workspace and ensure all git hooks are active
 sync:
     uv sync
+    uv run pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push --hook-type post-merge
+
+# update all git submodules (demo + test_data) to their latest remote commits and record the new pointers
+update-submodules:
+    git submodule update --remote --merge demo
+    git submodule update --remote --merge packages/canvod-readers/tests/test_data
+    git add demo packages/canvod-readers/tests/test_data
+    git diff --cached --quiet || git commit -m "chore: update submodule pointers (demo + test_data)"
 
 # ============================================================================
 # Version Management

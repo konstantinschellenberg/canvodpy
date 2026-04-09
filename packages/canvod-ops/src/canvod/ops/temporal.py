@@ -32,7 +32,7 @@ def _convert_to_polars_freq(freq_str: str) -> str:
 def _median_epoch_spacing(epochs: np.ndarray) -> pd.Timedelta:
     """Return the median spacing between sorted epoch values."""
     diffs = np.diff(np.sort(epochs))
-    return pd.Timedelta(np.median(diffs))
+    return pd.Timedelta(np.median(diffs))  # ty: ignore[invalid-return-type]
 
 
 class TemporalAggregate(Op):

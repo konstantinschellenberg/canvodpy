@@ -10,7 +10,6 @@ permissions: read-all
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
-    JUST_VERSION: '1.40.0'
 
 jobs:
     lock_file:
@@ -23,6 +22,10 @@ jobs:
                   curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
                   sudo install -m 755 just /usr/local/bin/just
                   just --version
+            - name: Install just
+              uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2.75.1
+              with:
+                  tool: just
             - name: Check uv.lock is up to date
               run: just check-lock
 
@@ -33,10 +36,9 @@ jobs:
             - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
             - uses: ./.github/actions/setup
             - name: Install just
-              run: |
-                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
-                  sudo install -m 755 just /usr/local/bin/just
-                  just --version
+              uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2.75.1
+              with:
+                  tool: just
             - name: Lint with ruff
               run: just check-lint-only
 
@@ -47,10 +49,9 @@ jobs:
             - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
             - uses: ./.github/actions/setup
             - name: Install just
-              run: |
-                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
-                  sudo install -m 755 just /usr/local/bin/just
-                  just --version
+              uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2.75.1
+              with:
+                  tool: just
             - name: Check formatting
               run: just check-format-only
 
@@ -61,14 +62,12 @@ jobs:
             - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
             - uses: ./.github/actions/setup
             - name: Install just
-              run: |
-                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
-                  sudo install -m 755 just /usr/local/bin/just
-                  just --version
+              uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2.75.1
+              with:
+                  tool: just
             - run: uv sync --locked --dev
-            - name: Type check with ty (informational)
-              run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
-              continue-on-error: true
+            - name: Type check with ty
+              run: just check-types
 
     # type_budget:
     #     runs-on: ubuntu-latest
