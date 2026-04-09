@@ -10,9 +10,6 @@ on:
 
 permissions: read-all
 
-env:
-    JUST_VERSION: "1.40.0"
-
 jobs:
     test_coverage:
         runs-on: ubuntu-latest
@@ -31,10 +28,9 @@ jobs:
               run: uv python install
 
             - name: Install just
-              run: |
-                  curl -fsSL "https://github.com/casey/just/releases/download/${JUST_VERSION}/just-${JUST_VERSION}-x86_64-unknown-linux-musl.tar.gz" | tar -xz
-                  sudo install -m 755 just /usr/local/bin/just
-                  just --version
+              uses: taiki-e/install-action@80e6af7a2ec7f280fffe2d0a9d3a12a9d11d86e9 # v2.75.1
+              with:
+                  tool: just
 
             - name: Install the Project
               run: uv sync --locked --dev
