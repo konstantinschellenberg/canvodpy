@@ -637,6 +637,17 @@ class StatisticsConfig(BaseModel):
     )
 
 
+class TemperatureConfig(BaseModel):
+    """Temperature data reading and storage settings."""
+
+    store_temperature: bool = Field(
+        False, description="Enable reading and storing receiver temperature"
+    )
+    temperature_reader_format: Literal["binex", "csv"] = Field(
+        "binex", description="Temperature file format: binex (teqc .temperature) or csv"
+    )
+
+
 class PreprocessingConfig(BaseModel):
     """Preprocessing pipeline configuration."""
 
@@ -648,6 +659,9 @@ class PreprocessingConfig(BaseModel):
     )
     statistics: StatisticsConfig = Field(
         default_factory=StatisticsConfig,
+    )
+    temperature: TemperatureConfig = Field(
+        default_factory=TemperatureConfig,
     )
 
 

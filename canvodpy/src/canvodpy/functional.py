@@ -98,6 +98,45 @@ def read_rinex(
     return ds
 
 
+def read_temperature(
+    rinex_path: str | Path,
+    fmt: str = "binex",
+) -> xr.Dataset | None:
+    """Read receiver temperature from the file alongside a RINEX observation.
+
+    Looks for a ``.temperature`` file next to *rinex_path* and returns an
+    ``xr.Dataset`` with ``T_receiver`` on the ``epoch`` dimension, or
+    ``None`` if no temperature file is found.
+
+    Parameters
+    ----------
+    rinex_path : str or Path
+        Path to the RINEX file whose companion temperature file to read.
+    fmt : str, default="binex"
+        Temperature file format (``"binex"`` or ``"csv"``).
+
+    Returns
+    -------
+    xr.Dataset or None
+        Dataset with ``T_receiver`` variable, or ``None``.
+    """
+    from canvod.readers.auxiliary.temperature import (
+        TemperatureReader,
+        find_temperature_file,
+    )
+
+    temp_file = find_temperature_file(Path(rinex_path))
+    if temp_file is None:
+        log.debug("read_temperature_not_found", rinex=str(rinex_path))
+        return None
+
+    log.info("read_temperature", file=str(temp_file))
+    reader = TemperatureReader.create(fmt, temp_file)
+    ds = reader.read()
+    log.info("read_temperature_complete", epochs=ds.sizes["epoch"])
+    return ds
+
+
 def augment_with_ephemeris(
     ds: xr.Dataset,
     receiver_position: Any,

@@ -90,6 +90,8 @@ def preprocess_with_hermite_aux(
     store_sbf_raw_observables: bool = True,
     broadcast_canopy_file: Path | None = None,
     broadcast_canopy_fmt: str | None = None,
+    store_temperature: bool = False,
+    temperature_reader_format: str = "binex",
 ) -> tuple[Path, xr.Dataset, dict[str, xr.Dataset], dict[str, list[str]]]:
     """Read RINEX and compute coordinates using Hermite-interpolated aux data from Zarr.
 
@@ -162,6 +164,37 @@ def preprocess_with_hermite_aux(
                 store_raw_observables=store_sbf_raw_observables,
             )
             ds.attrs["File Hash"] = rnx.file_hash
+
+            # Optionally merge receiver temperature data
+            if store_temperature:
+                from canvod.readers.auxiliary.temperature import (
+                    TemperatureReader,
+                    find_temperature_file,
+                )
+
+                temp_file = find_temperature_file(rnx_file)
+                if temp_file is not None:
+                    temp_reader = TemperatureReader.create(
+                        temperature_reader_format, temp_file
+                    )
+                    temp_ds = temp_reader.read()
+                    if temp_ds.sizes["epoch"] > 0:
+                        # Align temperature epochs to RINEX epochs (nearest match)
+                        temp_aligned = temp_ds["T_receiver"].reindex(
+                            epoch=ds.epoch, method="nearest", tolerance="30s"
+                        )
+                        ds["T_receiver"] = temp_aligned
+                        log.info(
+                            "temperature_merged",
+                            file=temp_file.name,
+                            temp_epochs=temp_ds.sizes["epoch"],
+                            matched=int(temp_aligned.notnull().sum().item()),
+                        )
+                    else:
+                        log.warning("temperature_file_empty", file=temp_file.name)
+                else:
+                    log.debug("temperature_file_not_found", rinex=rnx_file.name)
+
             t_rinex = time.perf_counter()
 
             # SBF-geometry fast path: use receiver-reported theta/phi, skip ephemeris
@@ -513,6 +546,8 @@ def worker_task_with_region_auto(
     keep_sids: list[str] | None = None,
     reader_name: str = "rinex3",
     store_sbf_raw_observables: bool = True,
+    store_temperature: bool = False,
+    temperature_reader_format: str = "binex",
 ) -> ForkSession:
     """Worker uses region='auto' to write to correct position."""
     _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
@@ -524,6 +559,8 @@ def worker_task_with_region_auto(
         keep_sids,
         reader_name,
         store_sbf_raw_observables=store_sbf_raw_observables,
+        store_temperature=store_temperature,
+        temperature_reader_format=temperature_reader_format,
     )
 
     ds_clean = _sanitize_ds_for_write(ds)
@@ -1321,6 +1358,7 @@ class RinexDataProcessor:
 
         # Submit all tasks to the Dask cluster
         effective_reader = reader_format or self._reader_name
+        temp_cfg = self._config.processing.preprocessing.temperature
         future_to_file = {
             client.submit(
                 preprocess_with_hermite_aux,
@@ -1334,6 +1372,8 @@ class RinexDataProcessor:
                 self.use_sbf_geometry,
                 store_radial_distance,
                 store_sbf_raw_observables,
+                store_temperature=temp_cfg.store_temperature,
+                temperature_reader_format=temp_cfg.temperature_reader_format,
                 pure=False,
             ): rinex_file
             for rinex_file in rinex_files
@@ -1445,6 +1485,7 @@ class RinexDataProcessor:
         task_submission_start = time.time()
 
         effective_reader = reader_format or self._reader_name
+        temp_cfg = self._config.processing.preprocessing.temperature
         with ProcessPoolExecutor(max_workers=self.n_max_workers) as executor:
             futures = {
                 executor.submit(
@@ -1459,6 +1500,8 @@ class RinexDataProcessor:
                     self.use_sbf_geometry,
                     store_radial_distance,
                     store_sbf_raw_observables,
+                    store_temperature=temp_cfg.store_temperature,
+                    temperature_reader_format=temp_cfg.temperature_reader_format,
                 ): rinex_file
                 for rinex_file in rinex_files
             }
@@ -3060,6 +3103,7 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
         # Option A: Process all files first to get full time range
         all_epochs = []
         store_raw = self._config.processing.processing.store_sbf_raw_observables
+        temp_cfg = self._config.processing.preprocessing.temperature
         for rinex_file in rinex_files_sorted:
             _fname, ds, _aux, _sids = preprocess_with_hermite_aux(
                 rinex_file,
@@ -3070,6 +3114,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                 self.keep_sids,
                 self._reader_name,
                 store_sbf_raw_observables=store_raw,
+                store_temperature=temp_cfg.store_temperature,
+                temperature_reader_format=temp_cfg.temperature_reader_format,
             )
             all_epochs.extend(ds.epoch.values)
 
@@ -3083,6 +3129,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
             self.keep_sids,
             self._reader_name,
             store_sbf_raw_observables=store_raw,
+            store_temperature=temp_cfg.store_temperature,
+            temperature_reader_format=temp_cfg.temperature_reader_format,
         )
 
         # Initialize with full epoch dimension
@@ -3118,6 +3166,8 @@ class DistributedRinexDataProcessor(RinexDataProcessor):
                     self.keep_sids,
                     self._reader_name,
                     store_raw,
+                    store_temperature=temp_cfg.store_temperature,
+                    temperature_reader_format=temp_cfg.temperature_reader_format,
                     pure=False,
                 )
                 for rinex_file in rinex_files_sorted
