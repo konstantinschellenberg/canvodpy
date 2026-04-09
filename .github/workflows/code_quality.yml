@@ -66,9 +66,8 @@ jobs:
               with:
                   tool: just
             - run: uv sync --locked --dev
-            - name: Type check with ty (informational)
-              run: uv run ty check --ignore unresolved-import --exclude "**/tests/**" --exclude "demo/**" --exclude "dags/**" --exclude "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py" --exclude "packages/canvod-store/src/canvod/store/store.py"
-              continue-on-error: true
+            - name: Type check with ty
+              run: just check-types
 
     # type_budget:
     #     runs-on: ubuntu-latest

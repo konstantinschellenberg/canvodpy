@@ -100,6 +100,31 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 # ============================================================================
+# ty Configuration (Workspace-wide)
+# ============================================================================
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.rules]
+# Ignore unresolved imports: workspace packages may not be installed in isolation
+# and optional deps (pint, polars, icechunk) are not always present.
+unresolved-import = "ignore"
+
+[tool.ty.src]
+# Tests use assert, magic numbers and intentional patterns — skip entirely.
+# Demo notebooks and DAGs are not production code.
+# The two store files below have deep icechunk/xarray generics that need
+# dedicated refactoring before ty can analyse them cleanly.
+exclude = [
+    "**/tests/**",
+    "demo/**",
+    "dags/**",
+    "packages/canvod-store/src/canvod/store/grid_adapters/grid_storage.py",
+    "packages/canvod-store/src/canvod/store/store.py",
+]
+
+# ============================================================================
 # Pytest Configuration (Workspace-wide)
 # ============================================================================
 
