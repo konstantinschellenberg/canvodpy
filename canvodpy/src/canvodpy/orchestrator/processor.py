@@ -157,8 +157,12 @@ def preprocess_with_hermite_aux(
             from canvodpy.factories import ReaderFactory
 
             rnx = ReaderFactory.create(reader_name, fpath=rnx_file)
+            # T_receiver is added after reading; exclude from reader validation
+            reader_vars = (
+                [v for v in keep_vars if v != "T_receiver"] if keep_vars else keep_vars
+            )
             ds, aux_datasets = rnx.to_ds_and_auxiliary(
-                keep_data_vars=keep_vars,
+                keep_data_vars=reader_vars,
                 write_global_attrs=True,
                 keep_sids=keep_sids,
                 store_raw_observables=store_sbf_raw_observables,
@@ -2439,7 +2443,10 @@ class RinexDataProcessor:
         -------
         task_descriptors : list[tuple]
             Each tuple contains the args for ``preprocess_with_hermite_aux``:
-            ``(rnx_file, keep_vars, aux_zarr_path, position, receiver_name, keep_sids)``.
+            ``(rnx_file, keep_vars, aux_zarr_path, position, receiver_name,
+            keep_sids, reader, use_sbf_geometry, store_radial_distance,
+            broadcast_canopy_file, canopy_reader_fmt,
+            store_temperature, temperature_reader_format)``.
         receiver_file_map : list[tuple[str, list[Path]]]
             ``(receiver_name, rinex_files)`` for each receiver — needed for the
             Icechunk write phase.
@@ -2557,6 +2564,7 @@ class RinexDataProcessor:
             receiver_file_map.append((receiver_name, rinex_files))
 
             effective_reader = reader_format or self._reader_name
+            temp_cfg = self._config.processing.preprocessing.temperature
             for rnx_file in rinex_files:
                 # For reference receivers in broadcast + shared mode,
                 # find matching canopy file by timestamp suffix
@@ -2582,8 +2590,11 @@ class RinexDataProcessor:
                         effective_reader,
                         self.use_sbf_geometry,
                         False,  # store_radial_distance
+                        True,  # store_sbf_raw_observables
                         broadcast_canopy_file,
                         canopy_reader_fmt,
+                        temp_cfg.store_temperature,
+                        temp_cfg.temperature_reader_format,
                     )
                 )
 
