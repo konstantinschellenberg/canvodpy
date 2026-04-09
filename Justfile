@@ -313,9 +313,17 @@ clean-test:
     rm -fr htmlcov/
     rm -fr .pytest_cache
 
-# install all packages in workspace
+# install all packages in workspace and ensure all git hooks are active
 sync:
     uv sync
+    uv run pre-commit install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push --hook-type post-merge
+
+# update all git submodules (demo + test_data) to their latest remote commits and record the new pointers
+update-submodules:
+    git submodule update --remote --merge demo
+    git submodule update --remote --merge packages/canvod-readers/tests/test_data
+    git add demo packages/canvod-readers/tests/test_data
+    git diff --cached --quiet || git commit -m "chore: update submodule pointers (demo + test_data)"
 
 # ============================================================================
 # Version Management
